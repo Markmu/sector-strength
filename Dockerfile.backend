@@ -1,0 +1,73 @@
+# 后端Dockerfile - FastAPI应用
+FROM python:3.11-slim AS base
+
+# 设置工作目录
+WORKDIR /app
+
+# 设置Python环境变量
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=on \
+    PIP_DISABLE_PIP_VERSION_CHECK=on
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装依赖阶段
+FROM base AS deps
+
+# 复制requirements文件
+COPY server/requirements.txt .
+COPY server/requirements-dev.txt .
+
+# 安装生产依赖
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 安装开发依赖（用于开发环境）
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+# 开发环境阶段
+FROM base AS development
+
+# 复制依赖
+COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=deps /usr/local/bin /usr/local/bin
+
+# 复制应用代码
+COPY server/ ./server/
+COPY shared/ ./shared/
+
+# 暴露端口
+EXPOSE 8000
+
+# 开发模式启动命令
+CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+# 生产环境阶段
+FROM base AS production
+
+# 复制依赖
+COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=deps /usr/local/bin /usr/local/bin
+
+# 复制应用代码
+COPY server/ ./server/
+COPY shared/ ./shared/
+
+# 创建非root用户
+RUN adduser --disabled-password --gecos "" appuser
+
+# 更改文件所有权
+RUN chown -R appuser:appuser /app
+
+# 切换到非root用户
+USER appuser
+
+# 暴露端口
+EXPOSE 8000
+
+# 生产环境启动命令
+CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]

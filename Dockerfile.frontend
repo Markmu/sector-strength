@@ -1,0 +1,63 @@
+# 前端Dockerfile - Next.js应用
+FROM node:18-alpine AS base
+
+# 安装依赖阶段
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# 复制package文件
+COPY web/package*.json ./
+RUN npm ci --only=production
+
+# 构建阶段
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY web/ .
+
+# 开发模式使用
+FROM base AS development
+WORKDIR /app
+
+# 复制node_modules
+COPY --from=deps /app/node_modules ./node_modules
+
+# 复制应用代码
+COPY web/ .
+
+# 暴露端口
+EXPOSE 3000
+
+# 开发模式启动命令
+CMD ["npm", "run", "dev"]
+
+# 生产构建阶段
+FROM base AS production
+WORKDIR /app
+
+ENV NODE_ENV production
+
+# 复制生产node_modules
+COPY --from=deps /app/node_modules ./node_modules
+
+# 复制构建产物
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./package.json
+
+# 创建非root用户
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# 更改文件所有权
+RUN chown -R nextjs:nodejs /app/.next
+
+# 切换到非root用户
+USER nextjs
+
+# 暴露端口
+EXPOSE 3000
+
+# 生产环境启动命令
+CMD ["npm", "start"]
