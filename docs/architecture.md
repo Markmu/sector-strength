@@ -187,6 +187,32 @@ graph TB
 - `price_ratio`: number - 价格与均线的比率
 - `trend`: number - 趋势方向
 
+### 用户 (User)
+
+**用途:** 存储用户账户信息和认证数据
+
+**关键属性:**
+- `id`: string - 用户唯一标识符
+- `email`: string - 电子邮箱（登录用）
+- `password_hash`: string - 加密后的密码
+- `username`: string - 用户名
+- `created_at`: Date - 创建时间
+- `updated_at`: Date - 更新时间
+- `is_active`: boolean - 账户是否激活
+- `last_login`: Date - 最后登录时间
+
+### 关注列表 (Watchlist)
+
+**用途:** 存储用户关注的板块和个股
+
+**关键属性:**
+- `id`: string - 关注记录唯一标识符
+- `user_id`: string - 用户ID（外键）
+- `entity_type`: string - 实体类型（'stock': 个股, 'sector': 板块）
+- `entity_id`: string - 实体ID（股票ID或板块ID）
+- `created_at`: Date - 添加关注时间
+- `notes`: string - 用户备注（可选）
+
 ## API 规范
 
 ### REST API 规范
@@ -202,10 +228,20 @@ graph TB
 - `GET /market-data` - 获取行情数据
 - `GET /heatmap` - 获取热力图数据
 - `GET /rankings` - 获取排名数据
+
+**认证相关 API:**
+- `POST /auth/register` - 用户注册
 - `POST /auth/login` - 用户登录
+- `POST /auth/logout` - 用户注销
+- `POST /auth/refresh` - 刷新令牌
+- `GET /auth/profile` - 获取用户信息
+- `PUT /auth/profile` - 更新用户信息
+
+**关注功能 API:**
 - `GET /watchlist` - 获取关注列表
 - `POST /watchlist/{entityType}/{entityId}` - 添加关注
 - `DELETE /watchlist/{entityType}/{entityId}` - 取消关注
+- `PUT /watchlist/{entityType}/{entityId}` - 更新关注备注
 
 ## 组件
 
@@ -271,10 +307,7 @@ cp .env.example .env
 
 **开发命令:**
 ```bash
-# 启动所有服务
-docker-compose up -d
-
-# 或者分别启动
+##分别启动
 cd server && uvicorn src.main:app --reload  # 后端
 cd web && npm run dev                      # 前端
 

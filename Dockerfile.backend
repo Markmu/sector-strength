@@ -14,6 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装依赖阶段
@@ -21,13 +22,12 @@ FROM base AS deps
 
 # 复制requirements文件
 COPY server/requirements.txt .
-COPY server/requirements-dev.txt .
 
 # 安装生产依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 安装开发依赖（用于开发环境）
-RUN pip install --no-cache-dir -r requirements-dev.txt
+RUN pip install --no-cache-dir pytest pytest-asyncio black flake8 mypy
 
 # 开发环境阶段
 FROM base AS development

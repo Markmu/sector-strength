@@ -1,7 +1,11 @@
+networks:
+  sector-network:
+    driver: bridge
+
 services:
   # PostgreSQL数据库服务
   postgres:
-    image: postgres:14-alpine
+    image: postgres:17.6
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-sector_strength}
       POSTGRES_USER: ${POSTGRES_USER:-sector_user}
@@ -10,12 +14,21 @@ services:
       - "5432:5432"
     volumes:
       - ${POSTGRES_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - sector-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sector_user} -d ${POSTGRES_DB:-sector_strength}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   # FastAPI后端服务
   backend:
@@ -30,10 +43,26 @@ services:
     volumes:
       - ./server:/app/server
       - ./shared:/app/shared
+    networks:
+      - sector-network
     depends_on:
       postgres:
         condition: service_healthy
     command: uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # Next.js前端服务
   frontend:
@@ -43,12 +72,16 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NODE_ENV=production
     volumes:
       - ./web:/app/web
       - ./shared:/app/shared
-      - /app/web/node_modules
+    networks:
+      - sector-network
     depends_on:
       - backend
-    command: npm run dev
+    command: pnpm start
 
+volumes:
+  web_node_modules:

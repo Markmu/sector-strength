@@ -1,0 +1,47 @@
+# Workflow Status for Sector Strength
+
+# This tracks progress through BMM methodology Analysis, Planning, and Solutioning phases.
+# Implementation phase is tracked separately in sprint-status.yaml
+
+# STATUS DEFINITIONS:
+# ==================
+# Initial Status (before completion):
+#   - required: Must be completed to progress
+#   - optional: Can be completed but not required
+#   - recommended: Strongly suggested but not required
+#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
+#
+# Completion Status:
+#   - {file-path}: File created/found (e.g., "docs/product-brief.md")
+#   - skipped: Optional/conditional workflow that was skipped
+
+generated: "2025-12-04"
+completed: "2025-12-24"
+project: "sector-strenth"
+project_type: "brownfield"
+selected_track: "bmad-method"
+field_type: "brownfield"
+workflow_path: ".bmad/bmm/workflows/workflow-status/paths/method-brownfield.yaml"
+workflow_status:
+  # Prerequisite Documentation Phase
+  document-project: "skipped"
+
+  # Phase 0: Discovery (Optional)
+  brainstorm-project: "skipped"
+  research: "skipped"
+  product-brief: "skipped"
+
+  # Phase 1: Planning
+  prd: "docs/prd.md"
+  validate-prd: "optional"
+  create-ux-design: "docs/front-end-spec.md"
+
+  # Phase 2: Solutioning
+  create-architecture: "docs/architecture.md"
+  create-epics-and-stories: "docs/epic-roadmap.md"
+  test-design: "docs/test-design-system.md"
+  validate-architecture: "optional"
+  implementation-readiness: "docs/implementation-readiness-report-2025-12-04.md"
+
+  # Phase 3: Implementation
+  sprint-planning: "required"

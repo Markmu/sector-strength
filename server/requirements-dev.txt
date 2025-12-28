@@ -1,7 +1,0 @@
-# 开发环境依赖
-pytest==7.4.0
-pytest-asyncio==0.21.0
-httpx==0.25.0
-black==23.7.0
-flake8==6.0.0
-mypy==1.5.0
