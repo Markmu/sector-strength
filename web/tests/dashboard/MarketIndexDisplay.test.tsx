@@ -5,6 +5,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MarketIndexDisplay } from '@/components/dashboard/MarketIndexDisplay'
 
+// Mock ECharts 组件（避免 Canvas 错误）
+jest.mock('echarts-for-react', () => ({
+  __esModule: true,
+  default: () => null, // 返回 null 跳过渲染
+}))
+
 // Mock SWR hook
 jest.mock('@/hooks/useMarketIndex', () => ({
   useMarketIndex: jest.fn(),
@@ -74,9 +80,9 @@ describe('MarketIndexDisplay', () => {
       render(<MarketIndexDisplay />)
 
       expect(screen.getByText('68.5')).toBeInTheDocument()
-      expect(screen.getByText(/28/i)).toBeInTheDocument() // upSectors
-      expect(screen.getByText(/15/i)).toBeInTheDocument() // downSectors
-      expect(screen.getByText(/2/i)).toBeInTheDocument() // neutralSectors
+      expect(screen.getByText('28')).toBeInTheDocument() // upSectors
+      expect(screen.getByText('15')).toBeInTheDocument() // downSectors
+      expect(screen.getByText('2')).toBeInTheDocument() // neutralSectors
     })
 
     it('应该显示上涨变化', () => {

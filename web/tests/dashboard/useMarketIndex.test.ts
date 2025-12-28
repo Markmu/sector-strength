@@ -4,10 +4,14 @@
 
 import { renderHook, waitFor } from '@testing-library/react'
 import { useMarketIndex } from '@/hooks/useMarketIndex'
-import { SWRConfig } from 'swr'
 
-// Mock fetch
-global.fetch = jest.fn()
+// Mock SWR
+jest.mock('swr', () => ({
+  __esModule: true,
+  default: jest.fn(),
+}))
+
+import useSWR from 'swr'
 
 const mockMarketIndexResponse = {
   success: true,
@@ -35,173 +39,138 @@ const mockMarketIndexResponse = {
 describe('useMarketIndex', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    ;(global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: async () => mockMarketIndexResponse,
-    })
   })
 
   describe('基础功能测试', () => {
     it('应该返回初始加载状态', () => {
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: undefined,
+        error: undefined,
+        isLoading: true,
+        mutate: jest.fn(),
+      })
+
       const { result } = renderHook(() => useMarketIndex())
 
       expect(result.current.isLoading).toBe(true)
+      expect(result.current.isError).toBeUndefined()
       expect(result.current.index).toBeUndefined()
       expect(result.current.stats).toBeUndefined()
       expect(result.current.trend).toEqual([])
     })
 
-    it('应该返回市场指数数据', async () => {
-      const { result } = renderHook(() => useMarketIndex())
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
+    it('应该返回市场指数数据', () => {
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: mockMarketIndexResponse,
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
       })
+
+      const { result } = renderHook(() => useMarketIndex())
 
       expect(result.current.index).toEqual(mockMarketIndexResponse.data.index)
       expect(result.current.stats).toEqual(mockMarketIndexResponse.data.stats)
       expect(result.current.trend).toEqual(mockMarketIndexResponse.data.trend)
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.isError).toBeUndefined()
     })
 
-    it('应该返回错误状态', async () => {
-      ;(global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        status: 500,
+    it('应该返回错误状态', () => {
+      const mockError = new Error('API Error')
+
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: undefined,
+        error: mockError,
+        isLoading: false,
+        mutate: jest.fn(),
       })
 
       const { result } = renderHook(() => useMarketIndex())
 
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
-      })
-
-      expect(result.current.isError).toBe(true)
+      expect(result.current.isError).toBe(mockError)
+      expect(result.current.index).toBeUndefined()
+      expect(result.current.stats).toBeUndefined()
     })
 
-    it('应该处理空数据响应', async () => {
-      ;(global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: true, data: null }),
+    it('应该处理空数据响应', () => {
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: { success: true, data: null },
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
       })
 
       const { result } = renderHook(() => useMarketIndex())
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
-      })
 
       expect(result.current.index).toBeUndefined()
       expect(result.current.stats).toBeUndefined()
     })
 
-    it('应该处理 undefined data', async () => {
-      ;(global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: false }),
+    it('应该处理 undefined data', () => {
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: undefined,
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
       })
 
       const { result } = renderHook(() => useMarketIndex())
 
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
-      })
-
       expect(result.current.index).toBeUndefined()
       expect(result.current.stats).toBeUndefined()
+      expect(result.current.trend).toEqual([])
     })
   })
 
   describe('SWR 配置测试', () => {
-    it('应该配置禁用自动轮询', async () => {
-      let capturedConfig: any = null
+    it('应该配置禁用自动轮询（用户要求手动刷新）', () => {
+      renderHook(() => useMarketIndex())
 
-      const wrapper = ({ children }: { children: React.ReactNode }) => (
-        <SWRConfig value={{ provider: () => ({ config: (c: any) => { capturedConfig = c } }) }}>
-          {children}
-        </SWRConfig>
-      )
+      expect(useSWR).toHaveBeenCalled()
 
-      renderHook(() => useMarketIndex(), { wrapper })
+      const callArgs = (useSWR as jest.Mock).mock.calls[0]
+      const config = callArgs[2]
 
-      await waitFor(() => {
-        expect(capturedConfig.refreshInterval).toBe(0)
-      })
+      expect(config.refreshInterval).toBe(0)
     })
 
-    it('应该禁用窗口聚焦刷新', async () => {
-      let capturedConfig: any = null
+    it('应该禁用窗口聚焦刷新但启用网络重连刷新', () => {
+      renderHook(() => useMarketIndex())
 
-      const wrapper = ({ children }: { children: React.ReactNode }) => (
-        <SWRConfig value={{ provider: () => ({ config: (c: any) => { capturedConfig = c } }) }}>
-          {children}
-        </SWRConfig>
-      )
+      const callArgs = (useSWR as jest.Mock).mock.calls[0]
+      const config = callArgs[2]
 
-      renderHook(() => useMarketIndex(), { wrapper })
-
-      await waitFor(() => {
-        expect(capturedConfig.revalidateOnFocus).toBe(false)
-      })
-    })
-
-    it('应该启用网络重连刷新', async () => {
-      let capturedConfig: any = null
-
-      const wrapper = ({ children }: { children: React.ReactNode }) => (
-        <SWRConfig value={{ provider: () => ({ config: (c: any) => { capturedConfig = c } }) }}>
-          {children}
-        </SWRConfig>
-      )
-
-      renderHook(() => useMarketIndex(), { wrapper })
-
-      await waitFor(() => {
-        expect(capturedConfig.revalidateOnReconnect).toBe(true)
-      })
-    })
-  })
-
-  describe('mutate 函数测试', () => {
-    it('应该返回 mutate 函数', () => {
-      const { result } = renderHook(() => useMarketIndex())
-
-      expect(result.current.mutate).toBeDefined()
-      expect(typeof result.current.mutate).toBe('function')
-    })
-
-    it('应该可以手动触发重新验证', async () => {
-      const { result } = renderHook(() => useMarketIndex())
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
-      })
-
-      // 调用 mutate 重新验证
-      result.current.mutate()
-
-      expect(global.fetch).toHaveBeenCalledTimes(2) // 初始加载 + mutate
+      expect(config.revalidateOnFocus).toBe(false)
+      expect(config.revalidateOnReconnect).toBe(true)
     })
   })
 
   describe('数据转换测试', () => {
-    it('应该正确提取 index 数据', async () => {
-      const { result } = renderHook(() => useMarketIndex())
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
+    it('应该正确提取 index 数据', () => {
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: mockMarketIndexResponse,
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
       })
+
+      const { result } = renderHook(() => useMarketIndex())
 
       expect(result.current.index?.value).toBe(68.5)
       expect(result.current.index?.change).toBe(2.3)
       expect(result.current.index?.color).toBe('#10B981')
     })
 
-    it('应该正确提取 stats 数据', async () => {
-      const { result } = renderHook(() => useMarketIndex())
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
+    it('应该正确提取 stats 数据', () => {
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: mockMarketIndexResponse,
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
       })
+
+      const { result } = renderHook(() => useMarketIndex())
 
       expect(result.current.stats?.totalSectors).toBe(45)
       expect(result.current.stats?.upSectors).toBe(28)
@@ -209,36 +178,71 @@ describe('useMarketIndex', () => {
       expect(result.current.stats?.neutralSectors).toBe(2)
     })
 
-    it('应该正确提取 trend 数据', async () => {
-      const { result } = renderHook(() => useMarketIndex())
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
+    it('应该正确提取 trend 数据', () => {
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: mockMarketIndexResponse,
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
       })
+
+      const { result } = renderHook(() => useMarketIndex())
 
       expect(result.current.trend).toHaveLength(3)
       expect(result.current.trend[0].value).toBe(65.2)
     })
 
-    it('应该处理空 trend 数组', async () => {
-      ;(global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        json: async () => ({
+    it('应该处理空 trend 数组', () => {
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: {
           success: true,
           data: {
             ...mockMarketIndexResponse.data,
             trend: [],
           },
-        }),
+        },
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
       })
 
       const { result } = renderHook(() => useMarketIndex())
 
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
+      expect(result.current.trend).toEqual([])
+    })
+  })
+
+  describe('mutate 函数测试', () => {
+    it('应该返回 mutate 函数', () => {
+      const mockMutate = jest.fn()
+
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: mockMarketIndexResponse,
+        error: undefined,
+        isLoading: false,
+        mutate: mockMutate,
       })
 
-      expect(result.current.trend).toEqual([])
+      const { result } = renderHook(() => useMarketIndex())
+
+      expect(result.current.mutate).toBe(mockMutate)
+    })
+
+    it('应该可以手动触发重新验证', () => {
+      const mockMutate = jest.fn()
+
+      ;(useSWR as jest.Mock).mockReturnValue({
+        data: mockMarketIndexResponse,
+        error: undefined,
+        isLoading: false,
+        mutate: mockMutate,
+      })
+
+      const { result } = renderHook(() => useMarketIndex())
+
+      result.current.mutate()
+
+      expect(mockMutate).toHaveBeenCalled()
     })
   })
 })
