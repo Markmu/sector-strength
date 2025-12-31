@@ -24,7 +24,7 @@ class SectorMAService:
     """板块均线计算服务"""
 
     # 默认计算的均线周期
-    DEFAULT_PERIODS = [5, 10, 20, 30, 60]
+    DEFAULT_PERIODS = [5, 10, 20, 30, 60, 90, 120, 240]
 
     def __init__(self, session: AsyncSession):
         """
@@ -206,42 +206,7 @@ class SectorMAService:
             logger.info(f"[板块均线] 板块 {sector.name} 数据范围: {data_start_date} 至 {data_end_date}，共 {total_days} 个交易日")
 
             # ========================================
-            # 步骤2: 检查断点（已有数据的最大日期）
-            # ========================================
-            if not overwrite:
-                # 查询已有数据的最大日期
-                latest_stmt = select(func.max(MovingAverageData.date)).where(
-                    and_(
-                        MovingAverageData.entity_type == "sector",
-                        MovingAverageData.entity_id == sector.id,
-                        MovingAverageData.symbol == sector.code
-                    )
-                )
-                latest_result = await self.session.execute(latest_stmt)
-                latest_ma_date = latest_result.scalar()
-
-                if latest_ma_date:
-                    logger.info(f"[板块均线] 板块 {sector.name} 发现已有数据，最新日期: {latest_ma_date}，将从该日期后继续计算")
-                    # 过滤出需要重新计算的数据（从最新日期的下一天开始）
-                    market_data_list = [
-                        md for md in market_data_list
-                        if md.date > latest_ma_date
-                    ]
-
-                    if not market_data_list:
-                        logger.info(f"[板块均线] 板块 {sector.name} 数据已是最新，无需计算")
-                        return {
-                            "success": True,
-                            "created": 0,
-                            "updated": 0,
-                            "skipped": 0,
-                            "resumed": True
-                        }
-
-                    logger.info(f"[板块均线] 板块 {sector.name} 需要计算 {len(market_data_list)} 天的新数据")
-
-            # ========================================
-            # 步骤3: 转换为 pandas DataFrame
+            # 步骤2: 转换为 pandas DataFrame
             # ========================================
             data = {
                 "date": [md.date for md in market_data_list],
@@ -256,7 +221,7 @@ class SectorMAService:
             total_skipped = 0
 
             # ========================================
-            # 步骤4: 按周期计算均线（每计算完一个周期就保存）
+            # 步骤3: 按周期计算均线（每计算完一个周期就保存）
             # ========================================
             for period_idx, period in enumerate(periods, 1):
                 period_str = f"{period}d"
@@ -267,8 +232,40 @@ class SectorMAService:
                     logger.warning(f"[板块均线] 板块 {sector.name} 数据不足，无法计算 {period} 日均线（需要 {period} 天，实际 {len(df)} 天）")
                     continue
 
+                # ========================================
+                # 步骤3.1: 检查该周期的断点（已有数据的最大日期）
+                # ========================================
+                period_df = df  # 默认使用全部数据
+
+                if not overwrite:
+                    # 查询该周期已有数据的最大日期
+                    latest_period_stmt = select(func.max(MovingAverageData.date)).where(
+                        and_(
+                            MovingAverageData.entity_type == "sector",
+                            MovingAverageData.entity_id == sector.id,
+                            MovingAverageData.symbol == sector.code,
+                            MovingAverageData.period == period_str
+                        )
+                    )
+                    latest_period_result = await self.session.execute(latest_period_stmt)
+                    latest_period_date = latest_period_result.scalar()
+
+                    if latest_period_date:
+                        logger.info(f"[板块均线] {sector.name} {period}日均线已有数据，最新日期: {latest_period_date}，将从该日期后继续计算")
+                        # 过滤出需要重新计算的数据（从最新日期的下一天开始）
+                        period_df = df[df.index > latest_period_date]
+
+                        if len(period_df) == 0:
+                            logger.info(f"[板块均线] {sector.name} {period}日均线数据已是最新，跳过该周期")
+                            total_skipped += 0  # 本周期没有处理任何数据
+                            continue
+
+                        logger.info(f"[板块均线] {sector.name} {period}日均线需要计算 {len(period_df)} 天的新数据")
+                    else:
+                        logger.info(f"[板块均线] {sector.name} {period}日均线无历史数据，将计算全部数据")
+
                 # 计算均线
-                ma_series = self.ma_calculator.calculate_sma(df["close"], period)
+                ma_series = self.ma_calculator.calculate_sma(period_df["close"], period)
 
                 # 统计本周期的处理情况
                 period_created = 0
@@ -282,10 +279,10 @@ class SectorMAService:
                     if pd.isna(ma_value):
                         continue
 
-                    if idx not in df.index:
+                    if idx not in period_df.index:
                         continue
 
-                    current_price = df.loc[idx, "close"]
+                    current_price = period_df.loc[idx, "close"]
 
                     # 计算价格比率和趋势
                     price_ratio = self.ma_calculator.calculate_price_ratio(current_price, ma_value)

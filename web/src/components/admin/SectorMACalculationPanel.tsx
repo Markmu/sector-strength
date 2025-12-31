@@ -58,7 +58,7 @@ export default function SectorMACalculationPanel() {
   const [sectorId, setSectorId] = useState<number | null>(null);
 
   // 均线周期设置
-  const [periods, setPeriods] = useState<number[]>([5, 10, 20, 30, 60]);
+  const [periods, setPeriods] = useState<number[]>([5, 10, 20, 30, 60, 90, 120, 240]);
   const [showPeriodSettings, setShowPeriodSettings] = useState(false);
 
   // 任务状态
@@ -258,7 +258,7 @@ export default function SectorMACalculationPanel() {
     );
   }
 
-  const availablePeriods = [5, 10, 20, 30, 60, 120];
+  const availablePeriods = [5, 10, 20, 30, 60, 90, 120, 240];
 
   return (
     <div className="space-y-6">
@@ -424,7 +424,7 @@ export default function SectorMACalculationPanel() {
           </div>
 
           {showPeriodSettings ? (
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
               {availablePeriods.map((period) => (
                 <button
                   key={period}
@@ -591,7 +591,7 @@ export default function SectorMACalculationPanel() {
                 <li>按日期计算：补齐指定日期的板块均线数据</li>
                 <li>按时间段计算：计算指定时间段内的板块均线，支持筛选特定板块</li>
                 <li>完整历史计算：从板块最早数据日期自动计算到最新日期的完整均线历史</li>
-                <li>支持多种均线周期：5日、10日、20日、30日、60日、120日</li>
+                <li>支持多种均线周期：5日、10日、20日、30日、60日、90日、120日、240日</li>
                 <li>数据覆盖会重新计算并更新已有数据，请谨慎使用</li>
               </ul>
             </div>

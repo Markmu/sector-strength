@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Home, BarChart3, TrendingUp, TrendingDown, Settings } from 'lucide-react';
+import { Home, BarChart3, TrendingUp, TrendingDown, Settings, ScatterChart } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import Sidebar, { SidebarItem } from '@/components/layout/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +18,11 @@ const baseSidebarItems: SidebarItem[] = [
     title: '仪表板',
     href: '/dashboard',
     icon: <Home className="w-5 h-5" />,
+  },
+  {
+    title: '强度分析',
+    href: '/dashboard/analysis',
+    icon: <ScatterChart className="w-5 h-5" />,
   },
   {
     title: '板块热力图',

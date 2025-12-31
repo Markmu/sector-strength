@@ -97,14 +97,14 @@ export default function AdminTable<T extends Record<string, any>>({
 
   return (
     <div className={`overflow-x-auto ${className}`}>
-      <table className={`min-w-full ${bordered ? 'border border-gray-200' : ''}`}>
+      <table className={`min-w-full ${bordered ? 'border border-[#e9ecef]' : ''}`}>
         {/* 表头 */}
-        <thead className={`bg-gray-50 ${bordered ? 'border-b border-gray-200' : ''}`}>
+        <thead className={`bg-[#f8f9fb] ${bordered ? 'border-b border-[#e9ecef]' : ''}`}>
           <tr>
             {columns.map((column) => (
               <th
                 key={column.key}
-                className={`text-xs font-medium uppercase text-gray-500 ${
+                className={`text-xs font-semibold uppercase text-[#6c757d] ${
                   sizeClasses[size]
                 } ${
                   column.align === 'center'
@@ -122,12 +122,12 @@ export default function AdminTable<T extends Record<string, any>>({
         </thead>
 
         {/* 表体 */}
-        <tbody className={`divide-y ${bordered ? 'divide-gray-200' : 'divide-gray-100'}`}>
+        <tbody className={`divide-y ${bordered ? 'divide-[#f1f3f5]' : 'divide-[#f1f3f5]'}`}>
           {loading ? (
             <tr>
               <td
                 colSpan={columns.length}
-                className="py-8 text-center text-sm text-gray-500"
+                className="py-8 text-center text-sm text-[#6c757d]"
               >
                 加载中...
               </td>
@@ -136,7 +136,7 @@ export default function AdminTable<T extends Record<string, any>>({
             <tr>
               <td
                 colSpan={columns.length}
-                className="py-8 text-center text-sm text-gray-500"
+                className="py-8 text-center text-sm text-[#6c757d]"
               >
                 {emptyText}
               </td>
@@ -145,7 +145,7 @@ export default function AdminTable<T extends Record<string, any>>({
             data.map((record, rowIndex) => (
               <tr
                 key={getRowKey(record, rowIndex)}
-                className={`transition-colors hover:bg-gray-50 ${
+                className={`transition-colors hover:bg-[#f8f9fb] ${
                   onRowClick ? 'cursor-pointer' : ''
                 }`}
                 onClick={() => onRowClick?.(record, rowIndex)}
@@ -153,7 +153,7 @@ export default function AdminTable<T extends Record<string, any>>({
                 {columns.map((column) => (
                   <td
                     key={column.key}
-                    className={`text-sm text-gray-700 ${sizeClasses[size]} ${
+                    className={`text-sm text-[#1a1a2e] ${sizeClasses[size]} ${
                       column.align === 'center'
                         ? 'text-center'
                         : column.align === 'right'

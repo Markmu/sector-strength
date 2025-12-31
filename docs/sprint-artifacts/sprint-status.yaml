@@ -99,3 +99,13 @@ development_status:
   9-5-admin-interface: in-progress
   9-6-operation-audit: drafted
   epic-9-retrospective: optional
+
+  # Epic 10: MA系统强度优化
+  epic-10: contexted
+  10-1-database-schema-optimization: review
+  10-2-ma-system-strength-calculator: done
+  10-3-strength-data-service: done
+  10-4-strength-api-endpoints: done
+  10-5-strength-history-trend-analysis: in-progress
+  10-6-custom-weight-configuration: drafted
+  epic-10-retrospective: optional

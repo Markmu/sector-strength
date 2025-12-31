@@ -49,26 +49,26 @@ export const SortingControls: React.FC<SortingControlsProps> = React.memo(({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-600">排序:</span>
+      <span className="text-sm text-[#6c757d]">排序:</span>
 
       {/* 排序字段选择 */}
       <div className="flex items-center gap-1">
         <button
           onClick={() => handleSortByChange('strength')}
-          className={`px-3 py-1 text-sm rounded ${
+          className={`px-3 py-1.5 text-sm rounded-lg ${
             sortBy === 'strength'
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              ? 'bg-cyan-500 text-white shadow-sm'
+              : 'bg-[#f1f3f5] text-[#1a1a2e] hover:bg-[#dee2e6]'
           }`}
         >
           强度
         </button>
         <button
           onClick={() => handleSortByChange('trend')}
-          className={`px-3 py-1 text-sm rounded ${
+          className={`px-3 py-1.5 text-sm rounded-lg ${
             sortBy === 'trend'
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              ? 'bg-cyan-500 text-white shadow-sm'
+              : 'bg-[#f1f3f5] text-[#1a1a2e] hover:bg-[#dee2e6]'
           }`}
         >
           趋势
@@ -78,7 +78,7 @@ export const SortingControls: React.FC<SortingControlsProps> = React.memo(({
       {/* 排序方向 */}
       <button
         onClick={handleSortOrderChange}
-        className="px-3 py-1 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+        className="px-3 py-1.5 text-sm rounded-lg bg-[#f1f3f5] text-[#1a1a2e] hover:bg-[#dee2e6]"
       >
         {sortOrder === 'desc' ? '降序' : '升序'}
       </button>

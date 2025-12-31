@@ -12,10 +12,13 @@ from typing import Dict, List
 
 DEFAULT_PERIOD_CONFIGS = [
     {"period": "5d", "name": "5日均线", "days": 5, "weight": 0.15, "is_active": True},
-    {"period": "10d", "name": "10日均线", "days": 10, "weight": 0.20, "is_active": True},
-    {"period": "20d", "name": "20日均线", "days": 20, "weight": 0.25, "is_active": True},
-    {"period": "30d", "name": "30日均线", "days": 30, "weight": 0.20, "is_active": True},
-    {"period": "60d", "name": "60日均线", "days": 60, "weight": 0.20, "is_active": True},
+    {"period": "10d", "name": "10日均线", "days": 10, "weight": 0.15, "is_active": True},
+    {"period": "20d", "name": "20日均线", "days": 20, "weight": 0.18, "is_active": True},
+    {"period": "30d", "name": "30日均线", "days": 30, "weight": 0.15, "is_active": True},
+    {"period": "60d", "name": "60日均线", "days": 60, "weight": 0.15, "is_active": True},
+    {"period": "90d", "name": "90日均线", "days": 90, "weight": 0.10, "is_active": True},
+    {"period": "120d", "name": "120日均线", "days": 120, "weight": 0.07, "is_active": True},
+    {"period": "240d", "name": "240日均线", "days": 240, "weight": 0.05, "is_active": True},
 ]
 
 # 周期到天数映射
@@ -25,15 +28,21 @@ PERIOD_TO_DAYS = {
     "20d": 20,
     "30d": 30,
     "60d": 60,
+    "90d": 90,
+    "120d": 120,
+    "240d": 240,
 }
 
 # 周期权重映射
 PERIOD_WEIGHTS = {
     "5d": 0.15,
-    "10d": 0.20,
-    "20d": 0.25,
-    "30d": 0.20,
-    "60d": 0.20,
+    "10d": 0.15,
+    "20d": 0.18,
+    "30d": 0.15,
+    "60d": 0.15,
+    "90d": 0.10,
+    "120d": 0.07,
+    "240d": 0.05,
 }
 
 # =============================================================================

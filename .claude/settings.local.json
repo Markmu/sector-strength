@@ -63,7 +63,15 @@
       "Bash(npm uninstall:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npx jest:*)"
+      "Bash(npx jest:*)",
+      "Skill(bmad:bmm:workflows:create-story)",
+      "Skill(bmad:bmm:workflows:dev-story)",
+      "Bash(if:*)",
+      "Bash(then ls -la web/docs/)",
+      "Bash(else echo \"Directory does not exist\")",
+      "Bash(fi:*)",
+      "Bash(npm installgeist/font:*)",
+      "Bash(npm show geist)"
     ],
     "deny": [],
     "ask": []

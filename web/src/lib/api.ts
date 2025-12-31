@@ -3,6 +3,9 @@ import { z } from 'zod'
 // API 基础配置
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+// 普通客户端使用的基础URL（需要加上 /api 前缀）
+const API_BASE_WITH_PREFIX = `${API_BASE_URL}/api`
+
 // API 响应类型定义
 export const ApiResponseSchema = z.object({
   error: z.optional(z.object({
@@ -29,7 +32,7 @@ export class ApiClient {
   protected baseURL: string
   protected defaultHeaders: Record<string, string>
 
-  constructor(baseURL: string = API_BASE_URL) {
+  constructor(baseURL: string = API_BASE_WITH_PREFIX) {
     this.baseURL = baseURL
     this.defaultHeaders = {
       'Content-Type': 'application/json',
@@ -200,15 +203,14 @@ export const userApi = {
 // 热力图 API
 export const heatmapApi = {
   getHeatmap: (params?: { sector_type?: 'industry' | 'concept' }) =>
-    apiClient.get<any>('/api/v1/heatmap', params),
+    apiClient.get<any>('/v1/heatmap', params),
 }
 
 // 管理员 API
 // 创建专用的管理员 API 客户端，使用 JWT token 认证
 class AdminApiClient extends ApiClient {
   constructor() {
-    // 管理员 API 需要加上 /api 前缀
-    super(`${API_BASE_URL}/api`)
+    super(`${API_BASE_WITH_PREFIX}`)
   }
 
   private getAuthHeaders(): Record<string, string> {

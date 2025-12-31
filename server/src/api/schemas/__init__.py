@@ -32,13 +32,27 @@ from .stock import (
     StockDetailResponse,
 )
 from .strength import (
+    # V1 兼容类型
     StrengthData,
-    StrengthQueryParams,
-    StrengthListResponse,
     StrengthResponse,
+    StrengthListResponse,
     PeriodStrength,
     RankingItem,
     RankingResponse,
+    # V2 类型
+    StrengthScoreBase,
+    StockStrengthResponse,
+    SectorStrengthResponse,
+    StrengthHistoryData,
+    StrengthHistoryResponse,
+    StrengthRankingItem,
+    StrengthRankingResponse,
+    StrengthGradeDistribution,
+    StrengthStatsResponse,
+    BatchStrengthRequest,
+    BatchCalculationItem,
+    BatchStrengthResponse,
+    StrengthStatsDetail,
 )
 
 __all__ = [
@@ -66,12 +80,25 @@ __all__ = [
     "StockListItem",
     "StockListResponse",
     "StockDetailResponse",
-    # Strength
+    # Strength V1 (兼容)
     "StrengthData",
-    "StrengthQueryParams",
-    "StrengthListResponse",
     "StrengthResponse",
+    "StrengthListResponse",
     "PeriodStrength",
     "RankingItem",
     "RankingResponse",
+    # Strength V2 (MA 系统)
+    "StrengthScoreBase",
+    "StockStrengthResponse",
+    "SectorStrengthResponse",
+    "StrengthHistoryData",
+    "StrengthHistoryResponse",
+    "StrengthRankingItem",
+    "StrengthRankingResponse",
+    "StrengthGradeDistribution",
+    "StrengthStatsResponse",
+    "BatchStrengthRequest",
+    "BatchCalculationItem",
+    "BatchStrengthResponse",
+    "StrengthStatsDetail",
 ]

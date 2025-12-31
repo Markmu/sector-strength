@@ -14,12 +14,12 @@ export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant = 'default', padding = 'md', children, ...props }, ref) => {
-    const baseStyles = 'rounded-lg'
+    const baseStyles = 'rounded-xl'
 
     const variants = {
-      default: 'bg-white border border-gray-200',
-      outlined: 'bg-white border-2 border-gray-300',
-      elevated: 'bg-white shadow-lg border border-gray-200',
+      default: 'bg-white border border-[#e9ecef] shadow-sm',
+      outlined: 'bg-white border-2 border-[#dee2e6]',
+      elevated: 'bg-white shadow-md border border-[#e9ecef] hover:shadow-lg transition-shadow duration-200',
     }
 
     const paddings = {

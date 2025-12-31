@@ -35,14 +35,14 @@ interface AdminButtonProps
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 focus:ring-blue-500',
+    'bg-gradient-to-r from-cyan-400 to-cyan-500 text-white hover:from-cyan-500 hover:to-cyan-600 shadow-sm',
   secondary:
-    'bg-gray-600 text-white border-gray-600 hover:bg-gray-700 focus:ring-gray-500',
+    'bg-[#f1f3f5] text-[#1a1a2e] hover:bg-[#dee2e6]',
   danger:
-    'bg-red-600 text-white border-red-600 hover:bg-red-700 focus:ring-red-500',
-  ghost: 'bg-transparent text-gray-700 border-transparent hover:bg-gray-100',
+    'bg-red-500 text-white hover:bg-red-600 shadow-sm',
+  ghost: 'bg-transparent text-[#6c757d] hover:text-[#1a1a2e] hover:bg-[#f1f3f5]',
   outline:
-    'bg-transparent text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400',
+    'bg-transparent text-[#1a1a2e] border-[#dee2e6] hover:bg-[#f8f9fb] hover:border-cyan-400',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -76,7 +76,7 @@ export default function AdminButton({
         inline-flex items-center justify-center gap-2
         border rounded-lg font-medium
         transition-all duration-200
-        focus:outline-none focus:ring-2 focus:ring-offset-2
+        focus:outline-none focus:ring-2 focus:ring-cyan-100
         disabled:opacity-50 disabled:cursor-not-allowed
         ${variantClasses[variant]}
         ${sizeClasses[size]}

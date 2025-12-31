@@ -1,0 +1,596 @@
+openapi: 3.0.0
+info:
+  title: 强度数据 API (V2)
+  description: |
+    MA 系统强度计算 REST API - 提供个股和板块的强度数据查询、排名和历史趋势
+
+    ## 功能概述
+    - 个股/板块强度查询
+    - 历史数据趋势分析
+    - 市场排名查询
+    - 统计信息
+    - 批量计算
+
+    ## 数据说明
+    - 强度得分范围: 0-100
+    - 强度等级: S+/S/A+/A/B+/B/C+/C
+    - 价格位置得分: 当前价格相对均线的位置
+    - 均线排列得分: 多条均线的排列状态
+  version: 2.0.0
+  contact:
+    name: Sector Strength API
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: 开发环境
+
+tags:
+  - name: stocks
+    description: 个股强度相关接口
+  - name: sectors
+    description: 板块强度相关接口
+  - name: rankings
+    description: 排名和统计相关接口
+
+paths:
+  /stocks/{stock_id}/strength:
+    get:
+      tags:
+        - stocks
+      summary: 获取个股强度数据
+      description: 使用 MA 系统强度计算算法，返回个股的强度得分、均线排列、价格位置等信息
+      parameters:
+        - name: stock_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 股票ID
+          example: "1"
+        - name: calc_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: 计算日期，默认为最新数据
+          example: "2024-12-28"
+      responses:
+        '200':
+          description: 成功返回个股强度数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockStrengthResponse'
+        '404':
+          description: 股票不存在或无强度数据
+
+  /stocks/symbol/{symbol}/strength:
+    get:
+      tags:
+        - stocks
+      summary: 通过股票代码获取强度数据
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 股票代码
+          example: "600519"
+        - name: calc_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 成功返回个股强度数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockStrengthResponse'
+
+  /stocks/{stock_id}/strength/history:
+    get:
+      tags:
+        - stocks
+      summary: 获取个股强度历史数据
+      parameters:
+        - name: stock_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 股票ID
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+          description: 查询天数
+      responses:
+        '200':
+          description: 成功返回历史数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrengthHistoryResponse'
+
+  /sectors/{sector_id}/strength:
+    get:
+      tags:
+        - sectors
+      summary: 获取板块强度数据
+      parameters:
+        - name: sector_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: 板块ID
+          example: 1
+        - name: calc_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 成功返回板块强度数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectorStrengthResponse'
+
+  /sectors/{sector_id}/strength/history:
+    get:
+      tags:
+        - sectors
+      summary: 获取板块强度历史数据
+      parameters:
+        - name: sector_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        '200':
+          description: 成功返回历史数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrengthHistoryResponse'
+
+  /rankings/v2/stocks:
+    get:
+      tags:
+        - rankings
+      summary: 获取个股强度排名
+      parameters:
+        - name: calc_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: 成功返回排名数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrengthRankingResponse'
+
+  /rankings/v2/sectors:
+    get:
+      tags:
+        - rankings
+      summary: 获取板块强度排名
+      parameters:
+        - name: calc_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 成功返回排名数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrengthRankingResponse'
+
+  /rankings/v2/stats:
+    get:
+      tags:
+        - rankings
+      summary: 获取强度统计信息
+      parameters:
+        - name: entity_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [stock, sector]
+          description: 实体类型
+        - name: calc_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 成功返回统计信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrengthStatsResponse'
+
+  /rankings/v2/batch-calculate:
+    post:
+      tags:
+        - rankings
+      summary: 批量计算强度
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchStrengthRequest'
+      responses:
+        '200':
+          description: 成功返回批量计算结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStrengthResponse'
+
+components:
+  schemas:
+    StrengthScoreBase:
+      type: object
+      required:
+        - entity_type
+        - entity_id
+        - symbol
+        - date
+      properties:
+        entity_type:
+          type: string
+          description: 实体类型
+          enum: [stock, sector]
+        entity_id:
+          type: integer
+          description: 实体ID
+          minimum: 1
+        symbol:
+          type: string
+          description: 股票代码或板块代码
+          minLength: 1
+        date:
+          type: string
+          format: date
+          description: 计算日期
+        period:
+          type: string
+          description: 计算周期
+          default: all
+        score:
+          type: number
+          description: 综合强度得分
+          minimum: 0
+          maximum: 100
+        price_position_score:
+          type: number
+          description: 价格位置得分
+          minimum: 0
+          maximum: 100
+        ma_alignment_score:
+          type: number
+          description: 均线排列得分
+          minimum: 0
+          maximum: 100
+        ma_alignment_state:
+          type: string
+          description: 排列状态
+          enum: [strong_bull, bull, weak_bull, neutral, weak_bear, bear, strong_bear]
+        short_term_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        medium_term_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        long_term_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        current_price:
+          type: number
+          description: 当前价格
+          exclusiveMinimum: 0
+        rank:
+          type: integer
+          description: 市场排名
+          minimum: 1
+        percentile:
+          type: number
+          description: 百分位
+          minimum: 0
+          maximum: 100
+        strength_grade:
+          type: string
+          description: 强度等级
+          enum: [S+, S, A+, A, B+, B, C+, C, D]
+        change_rate_1d:
+          type: number
+          description: 1日变化率（%）
+        change_rate_5d:
+          type: number
+          description: 5日变化率（%）
+
+    StockStrengthResponse:
+      allOf:
+        - $ref: '#/components/schemas/StrengthScoreBase'
+      - type: object
+      properties:
+        stock_name:
+          type: string
+          description: 股票名称
+
+    SectorStrengthResponse:
+      allOf:
+        - $ref: '#/components/schemas/StrengthScoreBase'
+      - type: object
+      properties:
+        sector_name:
+          type: string
+          description: 板块名称
+        stock_count:
+          type: integer
+          description: 成分股数量
+        strong_stock_count:
+          type: integer
+          description: 强势股数量（分数>60）
+        strong_stock_ratio:
+          type: number
+          description: 强势股占比
+
+    StrengthHistoryData:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        score:
+          type: number
+        rank:
+          type: integer
+        percentile:
+          type: number
+        strength_grade:
+          type: string
+        price_position_score:
+          type: number
+        ma_alignment_score:
+          type: number
+        ma_alignment_state:
+          type: string
+        current_price:
+          type: number
+
+    StrengthHistoryResponse:
+      type: object
+      required:
+        - symbol
+        - start_date
+        - end_date
+        - total_days
+        - data_points
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        total_days:
+          type: integer
+        data_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrengthHistoryData'
+
+    StrengthRankingItem:
+      type: object
+      properties:
+        rank:
+          type: integer
+        entity_id:
+          type: integer
+        symbol:
+          type: string
+        name:
+          type: string
+        score:
+          type: number
+        percentile:
+          type: number
+        strength_grade:
+          type: string
+        change_rate_1d:
+          type: number
+
+    StrengthRankingResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        entity_type:
+          type: string
+          enum: [stock, sector]
+        total_count:
+          type: integer
+        returned_count:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        rankings:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrengthRankingItem'
+
+    StrengthGradeDistribution:
+      type: object
+      properties:
+        grade:
+          type: string
+        count:
+          type: integer
+        percentage:
+          type: number
+
+    StrengthStatsResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        entity_type:
+          type: string
+          enum: [stock, sector]
+        total_count:
+          type: integer
+        grade_distribution:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrengthGradeDistribution'
+        avg_score:
+          type: number
+        min_score:
+          type: number
+        max_score:
+          type: number
+        strong_ratio:
+          type: number
+          description: 强势占比（分数>60）
+        weak_ratio:
+          type: number
+          description: 弱势占比（分数<40）
+
+    BatchStrengthRequest:
+      type: object
+      required:
+        - entity_ids
+      properties:
+        entity_ids:
+          type: array
+          items:
+            type: integer
+          minItems: 1
+          maxItems: 100
+        calc_date:
+          type: string
+          format: date
+        period:
+          type: string
+          default: all
+
+    BatchCalculationItem:
+      type: object
+      properties:
+        entity_id:
+          type: integer
+        symbol:
+          type: string
+        name:
+          type: string
+        success:
+          type: boolean
+        score:
+          type: number
+        error:
+          type: string
+
+    BatchStrengthResponse:
+      type: object
+      properties:
+        calc_date:
+          type: string
+          format: date
+        period:
+          type: string
+        total_count:
+          type: integer
+        success_count:
+          type: integer
+        failure_count:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchCalculationItem'
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        detail:
+          type: string

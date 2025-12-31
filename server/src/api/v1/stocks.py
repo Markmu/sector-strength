@@ -5,6 +5,7 @@
 """
 
 from typing import Optional, List
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, asc, or_
@@ -18,9 +19,17 @@ from src.api.schemas.stock import (
 )
 from src.api.schemas.response import PaginatedData
 from src.api.exceptions import NotFoundError
+from src.api.schemas.strength import (
+    StockStrengthResponse,
+    StrengthHistoryResponse,
+    StrengthHistoryData,
+)
 from src.models.stock import Stock as StockModel
 from src.models.sector_stock import SectorStock as SectorStockModel
 from src.models.sector import Sector as SectorModel
+from src.models.strength_score import StrengthScore as StrengthScoreModel
+from src.services.strength_service_v2 import StrengthServiceV2
+from src.services.strength_history_service import StrengthHistoryService
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
@@ -154,3 +163,187 @@ async def get_stock_detail(
     )
 
     return StockDetailResponse(success=True, data=detail)
+
+
+# ============== V2 强度端点 (Story 10.4) ==============
+
+@router.get("/{stock_id}/strength", response_model=StockStrengthResponse)
+async def get_stock_strength(
+    stock_id: str,
+    calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
+    session: AsyncSession = Depends(get_session),
+) -> StockStrengthResponse:
+    """
+    获取个股强度数据 (V2)
+
+    使用 MA 系统强度计算算法，返回个股的强度得分、均线排列、价格位置等信息。
+
+    Args:
+        stock_id: 股票ID
+        calc_date: 计算日期，None 表示使用最新数据
+
+    Returns:
+        个股强度响应
+    """
+    # 查询股票是否存在
+    stmt = select(StockModel).where(StockModel.id == stock_id)
+    result = await session.execute(stmt)
+    stock = result.scalar_one_or_none()
+
+    if not stock:
+        raise NotFoundError(f"股票 {stock_id} 不存在")
+
+    # 查询强度数据
+    strength_stmt = select(StrengthScoreModel).where(
+        StrengthScoreModel.entity_type == "stock",
+        StrengthScoreModel.entity_id == stock.id,
+        StrengthScoreModel.period == "all"
+    )
+
+    if calc_date:
+        strength_stmt = strength_stmt.where(StrengthScoreModel.date == calc_date)
+    else:
+        # 获取最新日期的数据
+        from sqlalchemy import desc as sql_desc
+        strength_stmt = strength_stmt.order_by(sql_desc(StrengthScoreModel.date)).limit(1)
+
+    strength_result = await session.execute(strength_stmt)
+    strength_data = strength_result.scalar_one_or_none()
+
+    if not strength_data:
+        # 如果没有强度数据，尝试计算
+        service = StrengthServiceV2(session)
+        calc_result = await service.calculate_stock_strength(stock.id, calc_date)
+
+        if not calc_result.get("success"):
+            raise NotFoundError(f"强度数据不可用: {calc_result.get('error')}")
+
+        # 重新查询
+        strength_result = await session.execute(strength_stmt)
+        strength_data = strength_result.scalar_one_or_none()
+
+    return StockStrengthResponse(
+        entity_type="stock",
+        entity_id=strength_data.entity_id,
+        symbol=strength_data.symbol,
+        date=strength_data.date,
+        period=strength_data.period,
+        score=strength_data.score,
+        price_position_score=strength_data.price_position_score,
+        ma_alignment_score=strength_data.ma_alignment_score,
+        ma_alignment_state=strength_data.ma_alignment_state,
+        short_term_score=strength_data.short_term_score,
+        medium_term_score=strength_data.medium_term_score,
+        long_term_score=strength_data.long_term_score,
+        current_price=strength_data.current_price,
+        ma5=strength_data.ma5,
+        ma10=strength_data.ma10,
+        ma20=strength_data.ma20,
+        ma30=strength_data.ma30,
+        ma60=strength_data.ma60,
+        ma90=strength_data.ma90,
+        ma120=strength_data.ma120,
+        ma240=strength_data.ma240,
+        price_above_ma5=strength_data.price_above_ma5,
+        price_above_ma10=strength_data.price_above_ma10,
+        price_above_ma20=strength_data.price_above_ma20,
+        price_above_ma30=strength_data.price_above_ma30,
+        price_above_ma60=strength_data.price_above_ma60,
+        price_above_ma90=strength_data.price_above_ma90,
+        price_above_ma120=strength_data.price_above_ma120,
+        price_above_ma240=strength_data.price_above_ma240,
+        rank=strength_data.rank,
+        percentile=strength_data.percentile,
+        change_rate_1d=strength_data.change_rate_1d,
+        change_rate_5d=strength_data.change_rate_5d,
+        strength_grade=strength_data.strength_grade,
+        stock_name=stock.name,
+    )
+
+
+@router.get("/symbol/{symbol}/strength", response_model=StockStrengthResponse)
+async def get_stock_strength_by_symbol(
+    symbol: str,
+    calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
+    session: AsyncSession = Depends(get_session),
+) -> StockStrengthResponse:
+    """
+    通过股票代码获取强度数据 (V2)
+
+    Args:
+        symbol: 股票代码
+        calc_date: 计算日期，None 表示使用最新数据
+
+    Returns:
+        个股强度响应
+    """
+    # 通过 symbol 查询股票
+    stmt = select(StockModel).where(StockModel.symbol == symbol)
+    result = await session.execute(stmt)
+    stock = result.scalar_one_or_none()
+
+    if not stock:
+        raise NotFoundError(f"股票代码 {symbol} 不存在")
+
+    # 复用上面的逻辑
+    return await get_stock_strength(stock.id, calc_date, session)
+
+
+@router.get("/{stock_id}/strength/history", response_model=StrengthHistoryResponse)
+async def get_stock_strength_history(
+    stock_id: str,
+    days: int = Query(30, ge=1, le=365, description="查询天数"),
+    session: AsyncSession = Depends(get_session),
+) -> StrengthHistoryResponse:
+    """
+    获取个股强度历史数据
+
+    Args:
+        stock_id: 股票ID
+        days: 查询天数（默认30天，最多365天）
+
+    Returns:
+        历史数据响应
+    """
+    # 查询股票是否存在
+    stmt = select(StockModel).where(StockModel.id == stock_id)
+    result = await session.execute(stmt)
+    stock = result.scalar_one_or_none()
+
+    if not stock:
+        raise NotFoundError(f"股票 {stock_id} 不存在")
+
+    # 使用历史数据服务
+    history_service = StrengthHistoryService(session)
+    history_data = await history_service.get_stock_history(stock.id, days)
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days-1)
+
+    # 构建响应
+    data_points = [
+        StrengthHistoryData(
+            date=item.date,
+            score=item.score,
+            rank=item.rank,
+            percentile=item.percentile,
+            strength_grade=item.strength_grade,
+            price_position_score=item.price_position_score,
+            ma_alignment_score=item.ma_alignment_score,
+            ma_alignment_state=item.ma_alignment_state,
+            short_term_score=item.short_term_score,
+            medium_term_score=item.medium_term_score,
+            long_term_score=item.long_term_score,
+            current_price=item.current_price,
+        )
+        for item in history_data
+    ]
+
+    return StrengthHistoryResponse(
+        symbol=stock.symbol,
+        name=stock.name,
+        start_date=start_date,
+        end_date=end_date,
+        total_days=len(data_points),
+        data_points=data_points,
+    )

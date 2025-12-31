@@ -1,93 +1,310 @@
 """
-强度数据模型
+强度数据 Pydantic Schema (V2)
 
-定义强度相关的 Pydantic 模型。
+定义强度相关的 Pydantic 模型，使用 MA 系统强度计算结果。
 """
 
-from typing import Optional, Dict, List
-from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from __future__ import annotations
+
+from datetime import date
+from typing import Optional, List, Dict
+from pydantic import BaseModel, Field
+
+
+# ========== V1 兼容类型 (用于旧 API，待迁移) ==========
+# 这些类型保留用于向后兼容，待 strength.py (v1 API) 重构后移除
+
+class StrengthData(BaseModel):
+    """V1 强度数据 (兼容)"""
+    entity_id: str
+    entity_type: str
+    strength_score: float
+    trend_direction: float
+    current_price: Optional[float] = None
+    period_strengths: Dict[str, 'PeriodStrength'] = Field(default_factory=dict)
+    calculated_at: date
 
 
 class PeriodStrength(BaseModel):
-    """单周期强度数据"""
-
-    period: str = Field(..., description="周期: 5d/10d/20d/30d/60d")
-    ma_value: Optional[float] = Field(None, description="均线值")
-    price_ratio: Optional[float] = Field(None, description="价格比率 (%)")
-    weight: float = Field(..., description="权重", ge=0, le=1)
-
-
-class StrengthData(BaseModel):
-    """强度数据"""
-
-    entity_id: str = Field(..., description="实体 ID")
-    entity_type: str = Field(..., description="实体类型: stock/sector")
-    strength_score: Optional[float] = Field(None, description="综合强度得分 (0-100)", ge=0, le=100)
-    trend_direction: Optional[int] = Field(None, description="趋势方向: 1=上升, 0=横盘, -1=下降", ge=-1, le=1)
-    current_price: Optional[float] = Field(None, description="当前价格")
-    period_strengths: Dict[str, PeriodStrength] = Field(
-        default_factory=dict,
-        description="各周期强度数据"
-    )
-    calculated_at: Optional[datetime] = Field(None, description="计算时间")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "entity_id": "stock-001",
-                "entity_type": "stock",
-                "strength_score": 75.5,
-                "trend_direction": 1,
-                "current_price": 105.0,
-                "period_strengths": {
-                    "5d": {"period": "5d", "ma_value": 100.0, "price_ratio": 5.0, "weight": 0.15},
-                    "10d": {"period": "10d", "ma_value": 98.0, "price_ratio": 7.14, "weight": 0.20},
-                },
-                "calculated_at": "2024-01-15T15:00:00Z",
-            }
-        }
-
-
-class StrengthQueryParams(BaseModel):
-    """强度查询参数"""
-
-    entity_type: Optional[str] = Field(None, description="实体类型: stock/sector")
-    entity_id: Optional[str] = Field(None, description="实体 ID")
-    period: Optional[str] = Field(None, description="周期筛选")
-    date: Optional[str] = Field(None, description="日期筛选 (YYYY-MM-DD)")
-
-
-class StrengthListResponse(BaseModel):
-    """强度列表响应"""
-
-    success: bool = True
-    data: List[StrengthData]
+    """V1 周期强度 (兼容)"""
+    period: str
+    ma_value: Optional[float] = None
+    price_ratio: Optional[float] = None
+    weight: float
 
 
 class StrengthResponse(BaseModel):
-    """强度详情响应"""
+    """V1 响应 (兼容)"""
+    success: bool
+    data: Optional[StrengthData] = None
 
-    success: bool = True
-    data: StrengthData
+
+class StrengthListResponse(BaseModel):
+    """V1 列表响应 (兼容)"""
+    success: bool
+    data: List[StrengthData] = Field(default_factory=list)
 
 
-# 排名数据模型
 class RankingItem(BaseModel):
-    """排名项"""
-
-    id: str = Field(..., description="ID")
-    name: str = Field(..., description="名称")
-    code: str = Field(..., description="代码")
-    strength_score: Optional[float] = Field(None, description="强度得分")
-    trend_direction: Optional[int] = Field(None, description="趋势方向")
-    rank: int = Field(..., description="排名", ge=1)
+    """V1 排名项 (兼容)"""
+    rank: int
+    entity_id: str
+    entity_type: str
+    symbol: str
+    name: Optional[str] = None
+    strength_score: Optional[float] = None
+    trend_direction: Optional[float] = None
+    current_price: Optional[float] = None
 
 
 class RankingResponse(BaseModel):
-    """排名响应"""
+    """V1 排名响应 (兼容)"""
+    success: bool
+    data: List[RankingItem] = Field(default_factory=list)
+    total: int = 0
 
-    success: bool = True
-    data: List[RankingItem]
-    total: int = Field(..., description="总数", ge=0)
-    top_n: int = Field(..., description="返回数量", ge=1)
+
+# ========== V2 类型 (MA 系统强度) ==========
+
+
+class StrengthScoreBase(BaseModel):
+    """强度得分基础 Schema"""
+    entity_type: str
+    entity_id: int
+    symbol: str
+    date: date
+    period: str = 'all'
+
+    # 核心得分
+    score: Optional[float] = None
+    price_position_score: Optional[float] = None
+    ma_alignment_score: Optional[float] = None
+    ma_alignment_state: Optional[str] = None
+
+    # 短中长期强度
+    short_term_score: Optional[float] = None
+    medium_term_score: Optional[float] = None
+    long_term_score: Optional[float] = None
+
+    # 均线数据
+    current_price: Optional[float] = None
+    ma5: Optional[float] = None
+    ma10: Optional[float] = None
+    ma20: Optional[float] = None
+    ma30: Optional[float] = None
+    ma60: Optional[float] = None
+    ma90: Optional[float] = None
+    ma120: Optional[float] = None
+    ma240: Optional[float] = None
+
+    # 价格相对均线位置
+    price_above_ma5: Optional[bool] = None
+    price_above_ma10: Optional[bool] = None
+    price_above_ma20: Optional[bool] = None
+    price_above_ma30: Optional[bool] = None
+    price_above_ma60: Optional[bool] = None
+    price_above_ma90: Optional[bool] = None
+    price_above_ma120: Optional[bool] = None
+    price_above_ma240: Optional[bool] = None
+
+    # 排名和等级
+    rank: Optional[int] = None
+    percentile: Optional[float] = None
+    change_rate_1d: Optional[float] = None
+    change_rate_5d: Optional[float] = None
+    strength_grade: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StockStrengthResponse(StrengthScoreBase):
+    """股票强度响应"""
+    stock_name: Optional[str] = None
+
+
+class SectorStrengthResponse(StrengthScoreBase):
+    """板块强度响应"""
+    sector_name: Optional[str] = None
+    stock_count: Optional[int] = None
+    strong_stock_count: Optional[int] = None
+    strong_stock_ratio: Optional[float] = None
+
+
+class StrengthHistoryData(BaseModel):
+    """历史数据点"""
+    date: date
+    score: Optional[float] = None
+    rank: Optional[int] = None
+    percentile: Optional[float] = None
+    strength_grade: Optional[str] = None
+    price_position_score: Optional[float] = None
+    ma_alignment_score: Optional[float] = None
+    ma_alignment_state: Optional[str] = None
+    short_term_score: Optional[float] = None
+    medium_term_score: Optional[float] = None
+    long_term_score: Optional[float] = None
+    current_price: Optional[float] = None
+
+
+class StrengthHistoryResponse(BaseModel):
+    """历史数据响应"""
+    symbol: str
+    name: Optional[str] = None
+    start_date: date
+    end_date: date
+    total_days: int
+    data_points: List[StrengthHistoryData]
+
+
+class StrengthRankingItem(BaseModel):
+    """排名项"""
+    rank: int
+    entity_id: int
+    symbol: str
+    name: Optional[str] = None
+    score: Optional[float] = None
+    percentile: Optional[float] = None
+    strength_grade: Optional[str] = None
+    change_rate_1d: Optional[float] = None
+
+
+class StrengthRankingResponse(BaseModel):
+    """排名响应"""
+    date: date
+    entity_type: str
+    total_count: int
+    returned_count: int
+    offset: int = 0
+    limit: int = 50
+    rankings: List[StrengthRankingItem]
+
+
+class StrengthGradeDistribution(BaseModel):
+    """等级分布"""
+    grade: str
+    count: int
+    percentage: float
+
+
+class StrengthStatsResponse(BaseModel):
+    """统计信息响应"""
+    date: date
+    entity_type: str
+    total_count: int
+    grade_distribution: List[StrengthGradeDistribution]
+    avg_score: Optional[float] = None
+    min_score: Optional[float] = None
+    max_score: Optional[float] = None
+    strong_ratio: Optional[float] = None
+    weak_ratio: Optional[float] = None
+
+
+class BatchStrengthRequest(BaseModel):
+    """批量计算请求"""
+    entity_ids: List[int]
+    calc_date: Optional[date] = None
+    period: str = 'all'
+
+
+class BatchCalculationItem(BaseModel):
+    """批量计算项"""
+    entity_id: int
+    symbol: str
+    name: Optional[str] = None
+    success: bool
+    score: Optional[float] = None
+    error: Optional[str] = None
+
+
+class BatchStrengthResponse(BaseModel):
+    """批量计算响应"""
+    calc_date: date
+    period: str
+    total_count: int
+    success_count: int
+    failure_count: int
+    results: List[BatchCalculationItem]
+
+
+class StrengthStatsDetail(BaseModel):
+    """详细统计数据"""
+    entity_id: int
+    entity_type: str
+    days: int
+    data_count: int
+    latest_score: Optional[float] = None
+    max_score: Optional[float] = None
+    min_score: Optional[float] = None
+    avg_score: Optional[float] = None
+    up_days: int = 0
+    down_days: int = 0
+    flat_days: int = 0
+    grade_distribution: Dict[str, int] = Field(default_factory=dict)
+    start_date: date
+    end_date: date
+
+
+# ========== 散点图分析类型 ==========
+
+
+class DataCompleteness(BaseModel):
+    """数据完整度"""
+    has_strong_ratio: bool = Field(default=False, description="是否有强势股占比数据")
+    has_long_term: bool = Field(default=False, description="是否有长期强度数据")
+    completeness_percent: float = Field(default=0.0, ge=0, le=100, description="完整度百分比")
+
+
+class SectorFullData(BaseModel):
+    """完整板块数据（用于 tooltip 显示）"""
+    score: Optional[float] = None
+    short_term_score: Optional[float] = None
+    medium_term_score: Optional[float] = None
+    long_term_score: Optional[float] = None
+    strong_stock_ratio: Optional[float] = None
+    strength_grade: Optional[str] = None
+
+
+class SectorScatterData(BaseModel):
+    """板块散点图数据点"""
+    symbol: str = Field(..., description="板块代码")
+    name: str = Field(..., description="板块名称")
+    sector_type: str = Field(..., description="板块类型: industry 或 concept")
+    x: float = Field(..., description="X轴数值")
+    y: float = Field(..., description="Y轴数值")
+    size: float = Field(default=20.0, description="气泡大小 (strong_stock_ratio，默认20)")
+    color_value: float = Field(default=50.0, description="颜色值 (long_term_score，默认50)")
+    data_completeness: DataCompleteness = Field(default_factory=DataCompleteness, description="数据完整度")
+    full_data: SectorFullData = Field(default_factory=SectorFullData, description="完整数据")
+
+    class Config:
+        from_attributes = True
+
+
+class PaginationInfo(BaseModel):
+    """分页信息"""
+    offset: int = Field(default=0, ge=0, description="分页偏移")
+    limit: int = Field(default=200, ge=1, le=500, description="每页数量")
+
+
+class FiltersApplied(BaseModel):
+    """应用的筛选条件"""
+    sector_type: Optional[str] = Field(None, description="板块类型筛选")
+    grade_range: Optional[List[str]] = Field(None, description="强度等级范围")
+    axes: List[str] = Field(default_factory=list, description="坐标轴 [x_axis, y_axis]")
+    pagination: Optional[PaginationInfo] = Field(None, description="分页信息")
+
+
+class SectorScatterDataset(BaseModel):
+    """板块散点图数据集（按类型分组）"""
+    industry: List[SectorScatterData] = Field(default_factory=list, description="行业板块数据")
+    concept: List[SectorScatterData] = Field(default_factory=list, description="概念板块数据")
+
+
+class SectorScatterResponse(BaseModel):
+    """板块散点图响应"""
+    scatter_data: SectorScatterDataset = Field(..., description="散点图数据集")
+    total_count: int = Field(..., ge=0, description="总板块数（分页前）")
+    returned_count: int = Field(..., ge=0, description="返回的板块数")
+    filters_applied: FiltersApplied = Field(..., description="应用的筛选条件")
+    cache_status: str = Field(default="miss", description="缓存状态: hit 或 miss")

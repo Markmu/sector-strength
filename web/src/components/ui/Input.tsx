@@ -25,11 +25,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
   }, ref) => {
     const inputId = id || `input-${React.useId()}`
 
-    const baseStyles = 'block w-full px-3 py-2 text-sm border rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed'
+    const baseStyles = 'block w-full px-4 py-2.5 text-sm border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed'
 
     const variants = {
-      default: 'border-gray-300 bg-white text-gray-900 placeholder-gray-500 focus:border-primary-500 focus:ring-primary-500',
-      error: 'border-danger-300 bg-danger-50 text-danger-900 placeholder-danger-300 focus:border-danger-500 focus:ring-danger-500',
+      default: 'border-[#dee2e6] bg-white text-[#1a1a2e] placeholder-[#adb5bd] focus:border-cyan-400 focus:ring-cyan-100',
+      error: 'border-red-300 bg-red-50 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-100',
     }
 
     return (
@@ -37,7 +37,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-[#1a1a2e] mb-1.5"
           >
             {label}
           </label>
@@ -46,7 +46,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         <div className="relative">
           {startIcon && (
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="text-gray-500 sm:text-sm">{startIcon}</span>
+              <span className="text-[#adb5bd]">{startIcon}</span>
             </div>
           )}
 
@@ -66,19 +66,19 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
           {endIcon && (
             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-              <span className="text-gray-500 sm:text-sm">{endIcon}</span>
+              <span className="text-[#adb5bd]">{endIcon}</span>
             </div>
           )}
         </div>
 
         {error && (
-          <p className="mt-1 text-sm text-danger-600">
+          <p className="mt-1.5 text-sm text-red-600">
             {error}
           </p>
         )}
 
         {helperText && !error && (
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1.5 text-sm text-[#6c757d]">
             {helperText}
           </p>
         )}

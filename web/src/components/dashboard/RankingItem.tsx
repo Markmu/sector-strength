@@ -22,19 +22,19 @@ export const RankingItemComponent: React.FC<RankingItemProps> = React.memo(({ da
 
   return (
     <div
-      className="flex items-center justify-between p-3 border-b hover:bg-gray-50 cursor-pointer transition-colors"
+      className="flex items-center justify-between p-3 border-b border-[#f1f3f5] hover:bg-[#f8f9fb] cursor-pointer transition-colors"
       onClick={handleClick}
     >
       <div className="flex items-center gap-3 flex-1">
         {/* 排名编号 */}
-        <span className="text-sm font-semibold text-gray-500 w-6 text-center">
+        <span className="text-sm font-semibold text-[#adb5bd] w-6 text-center">
           {data.rank}
         </span>
 
         {/* 名称和代码 */}
         <div className="flex flex-col">
-          <span className="font-medium text-gray-900">{data.name}</span>
-          <span className="text-xs text-gray-500">{data.code}</span>
+          <span className="font-medium text-[#1a1a2e]">{data.name}</span>
+          <span className="text-xs text-[#6c757d]">{data.code}</span>
         </div>
       </div>
 

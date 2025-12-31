@@ -105,7 +105,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                   {subtitle}
                   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-finance-success/10 text-finance-success text-xs font-semibold">
                     <Activity className="w-3 h-3" />
-                    实时数据
+                    {/* 实时数据 */}
                   </span>
                 </p>
               )}
