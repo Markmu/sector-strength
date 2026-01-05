@@ -7,6 +7,7 @@
 import useSWR from 'swr'
 import { useMemo } from 'react'
 import type { AxisType, SectorType, SectorScatterResponse } from '@/types/scatter'
+import { fetcher } from '@/lib/fetcher'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -29,18 +30,6 @@ interface UseSectorScatterDataReturn {
   isValidating: boolean
   error: Error | null
   mutate: () => void
-}
-
-const fetcher = async (url: string): Promise<SectorScatterResponse> => {
-  const response = await fetch(url)
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
-    throw new Error(error.detail || `API 请求失败: ${response.status}`)
-  }
-
-  const result = await response.json()
-  return result.data
 }
 
 export function useSectorScatterData({

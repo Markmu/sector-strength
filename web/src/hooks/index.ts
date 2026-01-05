@@ -4,6 +4,20 @@ import { apiClient, ApiResponse } from '@/lib/api'
 // 导出任务状态Hook
 export { useTaskStatus, useMultipleTaskStatus } from './useTaskStatus'
 
+// 导出板块相关 Hooks
+export { useSectorHeatmapData } from './useSectorHeatmapData'
+export { useSectorRanking } from './useSectorRanking'
+export { useSectorDistribution } from './useSectorDistribution'
+export { useSectorGradeTable } from './useSectorGradeTable'
+export { useSectorScatterData } from './useSectorScatterData'
+export { useSectorStrengthHistory } from './useSectorStrengthHistory'
+export { useSectorMAHistory } from './useSectorMAHistory'
+
+// 导出其他业务 Hooks
+export { useMarketIndex } from './useMarketIndex'
+export { useStockRanking } from './useStockRanking'
+export { useRequireAdmin } from './useRequireAdmin'
+
 // API 请求 Hook
 export function useApi<T = any>(
   url: string | null,

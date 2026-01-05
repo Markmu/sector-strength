@@ -24,7 +24,7 @@ pids/
 *.pid.lock
 
 # Data directories
-data/
+data/postgres/
 
 # Coverage directory used by tools like istanbul
 coverage/

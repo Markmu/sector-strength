@@ -1,14 +1,9 @@
 // 板块排名数据 Hook
 import useSWR from 'swr'
 import type { RankingResponse, SortOrder } from '@/lib/ranking/types'
+import { fetcher } from '@/lib/fetcher'
 
-const fetcher = async (url: string): Promise<RankingResponse> => {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
-  }
-  return response.json()
-}
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export interface UseSectorRankingParams {
   topN?: number
@@ -36,7 +31,7 @@ export function useSectorRanking({
   }
 
   const { data, error, isLoading, mutate } = useSWR<RankingResponse>(
-    `/api/v1/rankings/sectors?${params}`,
+    `${API_BASE}/api/v1/rankings/sectors?${params}`,
     fetcher,
     {
       refreshInterval: 0, // 禁用自动轮询，使用手动刷新

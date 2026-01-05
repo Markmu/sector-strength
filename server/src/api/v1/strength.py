@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, asc
 from datetime import datetime
 
-from src.api.deps import get_session
+from src.api.deps import get_session, get_current_user
+from src.models.user import User
 from src.api.schemas.strength import (
     StrengthData,
     StrengthResponse,
@@ -102,6 +103,7 @@ async def get_strength_detail(
     entity_type: str,
     entity_id: str,
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StrengthResponse:
     """
     获取单个实体的强度数据
@@ -131,6 +133,7 @@ async def get_strength_list(
     entity_ids: Optional[str] = Query(None, description="多个实体 ID，逗号分隔"),
     limit: int = Query(100, ge=1, le=500, description="返回数量限制"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StrengthListResponse:
     """
     获取强度数据列表

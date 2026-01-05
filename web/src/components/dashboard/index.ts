@@ -11,6 +11,11 @@ export { SectorRankingList } from './SectorRankingList';
 export { StockRankingList } from './StockRankingList';
 export { SortingControls } from './SortingControls';
 export { RankingItemComponent } from './RankingItem';
+export { TimeRangeSelector } from './TimeRangeSelector';
+export { MAToggleControls } from './MAToggleControls';
+export { SectorStrengthChart } from './SectorStrengthChart';
+export { SectorMAChart } from './SectorMAChart';
+export { SearchableSelect } from './SearchableSelect';
 
 export type { DashboardLayoutProps } from './DashboardLayout';
 export type { DashboardHeaderProps } from './DashboardHeader';

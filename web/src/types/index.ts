@@ -57,9 +57,12 @@ export interface StockFilter {
 export interface Sector extends BaseEntity {
   code: string
   name: string
+  type: 'industry' | 'concept'
   parent_code?: string
   level?: number
   description?: string
+  strength_score?: number
+  trend_direction?: number
 }
 
 // 市场数据类型
@@ -233,4 +236,63 @@ export interface HeatmapResponse {
 export interface HeatmapConfig {
   refreshInterval: number  // ms，默认 5000
   minBlockSize: number     // 最小区块大小
+}
+
+// 板块分析图表相关类型
+export interface SectorStrengthHistoryPoint {
+  date: string
+  score: number | null
+  current_price: number | null
+}
+
+export interface SectorStrengthHistoryResponse {
+  sector_id: string
+  sector_name: string
+  data: SectorStrengthHistoryPoint[]
+}
+
+export interface SectorMAHistoryPoint {
+  date: string
+  current_price: number | null
+  ma5: number | null
+  ma10: number | null
+  ma20: number | null
+  ma30: number | null
+  ma60: number | null
+  ma90: number | null
+  ma120: number | null
+  ma240: number | null
+}
+
+export interface SectorMAHistoryResponse {
+  sector_id: string
+  sector_name: string
+  data: SectorMAHistoryPoint[]
+}
+
+// 时间范围选项
+export type TimeRangeOption = '1w' | '1m' | '2m' | '3m' | '6m' | '1y'
+
+export interface TimeRangeConfig {
+  label: string
+  days: number
+  value: TimeRangeOption
+}
+
+// 均线显示选项
+export type MAPeriod = 'ma5' | 'ma10' | 'ma20' | 'ma30' | 'ma60' | 'ma90' | 'ma120' | 'ma240'
+
+export interface MAConfig {
+  key: MAPeriod
+  label: string
+  color: string
+  lineType: 'solid' | 'dashed' | 'dotted'
+  defaultVisible: boolean
+}
+
+// 金叉/死叉点
+export interface CrossPoint {
+  date: string
+  type: 'golden' | 'death'
+  value: number
 }

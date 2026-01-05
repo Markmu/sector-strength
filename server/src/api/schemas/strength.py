@@ -308,3 +308,41 @@ class SectorScatterResponse(BaseModel):
     returned_count: int = Field(..., ge=0, description="返回的板块数")
     filters_applied: FiltersApplied = Field(..., description="应用的筛选条件")
     cache_status: str = Field(default="miss", description="缓存状态: hit 或 miss")
+
+
+# ========== 板块分析图表类型 ==========
+
+
+class SectorStrengthHistoryPoint(BaseModel):
+    """板块强度历史数据点"""
+    date: date
+    score: Optional[float] = None
+    current_price: Optional[float] = None
+
+
+class SectorStrengthHistoryResponse(BaseModel):
+    """板块强度历史响应"""
+    sector_id: str
+    sector_name: str
+    data: List[SectorStrengthHistoryPoint]
+
+
+class SectorMAHistoryPoint(BaseModel):
+    """板块均线历史数据点"""
+    date: date
+    current_price: Optional[float] = None
+    ma5: Optional[float] = None
+    ma10: Optional[float] = None
+    ma20: Optional[float] = None
+    ma30: Optional[float] = None
+    ma60: Optional[float] = None
+    ma90: Optional[float] = None
+    ma120: Optional[float] = None
+    ma240: Optional[float] = None
+
+
+class SectorMAHistoryResponse(BaseModel):
+    """板块均线历史响应"""
+    sector_id: str
+    sector_name: str
+    data: List[SectorMAHistoryPoint]

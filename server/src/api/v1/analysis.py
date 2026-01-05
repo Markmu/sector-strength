@@ -9,7 +9,8 @@ from datetime import date
 from fastapi import APIRouter, Query, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_session
+from src.api.deps import get_session, get_current_user
+from src.models.user import User
 from src.api.schemas.response import ApiResponse
 from src.api.schemas.strength import SectorScatterResponse
 from src.api.schemas.grade_table import SectorGradeTableResponse, SectorDistributionResponse
@@ -31,6 +32,7 @@ async def get_sector_scatter_data(
     limit: int = Query(200, ge=1, le=500, description="每页数量"),
     calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ApiResponse[SectorScatterResponse]:
     """
     获取板块强度散点图数据
@@ -85,6 +87,7 @@ async def get_sector_grade_table_data(
     sector_type: Optional[str] = Query(None, description="板块类型: industry/concept"),
     calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ApiResponse[SectorGradeTableResponse]:
     """
     获取板块等级表格数据
@@ -123,6 +126,7 @@ async def get_sector_grade_table_data(
 @router.get("/sector-distribution", response_model=ApiResponse[SectorDistributionResponse])
 async def get_sector_distribution(
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ApiResponse[SectorDistributionResponse]:
     """
     获取板块类型分布统计

@@ -39,6 +39,21 @@ export class ApiClient {
     }
   }
 
+  // 获取认证头
+  protected getAuthHeaders(): Record<string, string> {
+    // 从 localStorage 获取认证信息
+    if (typeof window === 'undefined') return {}
+
+    const accessToken = localStorage.getItem('accessToken')
+    const tokenType = localStorage.getItem('tokenType') || 'Bearer'
+
+    if (!accessToken) return {}
+
+    return {
+      'Authorization': `${tokenType} ${accessToken}`,
+    }
+  }
+
   protected async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -54,10 +69,13 @@ export class ApiClient {
       })
     }
 
+    const authHeaders = this.getAuthHeaders()
+
     const config: RequestInit = {
       method,
       headers: {
         ...this.defaultHeaders,
+        ...authHeaders,  // 添加认证头
         ...headers,
       },
     }
@@ -71,7 +89,12 @@ export class ApiClient {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error?.message || `HTTP error! status: ${response.status}`)
+        // 401 认证失败特殊处理
+        if (response.status === 401) {
+          console.error('Authentication failed:', data.error?.message || data.detail || '认证失败')
+          // 触发登出逻辑（可选）
+        }
+        throw new Error(data.error?.message || data.detail || `HTTP error! status: ${response.status}`)
       }
 
       return { data }
@@ -120,8 +143,22 @@ export const stocksApi = {
 
 // 板块 API
 export const sectorsApi = {
-  getSectors: (params?: { skip?: number; limit?: number }) =>
-    apiClient.get<any[]>('/v1/sectors', params),
+  getSectors: (params?: {
+    page?: number
+    page_size?: number
+    sector_type?: string
+    min_strength_score?: number
+    max_strength_score?: number
+  }) =>
+    apiClient.get<{
+      success: boolean
+      data: {
+        items: Array<any>
+        total: number
+        page: number
+        page_size: number
+      }
+    }>('/v1/sectors', params),
   getSector: (sectorId: number) => apiClient.get<any>(`/v1/sectors/${sectorId}`),
   getSectorStocks: (sectorId: number, params?: { skip?: number; limit?: number }) =>
     apiClient.get<any[]>(`/v1/sectors/${sectorId}/stocks`, params),
@@ -137,6 +174,35 @@ export const sectorsApi = {
         value: number
       }>
     }>('/v1/sectors/search', { keyword, ...params }),
+  // 获取板块强度历史数据 (用于图表)
+  getSectorStrengthHistory: (sectorId: number, params?: { start_date?: string; end_date?: string }) =>
+    apiClient.get<{
+      sector_id: string
+      sector_name: string
+      data: Array<{
+        date: string
+        score: number | null
+        current_price: number | null
+      }>
+    }>(`/v1/sectors/${sectorId}/strength-history`, params),
+  // 获取板块均线历史数据 (用于图表)
+  getSectorMAHistory: (sectorId: number, params?: { start_date?: string; end_date?: string }) =>
+    apiClient.get<{
+      sector_id: string
+      sector_name: string
+      data: Array<{
+        date: string
+        current_price: number | null
+        ma5: number | null
+        ma10: number | null
+        ma20: number | null
+        ma30: number | null
+        ma60: number | null
+        ma90: number | null
+        ma120: number | null
+        ma240: number | null
+      }>
+    }>(`/v1/sectors/${sectorId}/ma-history`, params),
 }
 
 // 强度数据 API
@@ -207,24 +273,10 @@ export const heatmapApi = {
 }
 
 // 管理员 API
-// 创建专用的管理员 API 客户端，使用 JWT token 认证
+// 创建专用的管理员 API 客户端，继承 ApiClient（已自动携带认证令牌）
 class AdminApiClient extends ApiClient {
   constructor() {
     super(`${API_BASE_WITH_PREFIX}`)
-  }
-
-  private getAuthHeaders(): Record<string, string> {
-    // 从 localStorage 获取认证信息
-    if (typeof window === 'undefined') return {}
-
-    const accessToken = localStorage.getItem('accessToken')
-    const tokenType = localStorage.getItem('tokenType') || 'Bearer'
-
-    if (!accessToken) return {}
-
-    return {
-      'Authorization': `${tokenType} ${accessToken}`,
-    }
   }
 
   protected async request<T>(
@@ -253,7 +305,7 @@ class AdminApiClient extends ApiClient {
       method,
       headers: {
         ...this.defaultHeaders,
-        ...authHeaders,  // 添加认证头
+        ...authHeaders,  // 已由父类提供
         ...headers,
       },
     }

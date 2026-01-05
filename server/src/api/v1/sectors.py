@@ -8,9 +8,10 @@ from typing import Optional, List
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, asc, or_
+from sqlalchemy import select, func, desc, asc, or_, and_
 
-from src.api.deps import get_session
+from src.api.deps import get_session, get_current_user
+from src.models.user import User
 from src.api.schemas.sector import (
     SectorListItem,
     SectorDetail,
@@ -24,11 +25,16 @@ from src.api.schemas.strength import (
     SectorStrengthResponse,
     StrengthHistoryResponse,
     StrengthHistoryData,
+    SectorStrengthHistoryResponse,
+    SectorStrengthHistoryPoint,
+    SectorMAHistoryResponse,
+    SectorMAHistoryPoint,
 )
 from src.models.sector import Sector as SectorModel
 from src.models.sector_stock import SectorStock as SectorStockModel
 from src.models.stock import Stock as StockModel
 from src.models.strength_score import StrengthScore as StrengthScoreModel
+from src.models.moving_average_data import MovingAverageData as MovingAverageDataModel
 from src.services.strength_service_v2 import StrengthServiceV2
 from src.services.strength_history_service import StrengthHistoryService
 
@@ -38,30 +44,77 @@ router = APIRouter(prefix="/sectors", tags=["sectors"])
 @router.get("", response_model=SectorListResponse)
 async def get_sectors(
     sector_type: Optional[str] = Query(None, description="板块类型: industry/concept"),
+    min_strength_score: Optional[float] = Query(None, ge=0, le=100, description="最小强度分数"),
+    max_strength_score: Optional[float] = Query(None, ge=0, le=100, description="最大强度分数"),
     sort_by: str = Query("strength_score", description="排序字段"),
     sort_order: str = Query("desc", description="排序方向: asc/desc"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> SectorListResponse:
     """
     获取板块列表
 
     返回板块基本信息和强度得分，支持筛选、排序、分页。
+    强度得分从 strength_scores 表中获取最新一天的数据。
     """
-    # 构建查询
-    stmt = select(SectorModel)
+    # 使用 CTE 获取每个板块的最新强度分数
+    latest_strength_cte = (
+        select(
+            StrengthScoreModel.entity_id,
+            StrengthScoreModel.score,
+            func.row_number().over(
+                partition_by=StrengthScoreModel.entity_id,
+                order_by=desc(StrengthScoreModel.date)
+            ).label('rn')
+        )
+        .where(StrengthScoreModel.entity_type == 'sector')
+        .subquery()
+    )
 
-    # 筛选
+    # 只保留每个板块的最新记录（rn = 1）
+    latest_strength = (
+        select(
+            latest_strength_cte.c.entity_id,
+            latest_strength_cte.c.score
+        )
+        .where(latest_strength_cte.c.rn == 1)
+        .subquery()
+    )
+
+    # 主查询：关联板块和最新强度分数
+    stmt = select(
+        SectorModel,
+        func.coalesce(latest_strength.c.score, 0).label('strength_score')
+    ).outerjoin(
+        latest_strength,
+        SectorModel.id == latest_strength.c.entity_id
+    )
+
+    # 按类型筛选
     if sector_type:
         stmt = stmt.where(SectorModel.type == sector_type)
 
-    # 排序
-    sort_column = getattr(SectorModel, sort_by, SectorModel.strength_score)
-    if sort_order == "desc":
-        stmt = stmt.order_by(desc(sort_column))
+    # 按分数区间筛选（使用 JOIN 后的分数）
+    if min_strength_score is not None:
+        stmt = stmt.where(func.coalesce(latest_strength.c.score, 0) >= min_strength_score)
+    if max_strength_score is not None:
+        stmt = stmt.where(func.coalesce(latest_strength.c.score, 0) <= max_strength_score)
+
+    # 排序（使用 JOIN 后的分数）
+    if sort_by == "strength_score":
+        score_column = func.coalesce(latest_strength.c.score, 0)
+        if sort_order == "desc":
+            stmt = stmt.order_by(desc(score_column))
+        else:
+            stmt = stmt.order_by(asc(score_column))
     else:
-        stmt = stmt.order_by(asc(sort_column))
+        sort_column = getattr(SectorModel, sort_by, SectorModel.id)
+        if sort_order == "desc":
+            stmt = stmt.order_by(desc(sort_column))
+        else:
+            stmt = stmt.order_by(asc(sort_column))
 
     # 计算总数
     count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -74,23 +127,26 @@ async def get_sectors(
 
     # 执行查询
     result = await session.execute(stmt)
-    sectors = result.scalars().all()
+    rows = result.all()
 
     # 转换为响应模型
-    items = [
-        SectorListItem(
-            id=str(s.id),
-            code=s.code,
-            name=s.name,
-            type=s.type,
-            description=s.description,
-            strength_score=s.strength_score,
-            trend_direction=s.trend_direction,
-            created_at=s.created_at,
-            updated_at=s.updated_at,
+    items = []
+    for row in rows:
+        sector = row[0]
+        strength_score = row[1]
+        items.append(
+            SectorListItem(
+                id=str(sector.id),
+                code=sector.code,
+                name=sector.name,
+                type=sector.type,
+                description=sector.description,
+                strength_score=float(strength_score) if strength_score is not None else 0,
+                trend_direction=sector.trend_direction,
+                created_at=sector.created_at,
+                updated_at=sector.updated_at,
+            )
         )
-        for s in sectors
-    ]
 
     paginated_data = PaginatedData.create(items, total, page, page_size)
 
@@ -103,6 +159,7 @@ async def search_sectors(
     sector_type: Optional[str] = Query(None, description="板块类型: industry/concept"),
     limit: int = Query(20, ge=1, le=100, description="返回结果数量限制"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ApiResponse[List[dict]]:
     """
     搜索板块
@@ -152,6 +209,7 @@ async def search_sectors(
 async def get_sector_detail(
     sector_id: int,
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> SectorDetailResponse:
     """
     获取板块详情
@@ -197,6 +255,7 @@ async def get_sector_stocks(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> SectorStocksResponse:
     """
     获取板块成分股
@@ -264,6 +323,7 @@ async def get_sector_strength(
     sector_id: int,
     calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> SectorStrengthResponse:
     """
     获取板块强度数据 (V2)
@@ -384,6 +444,7 @@ async def get_sector_strength_history(
     sector_id: int,
     days: int = Query(30, ge=1, le=365, description="查询天数"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StrengthHistoryResponse:
     """
     获取板块强度历史数据
@@ -436,4 +497,142 @@ async def get_sector_strength_history(
         end_date=end_date,
         total_days=len(data_points),
         data_points=data_points,
+    )
+
+
+# ============== 板块分析图表端点 (Story 4-2) ==============
+
+
+@router.get("/{sector_id}/strength-history", response_model=SectorStrengthHistoryResponse)
+async def get_sector_strength_history_for_charts(
+    sector_id: int,
+    start_date: Optional[date] = Query(None, description="开始日期 (ISO 8601), 默认为2个月前"),
+    end_date: Optional[date] = Query(None, description="结束日期 (ISO 8601), 默认为今天"),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SectorStrengthHistoryResponse:
+    """
+    获取板块强度历史数据 (用于图表)
+
+    返回指定时间范围内的板块强度得分和价格历史数据。
+
+    Args:
+        sector_id: 板块ID
+        start_date: 开始日期 (默认为2个月前)
+        end_date: 结束日期 (默认为今天)
+
+    Returns:
+        板块强度历史数据
+    """
+    # 查询板块是否存在
+    stmt = select(SectorModel).where(SectorModel.id == sector_id)
+    result = await session.execute(stmt)
+    sector = result.scalar_one_or_none()
+
+    if not sector:
+        raise NotFoundError(f"板块 {sector_id} 不存在")
+
+    # 设置默认日期范围
+    if end_date is None:
+        end_date = date.today()
+    if start_date is None:
+        start_date = end_date - timedelta(days=60)  # 默认2个月
+
+    # 查询强度历史数据
+    stmt = select(StrengthScoreModel).where(
+        StrengthScoreModel.entity_type == "sector",
+        StrengthScoreModel.entity_id == sector_id,
+        StrengthScoreModel.period == "all",
+        StrengthScoreModel.date >= start_date,
+        StrengthScoreModel.date <= end_date,
+    ).order_by(asc(StrengthScoreModel.date))
+
+    result = await session.execute(stmt)
+    history_data = result.scalars().all()
+
+    # 构建响应
+    data_points = [
+        SectorStrengthHistoryPoint(
+            date=item.date,
+            score=float(item.score) if item.score is not None else None,
+            current_price=float(item.current_price) if item.current_price is not None else None,
+        )
+        for item in history_data
+    ]
+
+    return SectorStrengthHistoryResponse(
+        sector_id=str(sector_id),
+        sector_name=sector.name,
+        data=data_points,
+    )
+
+
+@router.get("/{sector_id}/ma-history", response_model=SectorMAHistoryResponse)
+async def get_sector_ma_history(
+    sector_id: int,
+    start_date: Optional[date] = Query(None, description="开始日期 (ISO 8601), 默认为2个月前"),
+    end_date: Optional[date] = Query(None, description="结束日期 (ISO 8601), 默认为今天"),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SectorMAHistoryResponse:
+    """
+    获取板块均线历史数据 (用于图表)
+
+    返回指定时间范围内的板块均线数据(MA5/10/20/30/60/120/240)和当前价格。
+
+    Args:
+        sector_id: 板块ID
+        start_date: 开始日期 (默认为2个月前)
+        end_date: 结束日期 (默认为今天)
+
+    Returns:
+        板块均线历史数据
+    """
+    # 查询板块是否存在
+    stmt = select(SectorModel).where(SectorModel.id == sector_id)
+    result = await session.execute(stmt)
+    sector = result.scalar_one_or_none()
+
+    if not sector:
+        raise NotFoundError(f"板块 {sector_id} 不存在")
+
+    # 设置默认日期范围
+    if end_date is None:
+        end_date = date.today()
+    if start_date is None:
+        start_date = end_date - timedelta(days=60)  # 默认2个月
+
+    # 从 strength_scores 表获取数据 (因为均线数据已经在该表中)
+    stmt = select(StrengthScoreModel).where(
+        StrengthScoreModel.entity_type == "sector",
+        StrengthScoreModel.entity_id == sector_id,
+        StrengthScoreModel.period == "all",
+        StrengthScoreModel.date >= start_date,
+        StrengthScoreModel.date <= end_date,
+    ).order_by(asc(StrengthScoreModel.date))
+
+    result = await session.execute(stmt)
+    history_data = result.scalars().all()
+
+    # 构建响应
+    data_points = [
+        SectorMAHistoryPoint(
+            date=item.date,
+            current_price=float(item.current_price) if item.current_price is not None else None,
+            ma5=float(item.ma5) if item.ma5 is not None else None,
+            ma10=float(item.ma10) if item.ma10 is not None else None,
+            ma20=float(item.ma20) if item.ma20 is not None else None,
+            ma30=float(item.ma30) if item.ma30 is not None else None,
+            ma60=float(item.ma60) if item.ma60 is not None else None,
+            ma90=float(item.ma90) if item.ma90 is not None else None,
+            ma120=float(item.ma120) if item.ma120 is not None else None,
+            ma240=float(item.ma240) if item.ma240 is not None else None,
+        )
+        for item in history_data
+    ]
+
+    return SectorMAHistoryResponse(
+        sector_id=str(sector_id),
+        sector_name=sector.name,
+        data=data_points,
     )

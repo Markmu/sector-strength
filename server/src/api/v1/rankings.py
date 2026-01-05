@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, asc, func, and_
 from pydantic import BaseModel
 
-from src.api.deps import get_session
+from src.api.deps import get_session, get_current_user
+from src.models.user import User
 from src.api.schemas.strength import (
     RankingItem, RankingResponse,  # V1 schema (向后兼容)
     StrengthRankingItem,
@@ -38,6 +39,7 @@ async def get_sector_rankings(
     order: str = Query("desc", description="desc=强势, asc=弱势"),
     sector_type: Optional[str] = Query(None, description="板块类型筛选"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> RankingResponse:
     """
     获取板块排名
@@ -99,6 +101,7 @@ async def get_stock_rankings(
     order: str = Query("desc", description="desc=强势, asc=弱势"),
     sector_id: Optional[str] = Query(None, description="按板块代码筛选（如 BK0001）"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> RankingResponse:
     """
     获取个股排名
@@ -168,6 +171,7 @@ async def get_stock_rankings_v2(
     offset: int = Query(0, ge=0, description="偏移量"),
     limit: int = Query(50, ge=1, le=200, description="返回数量"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StrengthRankingResponse:
     """获取个股强度排名 (V2)"""
     # 查询强度数据
@@ -234,6 +238,7 @@ async def get_sector_rankings_v2(
     offset: int = Query(0, ge=0, description="偏移量"),
     limit: int = Query(20, ge=1, le=100, description="返回数量"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StrengthRankingResponse:
     """获取板块强度排名 (V2)"""
     stmt = select(StrengthScoreModel, SectorModel).join(
@@ -298,6 +303,7 @@ async def get_strength_stats(
     entity_type: str = Query(..., description="实体类型: stock/sector"),
     calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StrengthStatsResponse:
     """获取强度统计信息 (V2)"""
     if entity_type not in ["stock", "sector"]:
@@ -382,6 +388,7 @@ async def get_strength_stats(
 async def batch_calculate_strength(
     request: BatchStrengthRequest,
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> BatchStrengthResponse:
     """批量计算强度 (V2)"""
     service = StrengthServiceV2(session)

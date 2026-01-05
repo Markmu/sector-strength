@@ -1,18 +1,13 @@
 // 市场指数数据 Hook
 import useSWR from 'swr'
 import type { MarketIndexResponse } from '@/lib/market/types'
+import { fetcher } from '@/lib/fetcher'
 
-const fetcher = async (url: string): Promise<MarketIndexResponse> => {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
-  }
-  return response.json()
-}
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export function useMarketIndex() {
   const { data, error, isLoading, mutate } = useSWR<MarketIndexResponse>(
-    '/api/v1/market-index',
+    `${API_BASE}/api/v1/market-index`,
     fetcher,
     {
       refreshInterval: 0, // 禁用自动轮询，使用手动刷新

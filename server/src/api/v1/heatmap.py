@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 
-from src.api.deps import get_session
+from src.api.deps import get_session, get_current_user
+from src.models.user import User
 from src.api.schemas.sector import HeatmapData, HeatmapResponse, HeatmapSector
 from src.models.sector import Sector as SectorModel
 
@@ -50,6 +51,7 @@ def _get_color_for_strength(strength: float) -> str:
 async def get_heatmap_data(
     sector_type: Optional[str] = Query(None, description="板块类型筛选"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> HeatmapResponse:
     """
     获取热力图渲染数据

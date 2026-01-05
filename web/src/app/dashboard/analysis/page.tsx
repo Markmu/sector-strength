@@ -8,6 +8,7 @@
 
 import { useState, useCallback } from 'react'
 import { useSWRConfig } from 'swr'
+import { useRouter } from 'next/navigation'
 import { BuildingOfficeIcon, LightBulbIcon } from '@heroicons/react/24/outline'
 import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
 import { SectorGradeTable } from '@/components/analysis/SectorGradeTable'
@@ -16,6 +17,7 @@ import { useSectorDistribution } from '@/hooks/useSectorDistribution'
 import type { SectorType, SectorTableItem } from '@/types/gradeTable'
 
 export default function SectorAnalysisPage() {
+  const router = useRouter()
   const { mutate } = useSWRConfig()
   const [sectorType, setSectorType] = useState<SectorType | null>(null)
 
@@ -35,9 +37,9 @@ export default function SectorAnalysisPage() {
   }, [mutate])
 
   const handleSectorClick = useCallback((sector: SectorTableItem) => {
-    console.log('点击板块:', sector)
-    alert(`点击了板块: ${sector.name} (${sector.code})\n\n详情页面待实现`)
-  }, [])
+    // 跳转到板块分析页面
+    router.push(`/dashboard/sector-analysis/${sector.id}`)
+  }, [router])
 
   return (
     <DashboardLayout>

@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, asc, or_
 
-from src.api.deps import get_session
+from src.api.deps import get_session, get_current_user
+from src.models.user import User
 from src.api.schemas.stock import (
     StockListItem,
     StockDetail,
@@ -43,6 +44,7 @@ async def get_stocks(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StockListResponse:
     """
     获取个股列表
@@ -116,6 +118,7 @@ async def get_stocks(
 async def get_stock_detail(
     stock_id: str,
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StockDetailResponse:
     """
     获取个股详情
@@ -172,6 +175,7 @@ async def get_stock_strength(
     stock_id: str,
     calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StockStrengthResponse:
     """
     获取个股强度数据 (V2)
@@ -266,6 +270,7 @@ async def get_stock_strength_by_symbol(
     symbol: str,
     calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StockStrengthResponse:
     """
     通过股票代码获取强度数据 (V2)
@@ -285,8 +290,8 @@ async def get_stock_strength_by_symbol(
     if not stock:
         raise NotFoundError(f"股票代码 {symbol} 不存在")
 
-    # 复用上面的逻辑
-    return await get_stock_strength(stock.id, calc_date, session)
+    # 复用上面的逻辑（传入当前用户）
+    return await get_stock_strength(stock.id, calc_date, session, current_user)
 
 
 @router.get("/{stock_id}/strength/history", response_model=StrengthHistoryResponse)
@@ -294,6 +299,7 @@ async def get_stock_strength_history(
     stock_id: str,
     days: int = Query(30, ge=1, le=365, description="查询天数"),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> StrengthHistoryResponse:
     """
     获取个股强度历史数据

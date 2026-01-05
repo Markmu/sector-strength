@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta
 
-from src.api.deps import get_session
+from src.api.deps import get_session, get_current_user
+from src.models.user import User
 from src.models.sector import Sector as SectorModel
 
 router = APIRouter(prefix="/market-index", tags=["market-index"])
@@ -37,6 +38,7 @@ def _calculate_index_color(value: float) -> str:
 @router.get("", response_model=dict)
 async def get_market_index(
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """
     获取市场强度指数

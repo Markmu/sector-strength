@@ -61,7 +61,9 @@ const sectorsSlice = createSlice({
       })
       .addCase(fetchSectors.fulfilled, (state, action) => {
         state.loading = false
-        state.sectors = action.payload.data || []
+        // 后端返回分页数据: { success: true, data: { items: [...], total, page, page_size } }
+        const data = action.payload.data as any
+        state.sectors = data?.items || []
       })
       .addCase(fetchSectors.rejected, (state, action) => {
         state.loading = false
