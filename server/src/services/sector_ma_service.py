@@ -6,7 +6,7 @@
 
 import logging
 from typing import Dict, Any, Optional, List, Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
@@ -171,8 +171,14 @@ class SectorMAService:
             logger.info(f"[板块均线] 开始计算板块 {sector.name}({sector.code}) 的均线数据")
 
             # ========================================
-            # 步骤1: 获取板块历史数据
+            # 步骤1: 确定需要查询的数据范围
             # ========================================
+            # 根据最长的均线周期，智能确定需要查询的历史数据范围
+            # 例如：计算240日均线，只需要查询 end_date 往前推 240 天的数据
+            max_period = max(periods)
+            logger.info(f"[板块均线] 最长均线周期: {max_period}日")
+
+            # 构建查询语句
             stmt = select(DailyMarketData).where(
                 and_(
                     DailyMarketData.entity_type == "sector",
@@ -181,18 +187,66 @@ class SectorMAService:
                 )
             )
 
-            if start_date:
-                stmt = stmt.where(DailyMarketData.date >= start_date)
-            if end_date:
-                stmt = stmt.where(DailyMarketData.date <= end_date)
+            # 先查询获取板块数据的实际日期范围
+            temp_result = await self.session.execute(
+                select(
+                    func.min(DailyMarketData.date).label('min_date'),
+                    func.max(DailyMarketData.date).label('max_date')
+                ).where(
+                    and_(
+                        DailyMarketData.entity_type == "sector",
+                        DailyMarketData.entity_id == sector.id,
+                        DailyMarketData.close.isnot(None)
+                    )
+                )
+            )
+            date_range_row = temp_result.fetchone()
 
+            if not date_range_row or not date_range_row.min_date:
+                logger.warning(f"[板块均线] 板块 {sector.name} 没有市场数据")
+                return {
+                    "success": False,
+                    "error": "没有找到该板块的市场数据"
+                }
+
+            actual_min_date = date_range_row.min_date
+            actual_max_date = date_range_row.max_date
+
+            # 确定 end_date：使用参数或最新数据日期
+            query_end_date = end_date if end_date else actual_max_date
+
+            # 确定 start_date：根据参数和均线周期智能计算
+            # 需要至少查询 max_period 天的历史数据用于计算均线
+            required_start_date = query_end_date - timedelta(days=max_period * 2)  # *2 是考虑到节假日
+
+            if start_date:
+                # 如果用户指定了 start_date，取两者中较晚的日期
+                query_start_date = max(start_date, required_start_date)
+            else:
+                query_start_date = required_start_date
+
+            # 确保不超过实际数据的日期范围
+            query_start_date = max(query_start_date, actual_min_date)
+            query_end_date = min(query_end_date, actual_max_date)
+
+            logger.info(
+                f"[板块均线] 板块 {sector.name} 实际数据范围: {actual_min_date} 至 {actual_max_date}"
+            )
+            logger.info(
+                f"[板块均线] 智能查询范围: {query_start_date} 至 {query_end_date} "
+                f"(基于最长周期 {max_period}日)"
+            )
+
+            # 应用智能计算的日期范围
+            stmt = stmt.where(DailyMarketData.date >= query_start_date)
+            stmt = stmt.where(DailyMarketData.date <= query_end_date)
             stmt = stmt.order_by(DailyMarketData.date)
 
             result = await self.session.execute(stmt)
             market_data_list = result.scalars().all()
 
             if not market_data_list:
-                logger.warning(f"[板块均线] 板块 {sector.name} 没有市场数据")
+                logger.warning(f"[板块均线] 板块 {sector.name} 在指定范围内没有市场数据")
                 return {
                     "success": False,
                     "error": "没有找到该板块的市场数据"
@@ -203,7 +257,18 @@ class SectorMAService:
             data_end_date = market_data_list[-1].date
             total_days = len(market_data_list)
 
-            logger.info(f"[板块均线] 板块 {sector.name} 数据范围: {data_start_date} 至 {data_end_date}，共 {total_days} 个交易日")
+            logger.info(
+                f"[板块均线] 板块 {sector.name} 查询到 {total_days} 个交易日数据 "
+                f"({data_start_date} 至 {data_end_date})"
+            )
+
+            # 记录保存范围
+            save_start_date = start_date if start_date else data_start_date
+            save_end_date = end_date if end_date else data_end_date
+            if save_start_date != data_start_date or save_end_date != data_end_date:
+                logger.info(
+                    f"[板块均线] 将保存时间范围 {save_start_date} 至 {save_end_date} 内的均线数据"
+                )
 
             # ========================================
             # 步骤2: 转换为 pandas DataFrame
@@ -280,6 +345,12 @@ class SectorMAService:
                         continue
 
                     if idx not in period_df.index:
+                        continue
+
+                    # 应用日期过滤：只保存指定时间范围内的均线数据
+                    if start_date and idx < start_date:
+                        continue
+                    if end_date and idx > end_date:
                         continue
 
                     current_price = period_df.loc[idx, "close"]
