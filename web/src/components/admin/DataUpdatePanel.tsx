@@ -37,7 +37,7 @@ interface MissingDatesResponse {
 }
 
 type UpdateMode = 'by-date' | 'by-range';
-type TargetType = 'all' | 'sector' | 'stock';
+type TargetType = 'all' | 'all_sectors' | 'sector' | 'stock';
 
 /**
  * 数据更新面板
@@ -134,15 +134,15 @@ export default function DataUpdatePanel() {
         ? {
             target_date: selectedDate,
             overwrite,
-            target_type: targetType === 'all' ? undefined : targetType,
-            target_id: targetType !== 'all' ? targetId : undefined
+            target_type: targetType === 'all' ? undefined : (targetType === 'all_sectors' ? 'sector' : targetType),
+            target_id: (targetType !== 'all' && targetType !== 'all_sectors') ? targetId : undefined
           }
         : {
             start_date: startDate,
             end_date: endDate,
             overwrite,
-            target_type: targetType === 'all' ? undefined : targetType,
-            target_id: targetType !== 'all' ? targetId : undefined
+            target_type: targetType === 'all' ? undefined : (targetType === 'all_sectors' ? 'sector' : targetType),
+            target_id: (targetType !== 'all' && targetType !== 'all_sectors') ? targetId : undefined
           };
 
       // 使用新的 tasks API 创建任务
@@ -359,7 +359,7 @@ export default function DataUpdatePanel() {
           更新范围
         </label>
         <div className="flex flex-wrap gap-2 mb-3">
-          {(['all', 'sector', 'stock'] as TargetType[]).map((type) => (
+          {(['all', 'all_sectors', 'sector', 'stock'] as TargetType[]).map((type) => (
             <button
               key={type}
               onClick={() => setTargetType(type)}
@@ -369,11 +369,11 @@ export default function DataUpdatePanel() {
                   : 'bg-white border-gray-200 hover:bg-gray-50'
               }`}
             >
-              {type === 'all' ? '全部股票' : type === 'sector' ? '指定板块' : '指定股票'}
+              {type === 'all' ? '全部股票' : type === 'all_sectors' ? '全部板块' : type === 'sector' ? '指定板块' : '指定股票'}
             </button>
           ))}
         </div>
-        {targetType !== 'all' && (
+        {targetType !== 'all' && targetType !== 'all_sectors' && (
           <input
             type="text"
             value={targetId}

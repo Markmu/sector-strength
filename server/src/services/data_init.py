@@ -495,6 +495,7 @@ class DataInitService:
                         market_data = DailyMarketData(
                             entity_type="stock",
                             entity_id=stock.id,
+                            symbol=stock.symbol,
                             date=quote.trade_date,
                             open=quote.open,
                             high=quote.high,

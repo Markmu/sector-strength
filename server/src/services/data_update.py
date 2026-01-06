@@ -523,7 +523,7 @@ class DataUpdateService:
 
         Args:
             target_type: 目标类型 ('sector', 'stock', None=全部)
-            target_id: 目标 ID
+            target_id: 目标 ID（板块代码或股票代码），对于 sector 类型如果为空则表示全部板块
 
         Returns:
             股票代码列表
@@ -531,22 +531,31 @@ class DataUpdateService:
         if target_type == "stock" and target_id:
             return [target_id]
 
-        elif target_type == "sector" and target_id:
-            # 获取板块的所有股票
-            result = await self.session.execute(
-                select(Sector).where(Sector.code == target_id)
-            )
-            sector = result.scalar_one_or_none()
+        elif target_type == "sector":
+            if target_id:
+                # 获取指定板块的所有股票
+                result = await self.session.execute(
+                    select(Sector).where(Sector.code == target_id)
+                )
+                sector = result.scalar_one_or_none()
 
-            if not sector:
-                return []
+                if not sector:
+                    return []
 
-            result = await self.session.execute(
-                select(Stock.symbol)
-                .join(SectorStock, Stock.id == SectorStock.stock_id)
-                .where(SectorStock.sector_id == sector.id)
-            )
-            return [row[0] for row in result.all()]
+                result = await self.session.execute(
+                    select(Stock.symbol)
+                    .join(SectorStock, Stock.id == SectorStock.stock_id)
+                    .where(SectorStock.sector_id == sector.id)
+                )
+                return [row[0] for row in result.all()]
+            else:
+                # 获取所有板块的所有股票
+                result = await self.session.execute(
+                    select(Stock.symbol)
+                    .join(SectorStock, Stock.id == SectorStock.stock_id)
+                    .distinct()
+                )
+                return [row[0] for row in result.all()]
 
         else:
             # 获取所有股票
