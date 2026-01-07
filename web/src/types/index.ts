@@ -242,6 +242,9 @@ export interface HeatmapConfig {
 export interface SectorStrengthHistoryPoint {
   date: string
   score: number | null
+  short_term_score: number | null
+  medium_term_score: number | null
+  long_term_score: number | null
   current_price: number | null
 }
 
@@ -271,7 +274,7 @@ export interface SectorMAHistoryResponse {
 }
 
 // 时间范围选项
-export type TimeRangeOption = '1w' | '1m' | '2m' | '3m' | '6m' | '1y'
+export type TimeRangeOption = '1w' | '1m' | '2m' | '3m' | '6m' | '1y' | 'custom'
 
 export interface TimeRangeConfig {
   label: string

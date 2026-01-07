@@ -37,7 +37,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
   const [sectorsLoading, setSectorsLoading] = useState(true)
 
   // 从 Zustand store 获取图表状态
-  const { timeRange, visibleMAs, setTimeRange, toggleMA } = useChartState()
+  const { timeRange, customStartDate, customEndDate, visibleMAs, setTimeRange, setCustomDateRange, toggleMA } = useChartState()
 
   // 解析 sectorId - 使用 useEffect 正确处理 Promise
   useEffect(() => {
@@ -72,7 +72,8 @@ export default function SectorAnalysisPage({ params }: PageParams) {
   } = useSectorStrengthHistory({
     sectorId: sectorId!,
     timeRange,
-    enabled: !!sectorId,
+    startDate: timeRange === 'custom' ? customStartDate ?? undefined : undefined,
+    endDate: timeRange === 'custom' ? customEndDate ?? undefined : undefined,
   })
 
   const {
@@ -83,7 +84,8 @@ export default function SectorAnalysisPage({ params }: PageParams) {
   } = useSectorMAHistory({
     sectorId: sectorId!,
     timeRange,
-    enabled: !!sectorId,
+    startDate: timeRange === 'custom' ? customStartDate ?? undefined : undefined,
+    endDate: timeRange === 'custom' ? customEndDate ?? undefined : undefined,
   })
 
   // 计算禁用的均线 (数据不足的情况)
@@ -110,6 +112,14 @@ export default function SectorAnalysisPage({ params }: PageParams) {
       toggleMA(maPeriod)
     },
     [toggleMA]
+  )
+
+  // 处理自定义日期变化
+  const handleCustomDateChange = useCallback(
+    (startDate: string, endDate: string) => {
+      setCustomDateRange(startDate, endDate)
+    },
+    [setCustomDateRange]
   )
 
   // 处理板块选择变化
@@ -263,7 +273,10 @@ export default function SectorAnalysisPage({ params }: PageParams) {
           {/* 时间范围选择器 */}
           <TimeRangeSelector
             value={timeRange}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
             onChange={handleTimeRangeChange}
+            onCustomDateChange={handleCustomDateChange}
           />
 
           {/* 均线显示控制 */}

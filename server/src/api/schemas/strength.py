@@ -317,6 +317,9 @@ class SectorStrengthHistoryPoint(BaseModel):
     """板块强度历史数据点"""
     date: date
     score: Optional[float] = None
+    short_term_score: Optional[float] = None
+    medium_term_score: Optional[float] = None
+    long_term_score: Optional[float] = None
     current_price: Optional[float] = None
 
 

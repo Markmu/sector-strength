@@ -555,6 +555,9 @@ async def get_sector_strength_history_for_charts(
         SectorStrengthHistoryPoint(
             date=item.date,
             score=float(item.score) if item.score is not None else None,
+            short_term_score=float(item.short_term_score) if item.short_term_score is not None else None,
+            medium_term_score=float(item.medium_term_score) if item.medium_term_score is not None else None,
+            long_term_score=float(item.long_term_score) if item.long_term_score is not None else None,
             current_price=float(item.current_price) if item.current_price is not None else None,
         )
         for item in history_data
