@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Home, BarChart3, TrendingUp, TrendingDown, Settings, ScatterChart, LineChart } from 'lucide-react';
+import { Home, Settings, ScatterChart, LineChart } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import Sidebar, { SidebarItem } from '@/components/layout/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,24 +29,6 @@ const baseSidebarItems: SidebarItem[] = [
     href: '/dashboard/sector-analysis',
     icon: <LineChart className="w-5 h-5" />,
     badge: '新功能',
-  },
-  {
-    title: '板块热力图',
-    href: '/dashboard/heatmap',
-    icon: <BarChart3 className="w-5 h-5" />,
-    badge: '即将推出',
-  },
-  {
-    title: '排名列表',
-    href: '/dashboard/rankings',
-    icon: <TrendingUp className="w-5 h-5" />,
-    badge: '即将推出',
-  },
-  {
-    title: '市场指数',
-    href: '/dashboard/market',
-    icon: <TrendingDown className="w-5 h-5" />,
-    badge: '即将推出',
   },
 ];
 
