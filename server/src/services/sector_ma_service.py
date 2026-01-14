@@ -174,11 +174,11 @@ class SectorMAService:
             # 步骤1: 确定需要查询的数据范围
             # ========================================
             # 根据最长的均线周期，智能确定需要查询的历史数据范围
-            # 例如：计算240日均线，只需要查询 end_date 往前推 240 天的数据
+            # 使用 LIMIT 查询提高效率：只需要查询 max_period 条数据即可
             max_period = max(periods)
             logger.info(f"[板块均线] 最长均线周期: {max_period}日")
 
-            # 构建查询语句
+            # 构建查询语句：使用 LIMIT 和日期过滤来高效获取数据
             stmt = select(DailyMarketData).where(
                 and_(
                     DailyMarketData.entity_type == "sector",
@@ -187,60 +187,44 @@ class SectorMAService:
                 )
             )
 
-            # 先查询获取板块数据的实际日期范围
-            temp_result = await self.session.execute(
-                select(
-                    func.min(DailyMarketData.date).label('min_date'),
-                    func.max(DailyMarketData.date).label('max_date')
-                ).where(
-                    and_(
-                        DailyMarketData.entity_type == "sector",
-                        DailyMarketData.entity_id == sector.id,
-                        DailyMarketData.close.isnot(None)
+            # 确定查询的结束日期
+            if end_date:
+                query_end_date = end_date
+            else:
+                # 查询最新的数据日期
+                temp_result = await self.session.execute(
+                    select(func.max(DailyMarketData.date)).where(
+                        and_(
+                            DailyMarketData.entity_type == "sector",
+                            DailyMarketData.entity_id == sector.id,
+                            DailyMarketData.close.isnot(None)
+                        )
                     )
                 )
-            )
-            date_range_row = temp_result.fetchone()
+                query_end_date = temp_result.scalar()
+                if not query_end_date:
+                    logger.warning(f"[板块均线] 板块 {sector.name} 没有市场数据")
+                    return {
+                        "success": False,
+                        "error": "没有找到该板块的市场数据"
+                    }
 
-            if not date_range_row or not date_range_row.min_date:
-                logger.warning(f"[板块均线] 板块 {sector.name} 没有市场数据")
-                return {
-                    "success": False,
-                    "error": "没有找到该板块的市场数据"
-                }
-
-            actual_min_date = date_range_row.min_date
-            actual_max_date = date_range_row.max_date
-
-            # 确定 end_date：使用参数或最新数据日期
-            query_end_date = end_date if end_date else actual_max_date
-
-            # 确定 start_date：根据参数和均线周期智能计算
-            # 需要至少查询 max_period 天的历史数据用于计算均线
-            required_start_date = query_end_date - timedelta(days=max_period * 2)  # *2 是考虑到节假日
-
-            if start_date:
-                # 如果用户指定了 start_date，取两者中较晚的日期
-                query_start_date = max(start_date, required_start_date)
-            else:
-                query_start_date = required_start_date
-
-            # 确保不超过实际数据的日期范围
-            query_start_date = max(query_start_date, actual_min_date)
-            query_end_date = min(query_end_date, actual_max_date)
-
-            logger.info(
-                f"[板块均线] 板块 {sector.name} 实际数据范围: {actual_min_date} 至 {actual_max_date}"
-            )
-            logger.info(
-                f"[板块均线] 智能查询范围: {query_start_date} 至 {query_end_date} "
-                f"(基于最长周期 {max_period}日)"
-            )
-
-            # 应用智能计算的日期范围
-            stmt = stmt.where(DailyMarketData.date >= query_start_date)
+            # 应用日期过滤：查询 end_date 之前的 max_period 条数据
+            # 这样可以确保有足够的历史数据来计算均线，同时不会查询过多数据
             stmt = stmt.where(DailyMarketData.date <= query_end_date)
-            stmt = stmt.order_by(DailyMarketData.date)
+
+            # 如果指定了 start_date，需要查询更多数据以确保能正确计算均线
+            # 需要计算从 start_date 到 query_end_date 的天数，加上 max_period 用于计算均线
+            if start_date:
+                days_span = (query_end_date - start_date).days + 1
+                limit_count = max(days_span + max_period, max_period)
+                logger.info(f"[板块均线] 指定开始日期 {start_date}，将查询 {limit_count} 条数据（跨度 {days_span} 天 + 均线周期 {max_period} 天）")
+            else:
+                limit_count = max_period
+                logger.info(f"[板块均线] 将查询 {limit_count} 条数据用于计算均线")
+
+            stmt = stmt.order_by(DailyMarketData.date.desc())
+            stmt = stmt.limit(limit_count)
 
             result = await self.session.execute(stmt)
             market_data_list = result.scalars().all()
@@ -251,6 +235,9 @@ class SectorMAService:
                     "success": False,
                     "error": "没有找到该板块的市场数据"
                 }
+
+            # 反转列表，使数据按日期升序排列
+            market_data_list = list(reversed(market_data_list))
 
             # 获取数据日期范围
             data_start_date = market_data_list[0].date
@@ -300,7 +287,12 @@ class SectorMAService:
                 # ========================================
                 # 步骤3.1: 检查该周期的断点（已有数据的最大日期）
                 # ========================================
-                period_df = df  # 默认使用全部数据
+                # 用于计算均线的数据集：始终使用完整数据，确保均线计算正确
+                calc_df = df
+
+                # 用于保存的数据集：根据断点续传逻辑确定
+                save_df = df
+                save_start_date_limit = None
 
                 if not overwrite:
                     # 查询该周期已有数据的最大日期
@@ -316,21 +308,22 @@ class SectorMAService:
                     latest_period_date = latest_period_result.scalar()
 
                     if latest_period_date:
-                        logger.info(f"[板块均线] {sector.name} {period}日均线已有数据，最新日期: {latest_period_date}，将从该日期后继续计算")
-                        # 过滤出需要重新计算的数据（从最新日期的下一天开始）
-                        period_df = df[df.index > latest_period_date]
+                        logger.info(f"[板块均线] {sector.name} {period}日均线已有数据，最新日期: {latest_period_date}，将从该日期后继续保存")
+                        # 过滤出需要保存的数据（从最新日期的下一天开始）
+                        save_df = df[df.index > latest_period_date]
+                        save_start_date_limit = latest_period_date
 
-                        if len(period_df) == 0:
+                        if len(save_df) == 0:
                             logger.info(f"[板块均线] {sector.name} {period}日均线数据已是最新，跳过该周期")
                             total_skipped += 0  # 本周期没有处理任何数据
                             continue
 
-                        logger.info(f"[板块均线] {sector.name} {period}日均线需要计算 {len(period_df)} 天的新数据")
+                        logger.info(f"[板块均线] {sector.name} {period}日均线需要保存 {len(save_df)} 天的新数据（使用全部 {len(df)} 天数据计算均线）")
                     else:
-                        logger.info(f"[板块均线] {sector.name} {period}日均线无历史数据，将计算全部数据")
+                        logger.info(f"[板块均线] {sector.name} {period}日均线无历史数据，将计算并保存全部数据")
 
-                # 计算均线
-                ma_series = self.ma_calculator.calculate_sma(period_df["close"], period)
+                # 计算均线：使用完整数据集计算
+                ma_series = self.ma_calculator.calculate_sma(calc_df["close"], period)
 
                 # 统计本周期的处理情况
                 period_created = 0
@@ -339,12 +332,13 @@ class SectorMAService:
                 batch_records = []
                 batch_size = 500  # 每500条记录提交一次
 
-                # 遍历均线数据
+                # 遍历均线数据，只保存 save_df 中的数据
                 for idx, ma_value in ma_series.items():
                     if pd.isna(ma_value):
                         continue
 
-                    if idx not in period_df.index:
+                    # 只保存 save_df 中的数据（断点之后的数据）
+                    if idx not in save_df.index:
                         continue
 
                     # 应用日期过滤：只保存指定时间范围内的均线数据
@@ -353,7 +347,7 @@ class SectorMAService:
                     if end_date and idx > end_date:
                         continue
 
-                    current_price = period_df.loc[idx, "close"]
+                    current_price = save_df.loc[idx, "close"]
 
                     # 计算价格比率和趋势
                     price_ratio = self.ma_calculator.calculate_price_ratio(current_price, ma_value)
