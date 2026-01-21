@@ -47,7 +47,7 @@ development_status:
   # Epic 1: 数据库、算法与最小验证
   epic-1: in-progress
   1-1-create-classification-table: done
-  1-2-implement-chan-lun-algorithm: backlog
+  1-2-implement-chan-lun-algorithm: done
   1-3-create-api-endpoints: backlog
   1-4-create-min-frontend-page: backlog
   1-5-integrate-cache-mechanism: backlog
