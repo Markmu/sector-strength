@@ -13,6 +13,7 @@ from src.core.exceptions import setup_exception_handlers
 from src.api.router import router as api_router
 from src.api.exceptions import APIError, api_error_handler, generic_error_handler
 from src.db.database import engine
+from src.api.v1.error_handlers import register_classification_exception_handlers
 
 # 导入任务执行器
 from src.services.task_executor import init_task_executor, start_task_executor, stop_task_executor
@@ -74,6 +75,9 @@ setup_exception_handlers(app)
 # 添加 API 异常处理器
 app.add_exception_handler(APIError, api_error_handler)
 app.add_exception_handler(Exception, generic_error_handler)
+
+# 注册分类异常处理器
+register_classification_exception_handlers(app)
 
 # CORS 中间件
 app.add_middleware(

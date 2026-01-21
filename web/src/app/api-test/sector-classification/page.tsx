@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { sectorClassificationApi, TestResult } from '@/lib/sectorClassificationApi'
+import { ErrorMessage } from '@/components/ErrorMessage'
 
 /**
  * API 测试页面
@@ -90,7 +91,7 @@ export default function SectorClassificationAPITestPage() {
   /**
    * 渲染测试结果
    */
-  const renderTestResult = (result: TestResult) => (
+  const renderTestResult = (result: TestResult, onRetry?: () => void) => (
     <div className="mt-4">
       <div className="flex items-center gap-4 mb-2">
         <span className={`font-semibold ${result.error ? 'text-red-500' : 'text-green-500'}`}>
@@ -102,9 +103,12 @@ export default function SectorClassificationAPITestPage() {
       </div>
 
       {result.error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded mb-2">
-          错误: {getErrorMessage(result.status, result.error)}
-        </div>
+        <ErrorMessage
+          error={getErrorMessage(result.status, result.error)}
+          code={`HTTP ${result.status}`}
+          onRetry={onRetry}
+          retryLabel="重试"
+        />
       )}
 
       {result.data && (
@@ -132,7 +136,7 @@ export default function SectorClassificationAPITestPage() {
             {loading ? '测试中...' : '测试获取所有分类'}
           </button>
 
-          {allResult && renderTestResult(allResult)}
+          {allResult && renderTestResult(allResult, handleTestGetAll)}
         </section>
 
         {/* 测试获取单个分类 */}
@@ -155,7 +159,7 @@ export default function SectorClassificationAPITestPage() {
             </button>
           </div>
 
-          {singleResult && renderTestResult(singleResult)}
+          {singleResult && renderTestResult(singleResult, handleTestGetSingle)}
         </section>
 
         {/* 说明 */}

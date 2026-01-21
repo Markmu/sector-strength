@@ -17,48 +17,15 @@ from src.models.sector import Sector
 from src.models.daily_market_data import DailyMarketData
 from src.models.moving_average_data import MovingAverageData
 
+# 导入自定义异常类
+from src.exceptions.classification import (
+    ClassificationError,
+    MissingMADataError,
+    ClassificationFailedError,
+    InvalidPriceError
+)
+
 logger = logging.getLogger(__name__)
-
-
-# ===============================
-# 自定义异常类
-# ===============================
-
-class ClassificationError(Exception):
-    """分类计算基础异常"""
-    pass
-
-
-class MissingMADataError(ClassificationError):
-    """均线数据缺失异常
-
-    当所需的均线数据缺失时抛出。
-
-    Attributes:
-        message: 错误消息
-        sector_id: 板块ID
-        date: 查询日期
-    """
-
-    def __init__(self, message: str, sector_id: int = None, date: date = None):
-        self.sector_id = sector_id
-        self.date = date
-        super().__init__(message)
-
-
-class InvalidPriceError(ClassificationError):
-    """价格数据无效异常
-
-    当价格数据无效或缺失时抛出。
-
-    Attributes:
-        message: 错误消息
-        sector_id: 板块ID
-    """
-
-    def __init__(self, message: str, sector_id: int = None):
-        self.sector_id = sector_id
-        super().__init__(message)
 
 
 # ===============================
@@ -277,9 +244,8 @@ class SectorClassificationService:
 
             if ma_data is None or ma_data.ma_value is None:
                 raise MissingMADataError(
-                    f"板块 {sector_id} 在 {target_date} 缺少 {period} 日均线数据",
                     sector_id=sector_id,
-                    date=target_date
+                    missing_fields=[f"ma_{period}"]
                 )
 
             ma_values[f'ma_{period}'] = float(ma_data.ma_value)
@@ -318,8 +284,8 @@ class SectorClassificationService:
 
         if len(price_data_list) < 6:
             raise InvalidPriceError(
-                f"板块 {sector_id} 在 {target_date} 附近的价格数据不足（需要至少6天数据）",
-                sector_id=sector_id
+                sector_id=sector_id,
+                reason=f"在 {target_date} 附近的价格数据不足（需要至少6天数据，当前{len(price_data_list)}天）"
             )
 
         # 最新一天的数据是当前价格
@@ -347,6 +313,7 @@ class SectorClassificationService:
         Raises:
             MissingMADataError: 当均线数据缺失时
             InvalidPriceError: 当价格数据无效时
+            ClassificationFailedError: 当分类计算失败时
         """
         # 获取板块信息
         stmt = select(Sector).where(Sector.id == sector_id)
@@ -354,31 +321,45 @@ class SectorClassificationService:
         sector = result.scalar_one_or_none()
 
         if sector is None:
-            raise InvalidPriceError(f"板块 {sector_id} 不存在", sector_id=sector_id)
+            raise InvalidPriceError(
+                sector_id=sector_id,
+                reason="板块不存在"
+            )
 
-        # 获取均线数据
-        ma_values = await self.get_ma_data(sector_id, classification_date)
+        try:
+            # 获取均线数据
+            ma_values = await self.get_ma_data(sector_id, classification_date)
 
-        # 获取价格数据
-        current_price, price_5_days_ago = await self.get_price_data(sector_id, classification_date)
+            # 获取价格数据
+            current_price, price_5_days_ago = await self.get_price_data(sector_id, classification_date)
 
-        # 计算分类级别
-        classification_level = calculate_classification_level(current_price, ma_values)
+            # 计算分类级别
+            classification_level = calculate_classification_level(current_price, ma_values)
 
-        # 计算状态
-        state = calculate_state(current_price, price_5_days_ago)
+            # 计算状态
+            state = calculate_state(current_price, price_5_days_ago)
 
-        return ClassificationResult(
-            sector_id=sector_id,
-            sector_name=sector.name,
-            symbol=sector.code,
-            classification_level=classification_level,
-            state=state,
-            current_price=current_price,
-            ma_values=ma_values,
-            price_5_days_ago=price_5_days_ago,
-            classification_date=classification_date
-        )
+            return ClassificationResult(
+                sector_id=sector_id,
+                sector_name=sector.name,
+                symbol=sector.code,
+                classification_level=classification_level,
+                state=state,
+                current_price=current_price,
+                ma_values=ma_values,
+                price_5_days_ago=price_5_days_ago,
+                classification_date=classification_date
+            )
+        except (MissingMADataError, InvalidPriceError):
+            # 重新抛出已知异常，添加板块名称
+            raise
+        except Exception as e:
+            # 捕获其他异常并转换为 ClassificationFailedError
+            raise ClassificationFailedError(
+                sector_id=sector_id,
+                sector_name=sector.name,
+                reason=str(e)
+            ) from e
 
     @timing_decorator
     async def batch_calculate_all_sectors(

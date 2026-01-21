@@ -40,10 +40,36 @@ export interface ApiResponse<T> {
 }
 
 /**
- * API 错误类型
+ * 标准错误响应类型
+ */
+export interface StandardApiError {
+  error: {
+    code: string
+    message: string
+    timestamp: string
+  }
+}
+
+/**
+ * 旧版 API 错误类型（兼容）
  */
 export interface ApiError {
   detail: string
+}
+
+/**
+ * API 客户端错误类
+ */
+export class ApiClientError extends Error {
+  code: string
+  timestamp: string
+
+  constructor(message: string, code: string, timestamp: string) {
+    super(message)
+    this.name = 'ApiClientError'
+    this.code = code
+    this.timestamp = timestamp
+  }
 }
 
 /**
@@ -83,6 +109,38 @@ class SectorClassificationAPI {
   }
 
   /**
+   * 处理 API 响应，解析标准错误格式
+   */
+  private async handleResponse(response: Response): Promise<any> {
+    if (!response.ok) {
+      // 尝试解析标准错误响应格式
+      const contentType = response.headers.get('content-type')
+      if (contentType?.includes('application/json')) {
+        const data: StandardApiError | ApiError = await response.json()
+
+        // 检查是否是标准错误格式
+        if ('error' in data && 'code' in data.error && 'message' in data.error) {
+          throw new ApiClientError(
+            data.error.message,
+            data.error.code,
+            data.error.timestamp
+          )
+        }
+
+        // 兼容旧版错误格式
+        if ('detail' in data) {
+          throw new Error(data.detail)
+        }
+      }
+
+      // 如果无法解析错误，使用默认错误消息
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
+
+  /**
    * 获取所有板块分类
    */
   async getAllClassifications(params?: { skip?: number; limit?: number }): Promise<ApiResponse<SectorClassification[]>> {
@@ -98,12 +156,7 @@ class SectorClassificationAPI {
       },
     })
 
-    if (!response.ok) {
-      const error: ApiError = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
-      throw new Error(error.detail || '获取分类数据失败')
-    }
-
-    return response.json()
+    return this.handleResponse(response)
   }
 
   /**
@@ -118,12 +171,7 @@ class SectorClassificationAPI {
       },
     })
 
-    if (!response.ok) {
-      const error: ApiError = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
-      throw new Error(error.detail || '获取板块分类失败')
-    }
-
-    return response.json()
+    return this.handleResponse(response)
   }
 
   /**
@@ -145,11 +193,22 @@ class SectorClassificationAPI {
       const data = await response.json()
 
       if (!response.ok) {
+        // 尝试解析错误格式
+        let errorMessage = `HTTP ${response.status}`
+        if (typeof data === 'object' && data !== null) {
+          if ('error' in data && typeof data.error === 'object') {
+            const errorData = data.error as { code?: string; message?: string; timestamp?: string }
+            errorMessage = errorData.message || errorMessage
+          } else if ('detail' in data && typeof data.detail === 'string') {
+            errorMessage = data.detail
+          }
+        }
+
         return {
           status: response.status,
           data: null,
           responseTime: endTime - startTime,
-          error: data.detail || data.error?.message || `HTTP ${response.status}`,
+          error: errorMessage,
         }
       }
 
@@ -188,11 +247,22 @@ class SectorClassificationAPI {
       const data = await response.json()
 
       if (!response.ok) {
+        // 尝试解析错误格式
+        let errorMessage = `HTTP ${response.status}`
+        if (typeof data === 'object' && data !== null) {
+          if ('error' in data && typeof data.error === 'object') {
+            const errorData = data.error as { code?: string; message?: string; timestamp?: string }
+            errorMessage = errorData.message || errorMessage
+          } else if ('detail' in data && typeof data.detail === 'string') {
+            errorMessage = data.detail
+          }
+        }
+
         return {
           status: response.status,
           data: null,
           responseTime: endTime - startTime,
-          error: data.detail || data.error?.message || `HTTP ${response.status}`,
+          error: errorMessage,
         }
       }
 
