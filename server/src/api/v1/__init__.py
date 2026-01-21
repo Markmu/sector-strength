@@ -16,6 +16,7 @@ from .rankings import router as rankings_router
 from .heatmap import router as heatmap_router
 from .market_index import router as market_index_router
 from .analysis import router as analysis_router  # 板块强度分析
+from .sector_classifications import router as sector_classifications_router  # 板块分类
 
 # 创建 v1 主路由
 router = APIRouter(prefix="/v1", tags=["v1"])
@@ -28,5 +29,6 @@ router.include_router(rankings_router)       # /api/v1/rankings/*
 router.include_router(heatmap_router)        # /api/v1/heatmap/*
 router.include_router(market_index_router)   # /api/v1/market-index/*
 router.include_router(analysis_router)       # /api/v1/analysis/*
+router.include_router(sector_classifications_router)  # /api/v1/sector-classifications/*
 
 __all__ = ["router"]
