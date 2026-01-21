@@ -57,7 +57,7 @@ development_status:
   # Epic 2A: 基础分类展示
   epic-2a: in-progress
   2a-1-create-page-route-layout: done
-  2a-2-implement-table-component: backlog
+  2a-2-implement-table-component: done
   2a-3-implement-data-fetching: backlog
   2a-4-add-update-time-display: backlog
   2a-5-add-disclaimer-component: backlog

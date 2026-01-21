@@ -10,6 +10,10 @@ export type { CardProps, CardHeaderProps, CardBodyProps, CardFooterProps } from 
 export { default as Table } from './Table'
 export type { TableColumn, TableProps } from './Table'
 
+// 小写别名以支持 @/components/ui/table 导入方式
+export { default as table } from './Table'
+export type { TableColumn as tableColumn, TableProps as tableProps } from './Table'
+
 export { default as Loading } from './Loading'
 export type { LoadingProps } from './Loading'
 
