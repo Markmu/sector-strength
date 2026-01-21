@@ -6,34 +6,89 @@
 
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDispatch, useSelector } from 'react-redux'
 import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
 import { useAuth } from '@/contexts/AuthContext'
 import Loading from '@/components/ui/Loading'
+import {
+  ClassificationTable,
+  ClassificationSkeleton,
+  ClassificationError,
+} from '@/components/sector-classification'
+import {
+  fetchClassifications,
+  selectClassifications,
+  selectLoading,
+  selectError,
+  type RootState,
+  type AppDispatch,
+} from '@/store'
 
 // 页面文本常量
 const PAGE_TEXT = {
   title: '板块强弱分类',
   subtitle: '查看市场板块强弱分布',
-  placeholder: {
-    title: '板块分类数据',
-    description: '板块强弱分类表格将在后续 Story 中实现',
-  },
   loading: '加载中...',
+  empty: '暂无分类数据',
 } as const
+
+/**
+ * 板块分类页面组件
+ *
+ * @description
+ * - 自动获取最新的分类数据
+ * - 显示加载状态（骨架屏）
+ * - 显示错误状态和重试按钮
+ * - 显示分类表格
+ */
+export default function SectorClassificationPage() {
   const router = useRouter()
-  const { isAuthenticated, isLoading } = useAuth()
+  const dispatch = useDispatch<AppDispatch>()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+
+  // 从 Redux store 获取状态
+  const classifications = useSelector((state: RootState) =>
+    selectClassifications(state)
+  )
+  const loading = useSelector((state: RootState) =>
+    selectLoading(state)
+  )
+  const error = useSelector((state: RootState) =>
+    selectError(state)
+  )
+
+  /**
+   * 获取分类数据
+   */
+  const fetchData = useCallback(() => {
+    dispatch(fetchClassifications())
+  }, [dispatch])
 
   // 认证保护：未登录用户重定向到登录页面
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (!authLoading && !isAuthenticated) {
       router.push('/login')
     }
-  }, [isAuthenticated, isLoading, router])
+  }, [isAuthenticated, authLoading, router])
 
-  // 加载中显示状态
-  if (isLoading) {
+  // 页面挂载时自动获取数据
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData()
+    }
+  }, [isAuthenticated, fetchData])
+
+  /**
+   * 重试获取数据
+   */
+  const handleRetry = () => {
+    fetchData()
+  }
+
+  // 认证加载中显示状态
+  if (authLoading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[400px]" role="status" aria-live="polite">
@@ -56,18 +111,25 @@ const PAGE_TEXT = {
       />
 
       <div className="space-y-6">
-        {/* 占位符内容 - 用于后续 Story 实现 */}
-        <div className="bg-white rounded-xl border border-[#e9ecef] shadow-sm p-8">
-          <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-cyan-50 mb-4">
-              <svg className="w-8 h-8 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" role="img" aria-label="图表图标">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">{PAGE_TEXT.placeholder.title}</h3>
-            <p className="text-sm text-gray-500">{PAGE_TEXT.placeholder.description}</p>
-          </div>
-        </div>
+        {/* 根据状态显示不同内容 */}
+        {loading && classifications.length === 0 ? (
+          // 加载状态：显示骨架屏
+          <ClassificationSkeleton />
+        ) : error ? (
+          // 错误状态：显示错误提示和重试按钮
+          <ClassificationError
+            error={error}
+            onRetry={handleRetry}
+            isRetrying={loading}
+          />
+        ) : (
+          // 成功状态：显示表格
+          <ClassificationTable
+            data={classifications}
+            loading={loading}
+            emptyText={PAGE_TEXT.empty}
+          />
+        )}
       </div>
     </DashboardLayout>
   )

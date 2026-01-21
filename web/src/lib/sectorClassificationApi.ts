@@ -4,32 +4,10 @@
  * 提供板块分类 API 的调用方法，自动处理认证和错误
  */
 
+import type { SectorClassification } from '@/types/sector-classification'
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const API_BASE_WITH_PREFIX = `${API_BASE}/api/v1`
-
-/**
- * 板块分类数据类型
- */
-export interface SectorClassification {
-  id: number
-  sector_id: number
-  symbol: string
-  classification_date: string
-  classification_level: number
-  state: '反弹' | '调整'
-  current_price: number | null
-  change_percent: number | null
-  price_5_days_ago: number | null
-  ma_5: number | null
-  ma_10: number | null
-  ma_20: number | null
-  ma_30: number | null
-  ma_60: number | null
-  ma_90: number | null
-  ma_120: number | null
-  ma_240: number | null
-  created_at: string
-}
 
 /**
  * API 响应类型
@@ -162,7 +140,7 @@ class SectorClassificationAPI {
   /**
    * 获取单个板块分类
    */
-  async getClassificationById(sectorId: number): Promise<ApiResponse<SectorClassification>> {
+  async getClassificationById(sectorId: string): Promise<ApiResponse<SectorClassification>> {
     const response = await fetch(`${this.baseURL}/sector-classifications/${sectorId}`, {
       method: 'GET',
       headers: {
@@ -231,7 +209,7 @@ class SectorClassificationAPI {
   /**
    * 带响应时间测量的获取单个分类
    */
-  async getClassificationByIdWithTiming(sectorId: number): Promise<TestResult> {
+  async getClassificationByIdWithTiming(sectorId: string): Promise<TestResult> {
     const startTime = performance.now()
 
     try {

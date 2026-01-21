@@ -4,3 +4,8 @@
 
 export { ClassificationTable } from './ClassificationTable'
 export type { ClassificationTableProps } from './ClassificationTable'
+
+export { ClassificationSkeleton } from './ClassificationSkeleton'
+
+export { ClassificationError } from './ClassificationError'
+export type { ClassificationErrorProps } from './ClassificationError'
