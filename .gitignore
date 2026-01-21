@@ -135,3 +135,5 @@ tmp/
 temp/
 
 .pytest_cache/
+
+.coverage
