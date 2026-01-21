@@ -4,18 +4,19 @@
 提供板块分类结果相关的 REST API 端点。
 """
 
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from src.api.deps import get_session, get_current_user
+from src.api.deps import get_session, get_current_user, require_admin
 from src.models.user import User
 from src.api.schemas.sector_classification import (
     SectorClassificationResponse,
     SectorClassificationListResponse
 )
 from src.models.sector_classification import SectorClassification
+from src.services.classification_cache import classification_cache
 
 router = APIRouter(prefix="/sector-classifications", tags=["sector-classifications"])
 
@@ -48,6 +49,15 @@ async def get_sector_classifications(
     异常:
         HTTPException 401: 未认证
     """
+    # 生成缓存键
+    cache_key = f"classification:all:{skip}:{limit}"
+
+    # 尝试从缓存获取（使用元组返回格式）
+    hit, cached_data = classification_cache.get(cache_key)
+    if hit:
+        return cached_data
+
+    # 缓存未命中，查询数据库
     # 计算总数
     count_stmt = select(func.count()).select_from(SectorClassification)
     count_result = await session.execute(count_stmt)
@@ -68,7 +78,12 @@ async def get_sector_classifications(
         for classification in classifications
     ]
 
-    return SectorClassificationListResponse(data=data, total=total)
+    response = SectorClassificationListResponse(data=data, total=total)
+
+    # 存入缓存
+    classification_cache.set(cache_key, response)
+
+    return response
 
 
 @router.get(
@@ -99,6 +114,15 @@ async def get_sector_classification(
         HTTPException 401: 未认证
         HTTPException 404: 板块不存在
     """
+    # 生成缓存键
+    cache_key = f"classification:{sector_id}"
+
+    # 尝试从缓存获取（使用元组返回格式）
+    hit, cached_data = classification_cache.get(cache_key)
+    if hit:
+        return cached_data
+
+    # 缓存未命中，查询数据库
     # 查询最新的分类数据（按分类日期降序，取第一条）
     stmt = select(SectorClassification).where(
         SectorClassification.sector_id == sector_id
@@ -115,4 +139,72 @@ async def get_sector_classification(
             detail=f"板块 {sector_id} 的分类数据不存在"
         )
 
-    return SectorClassificationResponse.model_validate(classification)
+    # 转换为响应模型
+    response = SectorClassificationResponse.model_validate(classification)
+
+    # 存入缓存
+    classification_cache.set(cache_key, response)
+
+    return response
+
+
+@router.post(
+    "/cache/clear",
+    status_code=status.HTTP_200_OK,
+    summary="清除分类缓存",
+    description="清除板块分类缓存，需要管理员权限"
+)
+async def clear_classification_cache(
+    sector_id: Optional[int] = Query(None, description="板块ID（可选），如果不提供则清除所有缓存"),
+    current_user: User = Depends(require_admin)
+) -> dict:
+    """
+    清除分类缓存
+
+    参数:
+        sector_id: 板块ID（可选），如果不提供则清除所有缓存
+        current_user: 当前认证用户（自动注入，需要管理员权限）
+
+    返回:
+        清除结果
+
+    异常:
+        HTTPException 401: 未认证
+        HTTPException 403: 权限不足
+    """
+    if sector_id is None:
+        # 清除所有分类缓存
+        count = classification_cache.clear_pattern("classification:")
+        return {"message": f"已清除所有分类缓存，共 {count} 条"}
+    else:
+        # 清除单个板块缓存
+        cache_key = f"classification:{sector_id}"
+        count = classification_cache.clear(cache_key)
+        # 同时清除相关的分页缓存
+        classification_cache.clear_pattern("classification:all:")
+        return {"message": f"已清除板块 {sector_id} 的缓存，共 {count + 1} 条（包含分页缓存）"}
+
+
+@router.get(
+    "/cache/stats",
+    response_model=dict,
+    summary="获取缓存统计",
+    description="获取分类缓存统计信息，需要管理员权限"
+)
+async def get_cache_stats(
+    current_user: User = Depends(require_admin)
+) -> dict:
+    """
+    获取缓存统计信息
+
+    参数:
+        current_user: 当前认证用户（自动注入，需要管理员权限）
+
+    返回:
+        缓存统计信息
+
+    异常:
+        HTTPException 401: 未认证
+        HTTPException 403: 权限不足
+    """
+    return classification_cache.get_stats()
