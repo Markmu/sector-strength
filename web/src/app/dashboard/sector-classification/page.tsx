@@ -19,6 +19,7 @@ import {
   UpdateTimeDisplay,
   Disclaimer,
   SearchBar,
+  RefreshButton,
 } from '@/components/sector-classification'
 import {
   fetchClassifications,
@@ -118,8 +119,11 @@ export default function SectorClassificationPage() {
       />
 
       <div className="space-y-6">
-        {/* 搜索框 */}
-        <SearchBar />
+        {/* 搜索框和刷新按钮 */}
+        <div className="flex items-center gap-4" role="toolbar" aria-label="数据控制工具栏">
+          <SearchBar className="flex-1" />
+          <RefreshButton />
+        </div>
 
         {/* 更新时间显示 - 仅在数据加载成功且无错误时显示 */}
         {!loading && !error && lastFetch && (

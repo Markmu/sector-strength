@@ -28,3 +28,6 @@ export type { EmptySearchResultProps } from './EmptySearchResult'
 export { sortClassifications } from './sortUtils'
 
 export { filterClassifications } from './filterUtils'
+
+export { RefreshButton } from './RefreshButton'
+export type { RefreshButtonProps } from './RefreshButton'

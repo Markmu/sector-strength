@@ -67,7 +67,7 @@ development_status:
   epic-2b: in-progress
   2b-1-implement-sorting: done
   2b-2-implement-search: done
-  2b-3-implement-refresh-button: backlog
+  2b-3-implement-refresh-button: done
   2b-4-implement-keyboard-navigation: backlog
   epic-2b-retrospective: optional
 
