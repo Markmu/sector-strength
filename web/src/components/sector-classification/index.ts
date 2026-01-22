@@ -31,3 +31,9 @@ export { filterClassifications } from './filterUtils'
 
 export { RefreshButton } from './RefreshButton'
 export type { RefreshButtonProps } from './RefreshButton'
+
+export { HelpDialog } from './HelpDialog'
+export type { HelpDialogProps } from './HelpDialog.types'
+
+export { HelpButton } from './HelpButton'
+export type { HelpButtonProps } from './HelpButton.types'

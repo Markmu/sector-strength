@@ -6,7 +6,7 @@
 
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDispatch, useSelector } from 'react-redux'
 import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
@@ -20,6 +20,8 @@ import {
   Disclaimer,
   SearchBar,
   RefreshButton,
+  HelpDialog,
+  HelpButton,
 } from '@/components/sector-classification'
 import {
   fetchClassifications,
@@ -52,6 +54,7 @@ export default function SectorClassificationPage() {
   const router = useRouter()
   const dispatch = useDispatch<AppDispatch>()
   const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const [helpOpen, setHelpOpen] = useState(false)
 
   // 从 Redux store 获取状态
   const classifications = useSelector((state: RootState) =>
@@ -116,6 +119,7 @@ export default function SectorClassificationPage() {
       <DashboardHeader
         title={PAGE_TEXT.title}
         subtitle={PAGE_TEXT.subtitle}
+        actions={<HelpButton onClick={() => setHelpOpen(true)} />}
       />
 
       <div className="space-y-6">
@@ -153,6 +157,9 @@ export default function SectorClassificationPage() {
         {/* 免责声明 - 始终显示 */}
         <Disclaimer showSeparator={true} />
       </div>
+
+      {/* 帮助弹窗 */}
+      <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </DashboardLayout>
   )
 }
