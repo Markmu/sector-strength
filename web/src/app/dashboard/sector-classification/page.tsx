@@ -16,12 +16,14 @@ import {
   ClassificationTable,
   ClassificationSkeleton,
   ClassificationError,
+  UpdateTimeDisplay,
 } from '@/components/sector-classification'
 import {
   fetchClassifications,
   selectClassifications,
   selectLoading,
   selectError,
+  selectLastFetch,
   type RootState,
   type AppDispatch,
 } from '@/store'
@@ -57,6 +59,9 @@ export default function SectorClassificationPage() {
   )
   const error = useSelector((state: RootState) =>
     selectError(state)
+  )
+  const lastFetch = useSelector((state: RootState) =>
+    selectLastFetch(state)
   )
 
   /**
@@ -111,6 +116,11 @@ export default function SectorClassificationPage() {
       />
 
       <div className="space-y-6">
+        {/* 更新时间显示 - 仅在数据加载成功且无错误时显示 */}
+        {!loading && !error && lastFetch && (
+          <UpdateTimeDisplay lastFetch={lastFetch} />
+        )}
+
         {/* 根据状态显示不同内容 */}
         {loading && classifications.length === 0 ? (
           // 加载状态：显示骨架屏

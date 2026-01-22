@@ -9,3 +9,6 @@ export { ClassificationSkeleton } from './ClassificationSkeleton'
 
 export { ClassificationError } from './ClassificationError'
 export type { ClassificationErrorProps } from './ClassificationError'
+
+export { UpdateTimeDisplay } from './UpdateTimeDisplay'
+export type { UpdateTimeDisplayProps } from './UpdateTimeDisplay'
