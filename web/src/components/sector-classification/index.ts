@@ -19,4 +19,12 @@ export type { DisclaimerProps } from './Disclaimer'
 export { SortableTableHeader } from './SortableTableHeader'
 export type { SortableTableHeaderProps } from './SortableTableHeader'
 
+export { SearchBar } from './SearchBar'
+export type { SearchBarProps } from './SearchBar'
+
+export { EmptySearchResult } from './EmptySearchResult'
+export type { EmptySearchResultProps } from './EmptySearchResult'
+
 export { sortClassifications } from './sortUtils'
+
+export { filterClassifications } from './filterUtils'

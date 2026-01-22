@@ -18,6 +18,7 @@ import {
   ClassificationError,
   UpdateTimeDisplay,
   Disclaimer,
+  SearchBar,
 } from '@/components/sector-classification'
 import {
   fetchClassifications,
@@ -117,6 +118,9 @@ export default function SectorClassificationPage() {
       />
 
       <div className="space-y-6">
+        {/* 搜索框 */}
+        <SearchBar />
+
         {/* 更新时间显示 - 仅在数据加载成功且无错误时显示 */}
         {!loading && !error && lastFetch && (
           <UpdateTimeDisplay lastFetch={lastFetch} />

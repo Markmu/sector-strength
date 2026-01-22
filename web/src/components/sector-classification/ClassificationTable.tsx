@@ -15,8 +15,11 @@ import { useMemo } from 'react'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSectorClassificationSort } from '@/stores/useSectorClassificationSort'
+import { useSectorClassificationSearch } from '@/stores/useSectorClassificationSearch'
+import { filterClassifications } from './filterUtils'
 import { sortClassifications } from './sortUtils'
 import { SortableTableHeader } from './SortableTableHeader'
+import { EmptySearchResult } from './EmptySearchResult'
 import type {
   SectorClassification,
   ClassificationState,
@@ -45,8 +48,10 @@ export interface ClassificationTableProps {
  *
  * @description
  * - 支持按分类级别、板块名称、涨跌幅排序
- * - 使用 Zustand 管理排序状态
- * - 使用 useMemo 优化排序性能
+ * - 支持按板块名称搜索过滤
+ * - 使用 Zustand 管理排序和搜索状态
+ * - 使用 useMemo 优化性能
+ * - 先搜索过滤，再排序
  * - 使用颜色和图标直观展示板块强弱状态
  */
 export function ClassificationTable({
@@ -57,11 +62,18 @@ export function ClassificationTable({
   className,
 }: ClassificationTableProps) {
   const { sortBy, sortOrder } = useSectorClassificationSort()
+  const { searchQuery } = useSectorClassificationSearch()
 
-  // 使用排序工具函数对数据进行排序（性能优化）
-  const sortedData = useMemo(() => {
-    return sortClassifications(data, sortBy, sortOrder)
-  }, [data, sortBy, sortOrder])
+  // 先过滤，再排序（性能优化）
+  const filteredAndSortedData = useMemo(() => {
+    // 步骤 1: 搜索过滤
+    const filtered = filterClassifications(data, searchQuery)
+
+    // 步骤 2: 排序
+    const sorted = sortClassifications(filtered, sortBy, sortOrder)
+
+    return sorted
+  }, [data, searchQuery, sortBy, sortOrder])
 
   // 渲染分类级别徽章
   const renderLevelBadge = (level: number) => {
@@ -112,6 +124,13 @@ export function ClassificationTable({
   // 获取行 key
   const getRowKey = (record: SectorClassification, index: number): string => {
     return record.id ?? String(index)
+  }
+
+  // 空搜索结果处理
+  // 注意：使用 searchQuery 而不是 searchQuery.trim()，因为 filterClassifications
+  // 已经处理了 trim 逻辑。这里只需要检查是否有搜索关键词存在
+  if (!loading && filteredAndSortedData.length === 0 && searchQuery) {
+    return <EmptySearchResult />
   }
 
   return (
@@ -193,7 +212,7 @@ export function ClassificationTable({
                 </div>
               </td>
             </tr>
-          ) : sortedData.length === 0 ? (
+          ) : filteredAndSortedData.length === 0 ? (
             <tr>
               <td
                 colSpan={5}
@@ -203,7 +222,7 @@ export function ClassificationTable({
               </td>
             </tr>
           ) : (
-            sortedData.map((record, index) => (
+            filteredAndSortedData.map((record, index) => (
               <tr
                 key={getRowKey(record, index)}
                 className={cn(
