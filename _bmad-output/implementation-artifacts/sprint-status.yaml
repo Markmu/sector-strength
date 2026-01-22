@@ -64,8 +64,8 @@ development_status:
   epic-2a-retrospective: optional
 
   # Epic 2B: 高级交互功能
-  epic-2b: backlog
-  2b-1-implement-sorting: backlog
+  epic-2b: in-progress
+  2b-1-implement-sorting: done
   2b-2-implement-search: backlog
   2b-3-implement-refresh-button: backlog
   2b-4-implement-keyboard-navigation: backlog

@@ -13,7 +13,10 @@
 
 import { useMemo } from 'react'
 import { TrendingUp, TrendingDown } from 'lucide-react'
-import Table, { type TableColumn } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
+import { useSectorClassificationSort } from '@/stores/useSectorClassificationSort'
+import { sortClassifications } from './sortUtils'
+import { SortableTableHeader } from './SortableTableHeader'
 import type {
   SectorClassification,
   ClassificationState,
@@ -41,8 +44,10 @@ export interface ClassificationTableProps {
  * 分类表格组件
  *
  * @description
- * 按分类级别降序排列（第 9 类在前）
- * 使用颜色和图标直观展示板块强弱状态
+ * - 支持按分类级别、板块名称、涨跌幅排序
+ * - 使用 Zustand 管理排序状态
+ * - 使用 useMemo 优化排序性能
+ * - 使用颜色和图标直观展示板块强弱状态
  */
 export function ClassificationTable({
   data,
@@ -51,17 +56,24 @@ export function ClassificationTable({
   onRowClick,
   className,
 }: ClassificationTableProps) {
-  // 按分类级别降序排列（第 9 类在前）
+  const { sortBy, sortOrder } = useSectorClassificationSort()
+
+  // 使用排序工具函数对数据进行排序（性能优化）
   const sortedData = useMemo(() => {
-    return [...data].sort((a, b) => b.classification_level - a.classification_level)
-  }, [data])
+    return sortClassifications(data, sortBy, sortOrder)
+  }, [data, sortBy, sortOrder])
 
   // 渲染分类级别徽章
   const renderLevelBadge = (level: number) => {
     const colors = getLevelColor(level)
     return (
       <span
-        className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}
+        className={cn(
+          'inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border',
+          colors.bg,
+          colors.text,
+          colors.border
+        )}
       >
         第 {level} 类
       </span>
@@ -74,7 +86,7 @@ export function ClassificationTable({
     const isBounce = state === '反弹'
 
     return (
-      <span className={`inline-flex items-center gap-1.5 ${color} font-medium`}>
+      <span className={cn('inline-flex items-center gap-1.5 font-medium', color)}>
         {isBounce ? (
           <TrendingUp className="w-4 h-4" aria-label="反弹" />
         ) : (
@@ -91,65 +103,147 @@ export function ClassificationTable({
     const sign = value > 0 ? '+' : ''
 
     return (
-      <span className={`font-semibold tabular-nums ${color}`}>
+      <span className={cn('font-semibold tabular-nums', color)}>
         {sign}{value.toFixed(2)}%
       </span>
     )
   }
 
-  // 表格列定义
-  const columns: TableColumn<SectorClassification>[] = [
-    {
-      key: 'sector_name',
-      title: '板块名称',
-      align: 'left',
-      render: (_, record) => (
-        <span className="font-medium text-[#1a1a2e]">{record.sector_name}</span>
-      ),
-    },
-    {
-      key: 'classification_level',
-      title: '分类级别',
-      align: 'center',
-      render: (_, record) => renderLevelBadge(record.classification_level),
-    },
-    {
-      key: 'state',
-      title: '状态',
-      align: 'center',
-      render: (_, record) => renderStateIcon(record.state),
-    },
-    {
-      key: 'current_price',
-      title: '当前价格',
-      align: 'right',
-      render: (_, record) => (
-        <span className="tabular-nums text-[#1a1a2e]">
-          {record.current_price.toFixed(2)}
-        </span>
-      ),
-    },
-    {
-      key: 'change_percent',
-      title: '涨跌幅',
-      align: 'right',
-      render: (_, record) => renderChangePercent(record.change_percent),
-    },
-  ]
+  // 获取行 key
+  const getRowKey = (record: SectorClassification, index: number): string => {
+    return record.id ?? String(index)
+  }
 
   return (
-    <Table
-      columns={columns}
-      data={sortedData}
-      loading={loading}
-      emptyText={emptyText}
-      onRowClick={onRowClick}
-      rowKey="id"
-      striped
-      bordered
-      hoverable={!!onRowClick}
-      className={className}
-    />
+    <div className={cn('w-full overflow-auto rounded-xl border border-[#e9ecef] bg-white', className)}>
+      <table className="w-full">
+        {/* 表头 */}
+        <thead className="bg-[#f8f9fb] border-b border-[#e9ecef]">
+          <tr>
+            {/* 板块名称 */}
+            <SortableTableHeader
+              column="sector_name"
+              label="板块名称"
+              align="left"
+              className="border-r border-[#e9ecef]"
+            />
+
+            {/* 分类级别 */}
+            <SortableTableHeader
+              column="classification_level"
+              label="分类级别"
+              align="center"
+              className="border-r border-[#e9ecef]"
+            />
+
+            {/* 状态（不可排序） */}
+            <th
+              className="px-4 py-3 font-semibold text-[#6c757d] text-xs uppercase tracking-wider text-center border-r border-[#e9ecef]"
+              scope="col"
+            >
+              状态
+            </th>
+
+            {/* 当前价格（不可排序） */}
+            <th
+              className="px-4 py-3 font-semibold text-[#6c757d] text-xs uppercase tracking-wider text-right border-r border-[#e9ecef]"
+              scope="col"
+            >
+              当前价格
+            </th>
+
+            {/* 涨跌幅 */}
+            <SortableTableHeader
+              column="change_percent"
+              label="涨跌幅(%)"
+              align="right"
+            />
+          </tr>
+        </thead>
+
+        {/* 表体 */}
+        <tbody className={cn('divide-y divide-[#f1f3f5]')}>
+          {loading ? (
+            <tr>
+              <td
+                colSpan={5}
+                className="px-4 py-8 text-center text-[#6c757d]"
+              >
+                <div className="flex items-center justify-center">
+                  <svg
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-cyan-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  加载中...
+                </div>
+              </td>
+            </tr>
+          ) : sortedData.length === 0 ? (
+            <tr>
+              <td
+                colSpan={5}
+                className="px-4 py-8 text-center text-[#6c757d]"
+              >
+                {emptyText}
+              </td>
+            </tr>
+          ) : (
+            sortedData.map((record, index) => (
+              <tr
+                key={getRowKey(record, index)}
+                className={cn(
+                  'bg-white even:bg-[#f8f9fb]',
+                  onRowClick && 'hover:bg-[#f8f9fb]/80 transition-colors cursor-pointer'
+                )}
+                onClick={() => onRowClick?.(record, index)}
+              >
+                {/* 板块名称 */}
+                <td className="px-4 py-3 text-[#1a1a2e] border-r border-[#f1f3f5]">
+                  <span className="font-medium">{record.sector_name}</span>
+                </td>
+
+                {/* 分类级别 */}
+                <td className="px-4 py-3 border-r border-[#f1f3f5]">
+                  {renderLevelBadge(record.classification_level)}
+                </td>
+
+                {/* 状态 */}
+                <td className="px-4 py-3 border-r border-[#f1f3f5]">
+                  {renderStateIcon(record.state)}
+                </td>
+
+                {/* 当前价格 */}
+                <td className="px-4 py-3 text-right border-r border-[#f1f3f5]">
+                  <span className="tabular-nums text-[#1a1a2e]">
+                    {record.current_price.toFixed(2)}
+                  </span>
+                </td>
+
+                {/* 涨跌幅 */}
+                <td className="px-4 py-3 text-right">
+                  {renderChangePercent(record.change_percent)}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   )
 }
 

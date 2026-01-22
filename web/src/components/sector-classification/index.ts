@@ -15,3 +15,8 @@ export type { UpdateTimeDisplayProps } from './UpdateTimeDisplay'
 
 export { Disclaimer } from './Disclaimer'
 export type { DisclaimerProps } from './Disclaimer'
+
+export { SortableTableHeader } from './SortableTableHeader'
+export type { SortableTableHeaderProps } from './SortableTableHeader'
+
+export { sortClassifications } from './sortUtils'
