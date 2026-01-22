@@ -17,6 +17,7 @@ import {
   ClassificationSkeleton,
   ClassificationError,
   UpdateTimeDisplay,
+  Disclaimer,
 } from '@/components/sector-classification'
 import {
   fetchClassifications,
@@ -140,6 +141,9 @@ export default function SectorClassificationPage() {
             emptyText={PAGE_TEXT.empty}
           />
         )}
+
+        {/* 免责声明 - 始终显示 */}
+        <Disclaimer showSeparator={true} />
       </div>
     </DashboardLayout>
   )

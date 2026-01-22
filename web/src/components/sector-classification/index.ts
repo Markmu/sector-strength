@@ -12,3 +12,6 @@ export type { ClassificationErrorProps } from './ClassificationError'
 
 export { UpdateTimeDisplay } from './UpdateTimeDisplay'
 export type { UpdateTimeDisplayProps } from './UpdateTimeDisplay'
+
+export { Disclaimer } from './Disclaimer'
+export type { DisclaimerProps } from './Disclaimer'
