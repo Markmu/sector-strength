@@ -37,3 +37,6 @@ export type { HelpDialogProps } from './HelpDialog.types'
 
 export { HelpButton } from './HelpButton'
 export type { HelpButtonProps } from './HelpButton.types'
+
+export { ClassificationLegend } from './ClassificationLegend'
+export type { ClassificationLegendProps } from './ClassificationLegend'

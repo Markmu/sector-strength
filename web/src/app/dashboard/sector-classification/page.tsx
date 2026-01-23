@@ -22,6 +22,7 @@ import {
   RefreshButton,
   HelpDialog,
   HelpButton,
+  ClassificationLegend,
 } from '@/components/sector-classification'
 import {
   fetchClassifications,
@@ -128,6 +129,9 @@ export default function SectorClassificationPage() {
           <SearchBar className="flex-1" />
           <RefreshButton />
         </div>
+
+        {/* 分类级别图例 */}
+        <ClassificationLegend layout="horizontal" />
 
         {/* 更新时间显示 - 仅在数据加载成功且无错误时显示 */}
         {!loading && !error && lastFetch && (
