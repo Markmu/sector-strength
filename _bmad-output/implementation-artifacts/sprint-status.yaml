@@ -74,7 +74,7 @@ development_status:
   # Epic 3: 帮助文档与合规声明
   epic-3: in-progress
   3-1-create-help-dialog: done
-  3-2-add-legend: backlog
+  3-2-add-legend: done
   3-3-integrate-disclaimer: backlog
   3-4-create-risk-dialog: backlog
   epic-3-retrospective: optional
