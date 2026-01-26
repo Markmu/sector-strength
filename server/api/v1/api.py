@@ -1,6 +1,6 @@
 """API v1 路由聚合"""
 from fastapi import APIRouter
-from .endpoints import stocks, sectors, strength, auth, email_queue
+from .endpoints import stocks, sectors, strength, auth, email_queue, admin_sector_classifications
 
 api_router = APIRouter()
 
@@ -35,4 +35,11 @@ api_router.include_router(
     email_queue.router,
     prefix="/api/v1",
     tags=["email_queue"]
+)
+
+# 注册管理员板块分类路由
+api_router.include_router(
+    admin_sector_classifications.router,
+    prefix="/api/v1/admin",
+    tags=["admin_sector_classifications"]
 )

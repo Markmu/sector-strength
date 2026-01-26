@@ -1,6 +1,9 @@
 'use client'
 
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
+import { TestAlgorithmButton } from './TestAlgorithmButton'
+import { TestResultDisplay } from './TestResultDisplay'
+import { useClassificationTest } from './useClassificationTest'
 import type { AdminConfigDisplayProps } from './AdminConfigDisplay.types'
 import { ClassificationLevelDefinition } from './ClassificationLevelDefinition'
 
@@ -9,6 +12,7 @@ import { ClassificationLevelDefinition } from './ClassificationLevelDefinition'
  *
  * @description
  * 显示板块强弱分类的系统参数配置：
+ * - 算法测试按钮和结果展示（Story 4.2 新增）
  * - 均线周期配置
  * - 判断基准天数
  * - 分类数量
@@ -17,8 +21,36 @@ import { ClassificationLevelDefinition } from './ClassificationLevelDefinition'
  * 这些参数是只读的，用于管理员确认系统配置
  */
 export function AdminConfigDisplay({ config }: AdminConfigDisplayProps) {
+  const { testing, testResult, error, runTest, reset } = useClassificationTest()
+
+  const handleTest = () => {
+    reset() // 清除之前的测试结果
+    runTest()
+  }
+
   return (
     <div className="space-y-6">
+      {/* 算法测试区域（Story 4.2 新增） */}
+      <Card>
+        <CardHeader>
+          <h3 className="text-lg font-semibold text-[#1a1a2e]">算法测试</h3>
+          <p className="text-sm text-[#6c757d]">测试分类算法是否正常工作</p>
+        </CardHeader>
+        <CardBody>
+          <TestAlgorithmButton testing={testing} onTest={handleTest} />
+        </CardBody>
+      </Card>
+
+      {/* 测试结果展示（Story 4.2 新增） */}
+      {(testing || testResult || error) && (
+        <TestResultDisplay
+          testing={testing}
+          result={testResult}
+          error={error}
+          onRetry={handleTest}
+        />
+      )}
+
       {/* 均线周期卡片 */}
       <Card>
         <CardHeader>
