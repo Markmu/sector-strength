@@ -359,6 +359,9 @@ class AdminApiClient extends ApiClient {
 
 const adminApiClient = new AdminApiClient()
 
+// 导出 adminApiClient 供其他模块使用
+export { adminApiClient }
+
 export const adminApi = {
   // 数据更新
   triggerUpdate: () => adminApiClient.post<{ success: boolean; message: string; task_id: string }>('/v1/admin/data/update'),

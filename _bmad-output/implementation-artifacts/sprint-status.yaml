@@ -84,6 +84,6 @@ development_status:
   4-1-create-admin-config-page: done
   4-2-implement-test-feature: done
   4-3-create-monitoring-panel: done
-  4-4-implement-audit-logs: backlog
-  4-5-implement-data-fix: backlog
+  4-4-implement-audit-logs: done
+  4-5-implement-data-fix: done
   epic-4-retrospective: optional

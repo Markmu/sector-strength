@@ -1,15 +1,20 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout'
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader'
 import { MonitoringStatusCard } from '@/components/admin/sector-classification/MonitoringStatusCard'
 import { DataIntegrityCard } from '@/components/admin/sector-classification/DataIntegrityCard'
+import { DataFixDialog } from '@/components/admin/sector-classification/DataFixDialog'
+import { DataFixStatus } from '@/components/admin/sector-classification/DataFixStatus'
 import { useMonitoringStatus } from '@/components/admin/sector-classification/useMonitoringStatus'
+import { useDataFix } from '@/components/admin/sector-classification/useDataFix'
 import { Button } from '@/components/ui/Button'
-import { Play } from 'lucide-react'
+import { Play, Wrench } from 'lucide-react'
+import type { DataFixRequest } from '@/types/data-fix'
+import { DataFixStatus as FixStatus } from '@/types/data-fix'
 
 /**
  * 管理员分类运行状态监控页面
@@ -31,6 +36,58 @@ export function MonitoringPage() {
   const router = useRouter()
   const { user, isAuthenticated, isLoading, isAdmin } = useAuth()
   const { status, loading, error, refresh } = useMonitoringStatus()
+
+  // 数据修复相关状态
+  const [fixDialogOpen, setFixDialogOpen] = useState(false)
+  const [fixRequest, setFixRequest] = useState<DataFixRequest | null>(null)
+  const { fixStatus, fixResult, fixError, isFixing, fix, reset: resetFix } = useDataFix()
+
+  // 从监控状态提取可用板块列表（用于修复弹窗）
+  const availableSectors = useMemo(() => {
+    if (!status?.data_integrity) return []
+
+    // 合并已有数据的板块和缺失的板块，返回所有板块
+    const allSectors = [
+      ...(status.data_integrity.missing_sectors || []).map(s => ({
+        id: s.sector_id,
+        name: s.sector_name
+      })),
+    ]
+
+    // 去重
+    const uniqueSectors = Array.from(
+      new Map(allSectors.map(s => [s.id, s])).values()
+    )
+
+    return uniqueSectors
+  }, [status])
+
+  // 执行修复
+  const handleFix = async (request: DataFixRequest) => {
+    setFixRequest(request)
+    await fix(request)
+  }
+
+  // 监听修复状态变化
+  useEffect(() => {
+    if (fixStatus === FixStatus.SUCCESS && fixRequest) {
+      // 修复完成后刷新监控状态
+      refresh()
+      // 延迟关闭弹窗和重置状态，让用户看到成功消息
+      setTimeout(() => {
+        setFixDialogOpen(false)
+        resetFix()
+        setFixRequest(null)
+      }, 3000)
+    }
+  }, [fixStatus, fixRequest, refresh, resetFix])
+
+  // 重置修复状态并关闭弹窗
+  const handleCloseFixDialog = () => {
+    setFixDialogOpen(false)
+    resetFix()
+    setFixRequest(null)
+  }
 
   // 检查管理员权限
   useEffect(() => {
@@ -114,8 +171,26 @@ export function MonitoringPage() {
           />
         )}
 
-        {/* 立即测试按钮 */}
-        <div className="flex justify-end">
+        {/* 数据修复状态 */}
+        {fixStatus !== FixStatus.IDLE && (
+          <DataFixStatus
+            status={fixStatus}
+            result={fixResult}
+            error={fixError}
+          />
+        )}
+
+        {/* 操作按钮 */}
+        <div className="flex justify-end gap-3">
+          <Button
+            onClick={() => setFixDialogOpen(true)}
+            variant="outline"
+            className="inline-flex items-center gap-2"
+            disabled={isFixing}
+          >
+            <Wrench className="w-4 h-4" />
+            <span>数据修复</span>
+          </Button>
           <Button
             onClick={() => router.push('/admin/sector-classification/config')}
             variant="primary"
@@ -126,6 +201,14 @@ export function MonitoringPage() {
           </Button>
         </div>
       </div>
+
+      {/* 数据修复弹窗 */}
+      <DataFixDialog
+        open={fixDialogOpen}
+        onClose={handleCloseFixDialog}
+        onComplete={handleFix}
+        sectors={availableSectors}
+      />
     </DashboardLayout>
   )
 }

@@ -315,3 +315,221 @@ async def get_monitoring_status(
             }
         }
     }
+
+
+@router.post("/sector-classification/fix")
+async def fix_sector_classification_data(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    修复板块分类数据
+
+    重新计算指定板块的分类数据并保存到数据库。
+
+    权限：仅管理员
+    审计：操作记录到审计日志（NFR-SEC-006）
+
+    参数：
+        - sector_id: 板块 ID（可选，与 sector_name 二选一）
+        - sector_name: 板块名称（可选，与 sector_id 二选一）
+        - days: 时间范围（最近 N 天）
+        - overwrite: 是否覆盖已有数据
+
+    返回：
+        - success_count: 成功修复的板块数量
+        - failed_count: 失败的板块数量
+        - duration_seconds: 修复耗时（秒）
+        - sectors: 修复的板块列表
+    """
+    # 获取客户端信息用于审计
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
+    # 验证管理员权限
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="权限不足：仅管理员可执行此操作"
+        )
+
+    # 解析请求参数
+    request_data = await request.json()
+    sector_id = request_data.get('sector_id')
+    sector_name = request_data.get('sector_name')
+    days = request_data.get('days', 30)
+    overwrite = request_data.get('overwrite', False)
+
+    # 验证参数
+    if not sector_id and not sector_name:
+        raise HTTPException(
+            status_code=400,
+            detail="必须提供板块 ID 或板块名称"
+        )
+
+    if sector_id and sector_name:
+        raise HTTPException(
+            status_code=400,
+            detail="只能提供板块 ID 或板块名称其中之一"
+        )
+
+    if days <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="时间范围必须大于 0"
+        )
+
+    start_time = time.time()
+
+    # 查询需要修复的板块
+    if sector_id:
+        # 按 ID 查询单个板块
+        sector_query = select(Sector).where(Sector.id == sector_id)
+        sector_result = await db.execute(sector_query)
+        sectors = [sector_result.scalar_one_or_none()]
+
+        if not sectors[0]:
+            raise HTTPException(
+                status_code=404,
+                detail=f"未找到 ID 为 {sector_id} 的板块"
+            )
+    else:
+        # 按名称查询单个板块
+        sector_query = select(Sector).where(Sector.name == sector_name)
+        sector_result = await db.execute(sector_query)
+        sectors = [sector_result.scalar_one_or_none()]
+
+        if not sectors[0]:
+            raise HTTPException(
+                status_code=404,
+                detail=f"未找到名称为 {sector_name} 的板块"
+            )
+
+    # 初始化分类服务
+    classification_service = SectorClassificationService(db)
+
+    # 修复结果
+    success_count = 0
+    failed_count = 0
+    sector_results = []
+
+    for sector in sectors:
+        try:
+            # 检查是否已有分类数据
+            start_date = datetime.now().date() - timedelta(days=days)
+            existing_query = select(SectorClassification).where(
+                and_(
+                    SectorClassification.sector_id == sector.id,
+                    SectorClassification.classification_date >= start_date
+                )
+            ).order_by(SectorClassification.classification_date.desc())
+
+            existing_result = await db.execute(existing_query)
+            existing_classification = existing_result.scalar_one_or_none()
+
+            # 如果不覆盖且已有数据，跳过
+            if not overwrite and existing_classification:
+                sector_results.append({
+                    "sector_id": str(sector.id),
+                    "sector_name": sector.name,
+                    "success": False,
+                    "error": "已有分类数据且未启用覆盖选项",
+                })
+                failed_count += 1
+                continue
+
+            # 计算分类
+            classification_result = await classification_service.calculate_classification(
+                sector_id=sector.id
+            )
+
+            # 保存或更新分类结果
+            if existing_classification and overwrite:
+                # 更新已有记录
+                existing_classification.classification_level = classification_result.get('classification_level')
+                existing_classification.state = classification_result.get('state')
+                existing_classification.current_price = classification_result.get('current_price')
+                existing_classification.change_percent = classification_result.get('change_percent')
+                existing_classification.ma_5 = classification_result.get('ma_5')
+                existing_classification.ma_10 = classification_result.get('ma_10')
+                existing_classification.ma_20 = classification_result.get('ma_20')
+                existing_classification.ma_30 = classification_result.get('ma_30')
+                existing_classification.ma_60 = classification_result.get('ma_60')
+                existing_classification.ma_90 = classification_result.get('ma_90')
+                existing_classification.ma_120 = classification_result.get('ma_120')
+                existing_classification.ma_240 = classification_result.get('ma_240')
+                existing_classification.price_5_days_ago = classification_result.get('price_5_days_ago')
+            else:
+                # 创建新记录
+                new_classification = SectorClassification(
+                    sector_id=sector.id,
+                    classification_date=datetime.now().date(),
+                    classification_level=classification_result.get('classification_level'),
+                    state=classification_result.get('state'),
+                    current_price=classification_result.get('current_price'),
+                    change_percent=classification_result.get('change_percent'),
+                    ma_5=classification_result.get('ma_5'),
+                    ma_10=classification_result.get('ma_10'),
+                    ma_20=classification_result.get('ma_20'),
+                    ma_30=classification_result.get('ma_30'),
+                    ma_60=classification_result.get('ma_60'),
+                    ma_90=classification_result.get('ma_90'),
+                    ma_120=classification_result.get('ma_120'),
+                    ma_240=classification_result.get('ma_240'),
+                    price_5_days_ago=classification_result.get('price_5_days_ago'),
+                )
+                db.add(new_classification)
+
+            await db.commit()
+
+            sector_results.append({
+                "sector_id": str(sector.id),
+                "sector_name": sector.name,
+                "success": True,
+            })
+            success_count += 1
+
+        except Exception as e:
+            await db.rollback()
+            sector_results.append({
+                "sector_id": str(sector.id),
+                "sector_name": sector.name,
+                "success": False,
+                "error": str(e),
+            })
+            failed_count += 1
+
+    end_time = time.time()
+    duration_seconds = end_time - start_time
+
+    # 记录审计日志（NFR-SEC-006, NFR-SEC-007）
+    await AuditService.log_action(
+        db=db,
+        user=current_user,
+        action="fix_data",
+        resource_type="sector_classification",
+        details=f"修复分类数据：成功{success_count}个，失败{failed_count}个",
+        ip_address=client_ip,
+        user_agent=user_agent,
+        status="success" if failed_count == 0 else "partial",
+        result=f"耗时{duration_seconds:.2f}秒",
+    )
+    await db.commit()
+
+    # 清除缓存（Story 4.5 Task 4.6）
+    try:
+        classification_service.invalidate_cache()
+    except Exception as cache_error:
+        # 缓存清除失败不应影响修复操作的成功
+        pass
+
+    return {
+        "success": True,
+        "data": {
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "duration_seconds": duration_seconds,
+            "sectors": sector_results,
+        }
+    }
