@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Home, Settings, ScatterChart, LineChart, BarChart3, Sliders, Activity } from 'lucide-react';
+import { Home, Settings, ScatterChart, LineChart, BarChart3, Sliders, Activity, FileText } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import Sidebar, { SidebarItem } from '@/components/layout/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,6 +48,11 @@ const adminSidebarItems: SidebarItem[] = [
     title: '运行监控',
     href: '/admin/sector-classification/monitor',
     icon: <Activity className="w-5 h-5" />,
+  },
+  {
+    title: '审计日志',
+    href: '/admin/audit-logs',
+    icon: <FileText className="w-5 h-5" />,
   },
   {
     title: '数据管理',
