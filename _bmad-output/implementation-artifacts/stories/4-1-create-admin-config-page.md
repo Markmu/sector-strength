@@ -1,6 +1,6 @@
 # Story 4.1: 创建管理员分类参数配置页面
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

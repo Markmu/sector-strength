@@ -81,7 +81,7 @@ development_status:
 
   # Epic 4: 管理员功能与监控
   epic-4: in-progress
-  4-1-create-admin-config-page: review
+  4-1-create-admin-config-page: done
   4-2-implement-test-feature: backlog
   4-3-create-monitoring-panel: backlog
   4-4-implement-audit-logs: backlog
