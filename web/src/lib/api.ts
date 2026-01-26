@@ -4,7 +4,7 @@ import { z } from 'zod'
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 // 普通客户端使用的基础URL（需要加上 /api 前缀）
-const API_BASE_WITH_PREFIX = `${API_BASE_URL}/api`
+const API_BASE_WITH_PREFIX = `${API_BASE_URL}/api/v1`
 
 // API 响应类型定义
 export const ApiResponseSchema = z.object({
@@ -382,6 +382,10 @@ export const adminApi = {
 
   // 系统健康
   getSystemHealth: () => adminApiClient.get<any>('/v1/admin/data/health'),
+
+  // 板块分类管理
+  getMonitoringStatus: () => adminApiClient.get<any>('/admin/sector-classification/status'),
+  testClassification: () => adminApiClient.post<any>('/admin/sector-classification/test'),
 }
 
 // 导出任务状态类型供组件使用
