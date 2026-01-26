@@ -11,6 +11,7 @@ import { useSWRConfig } from 'swr'
 import { useRouter } from 'next/navigation'
 import { BuildingOfficeIcon, LightBulbIcon } from '@heroicons/react/24/outline'
 import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
+import { Disclaimer } from '@/components/ui/Disclaimer'
 import { SectorGradeTable } from '@/components/analysis/SectorGradeTable'
 import { useSectorGradeTable } from '@/hooks/useSectorGradeTable'
 import { useSectorDistribution } from '@/hooks/useSectorDistribution'
@@ -163,6 +164,9 @@ export default function SectorAnalysisPage() {
             </span>
           </div>
         )}
+
+        {/* 免责声明 */}
+        <Disclaimer showSeparator={true} />
       </div>
     </DashboardLayout>
   )

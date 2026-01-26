@@ -20,8 +20,9 @@ export interface DisclaimerProps {
 
 /**
  * 默认免责声明文本
+ * 包含主声明、风险提示和缠论理论说明
  */
-const DEFAULT_TEXT = '数据仅供参考，不构成投资建议。投资有风险，入市需谨慎。'
+const DEFAULT_TEXT = '数据仅供参考，不构成投资建议。投资有风险，入市需谨慎。板块强弱分类基于缠中说禅理论，仅供参考。'
 
 /**
  * 免责声明组件

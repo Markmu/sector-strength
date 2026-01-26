@@ -2,6 +2,7 @@
 
 import { DashboardLayout, DashboardHeader, DashboardContent, SectorHeatmap, RankingSection, RankingTabs, MarketIndexDisplay } from '@/components/dashboard';
 import { Card, CardBody } from '@/components/ui';
+import { Disclaimer } from '@/components/ui/Disclaimer';
 import { useSWRConfig } from 'swr';
 
 /**
@@ -67,6 +68,9 @@ export default function DashboardPage() {
             <RankingTabs />
           </div>
         </div>
+
+        {/* 免责声明 */}
+        <Disclaimer showSeparator={true} />
       </DashboardContent>
     </DashboardLayout>
   );

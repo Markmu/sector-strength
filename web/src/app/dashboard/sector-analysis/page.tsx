@@ -9,6 +9,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
+import { Disclaimer } from '@/components/ui/Disclaimer'
 import { sectorsApi } from '@/lib/api'
 import type { Sector } from '@/types'
 import {
@@ -569,6 +570,9 @@ export default function SectorAnalysisListPage() {
             <li>支持显示/隐藏不同的均线（MA5/10/20/30/60/90/120/240）</li>
           </ul>
         </div>
+
+        {/* 免责声明 */}
+        <Disclaimer showSeparator={true} />
       </div>
     </DashboardLayout>
   )

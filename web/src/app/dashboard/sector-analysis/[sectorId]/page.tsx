@@ -10,6 +10,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
+import { Disclaimer } from '@/components/ui/Disclaimer'
 import {
   TimeRangeSelector,
   MAToggleControls,
@@ -321,6 +322,9 @@ export default function SectorAnalysisPage({ params }: PageParams) {
             <li><strong>切换板块:</strong> 使用右上角的下拉框快速切换到其他板块</li>
           </ul>
         </div>
+
+        {/* 免责声明 */}
+        <Disclaimer showSeparator={true} />
       </div>
     </DashboardLayout>
   )

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { sectorClassificationApi, TestResult } from '@/lib/sectorClassificationApi'
 import { ErrorMessage } from '@/components/ErrorMessage'
+import { Disclaimer } from '@/components/ui/Disclaimer'
 
 /**
  * API 测试页面
@@ -172,6 +173,9 @@ export default function SectorClassificationAPITestPage() {
             <li>• 如果出现 401 错误，请先登录获取认证令牌</li>
           </ul>
         </div>
+
+        {/* 免责声明 */}
+        <Disclaimer showSeparator={true} />
       </div>
     </div>
   )

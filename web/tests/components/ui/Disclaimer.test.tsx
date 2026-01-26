@@ -3,14 +3,15 @@
  */
 
 import { render, screen } from '@testing-library/react'
-import { Disclaimer } from '@/components/sector-classification/Disclaimer'
+import { Disclaimer } from '@/components/ui/Disclaimer'
 
 describe('Disclaimer', () => {
-  it('应该显示默认免责声明文本', () => {
+  it('应该显示完整的免责声明文本（包含缠论说明）', () => {
     render(<Disclaimer />)
 
     expect(screen.getByText(/数据仅供参考，不构成投资建议/)).toBeInTheDocument()
     expect(screen.getByText(/投资有风险，入市需谨慎/)).toBeInTheDocument()
+    expect(screen.getByText(/板块强弱分类基于缠中说禅理论/)).toBeInTheDocument()
   })
 
   it('应该应用正确的样式类', () => {
@@ -35,18 +36,11 @@ describe('Disclaimer', () => {
     expect(separator).toHaveClass('border-t', 'border-gray-200')
   })
 
-  it('不应该显示分隔线当 showSeparator 为 false', () => {
+  it('应该不显示分隔线当 showSeparator 为 false', () => {
     const { container } = render(<Disclaimer showSeparator={false} />)
 
     const separator = container.querySelector('[role="separator"]')
     expect(separator).not.toBeInTheDocument()
-  })
-
-  it('应该应用自定义 className', () => {
-    render(<Disclaimer className="custom-class" />)
-
-    const footer = screen.getByRole('contentinfo')
-    expect(footer).toHaveClass('custom-class')
   })
 
   it('应该有正确的可访问性属性', () => {
@@ -63,5 +57,20 @@ describe('Disclaimer', () => {
     const text = screen.getByText(/数据仅供参考/)
     expect(text).toHaveClass('text-gray-500')
     // text-gray-500 (rgb(107, 114, 128)) on white background has contrast ratio ~7:1 (AA compliant)
+  })
+
+  it('应该支持自定义类名', () => {
+    const { container } = render(<Disclaimer className="custom-class" />)
+
+    const footer = container.querySelector('footer')
+    expect(footer).toHaveClass('custom-class')
+  })
+
+  it('应该包含免责声明前缀', () => {
+    render(<Disclaimer />)
+
+    const prefix = screen.getByText(/免责声明：/)
+    expect(prefix).toBeInTheDocument()
+    expect(prefix).toHaveClass('font-medium')
   })
 })
