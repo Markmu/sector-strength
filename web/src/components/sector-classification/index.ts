@@ -41,3 +41,9 @@ export type { HelpButtonProps } from './HelpButton.types'
 
 export { ClassificationLegend } from './ClassificationLegend'
 export type { ClassificationLegendProps } from './ClassificationLegend'
+
+export { RiskAlertDialog } from './RiskAlertDialog'
+export type { RiskAlertDialogProps } from './RiskAlertDialog.types'
+
+export { useRiskAlert } from './useRiskAlert'
+export type { UseRiskAlertReturn } from './useRiskAlert'

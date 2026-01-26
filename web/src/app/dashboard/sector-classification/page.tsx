@@ -23,6 +23,8 @@ import {
   HelpDialog,
   HelpButton,
   ClassificationLegend,
+  RiskAlertDialog,
+  useRiskAlert,
 } from '@/components/sector-classification'
 import {
   fetchClassifications,
@@ -56,6 +58,7 @@ export default function SectorClassificationPage() {
   const dispatch = useDispatch<AppDispatch>()
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [helpOpen, setHelpOpen] = useState(false)
+  const { open: riskAlertOpen, setOpen: setRiskAlertOpen, handleConfirm: handleRiskConfirm } = useRiskAlert()
 
   // 从 Redux store 获取状态
   const classifications = useSelector((state: RootState) =>
@@ -164,6 +167,13 @@ export default function SectorClassificationPage() {
 
       {/* 帮助弹窗 */}
       <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+
+      {/* 风险提示弹窗 */}
+      <RiskAlertDialog
+        open={riskAlertOpen}
+        onOpenChange={setRiskAlertOpen}
+        onConfirm={handleRiskConfirm}
+      />
     </DashboardLayout>
   )
 }

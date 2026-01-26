@@ -76,7 +76,7 @@ development_status:
   3-1-create-help-dialog: done
   3-2-add-legend: done
   3-3-integrate-disclaimer: done
-  3-4-create-risk-dialog: backlog
+  3-4-create-risk-dialog: review
   epic-3-retrospective: optional
 
   # Epic 4: 管理员功能与监控
