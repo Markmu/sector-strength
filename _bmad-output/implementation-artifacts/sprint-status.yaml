@@ -80,8 +80,8 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: 管理员功能与监控
-  epic-4: backlog
-  4-1-create-admin-config-page: backlog
+  epic-4: in-progress
+  4-1-create-admin-config-page: review
   4-2-implement-test-feature: backlog
   4-3-create-monitoring-panel: backlog
   4-4-implement-audit-logs: backlog
