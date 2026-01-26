@@ -1,6 +1,6 @@
 # Story 3.4: 创建风险提示弹窗
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
