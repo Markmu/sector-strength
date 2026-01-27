@@ -1,7 +1,7 @@
 'use client'
 
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
+import Button from '@/components/ui/Button'
 import { CheckCircle2, XCircle, AlertCircle, RotateCcw } from 'lucide-react'
 import type { TestResultDisplayProps } from './TestResultDisplay.types'
 

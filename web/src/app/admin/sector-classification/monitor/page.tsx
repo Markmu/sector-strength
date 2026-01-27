@@ -11,7 +11,7 @@ import { DataFixDialog } from '@/components/admin/sector-classification/DataFixD
 import { DataFixStatus } from '@/components/admin/sector-classification/DataFixStatus'
 import { useMonitoringStatus } from '@/components/admin/sector-classification/useMonitoringStatus'
 import { useDataFix } from '@/components/admin/sector-classification/useDataFix'
-import { Button } from '@/components/ui/Button'
+import Button from '@/components/ui/Button'
 import { Play, Wrench } from 'lucide-react'
 import type { DataFixRequest } from '@/types/data-fix'
 import { DataFixStatus as FixStatus } from '@/types/data-fix'
@@ -32,7 +32,7 @@ import { DataFixStatus as FixStatus } from '@/types/data-fix'
  * - 页面每 30 秒自动刷新状态
  * - 仅管理员可访问（NFR-SEC-002, NFR-SEC-003）
  */
-export function MonitoringPage() {
+export default function MonitoringPage() {
   const router = useRouter()
   const { user, isAuthenticated, isLoading, isAdmin } = useAuth()
   const { status, loading, error, refresh } = useMonitoringStatus()

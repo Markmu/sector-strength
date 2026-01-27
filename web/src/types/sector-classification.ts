@@ -13,12 +13,13 @@ export type ClassificationState = '反弹' | '调整'
 export interface SectorClassification {
   id: string
   sector_id: string
-  sector_name: string
+  sector_name?: string | null  // 可能为空，使用 symbol 作为后备
+  symbol?: string  // 板块编码
   classification_date: string
   classification_level: number  // 1-9
   state: ClassificationState
-  current_price: number
-  change_percent: number
+  current_price: number | null
+  change_percent: number | null
   created_at: string
 }
 

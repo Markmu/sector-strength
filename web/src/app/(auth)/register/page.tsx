@@ -8,6 +8,8 @@ import Input from '@/components/ui/Input';
 import { Card, CardBody } from '@/components/ui/Card';
 import Loading from '@/components/ui/Loading';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface RegisterFormData {
   email: string;
   password: string;
@@ -87,7 +89,7 @@ export default function RegisterPage() {
     setErrors({});
 
     try {
-      const response = await fetch('/api/v1/auth/register', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

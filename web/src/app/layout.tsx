@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "Sector Strength",
@@ -20,9 +20,9 @@ export default function RootLayout({
         className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <AuthProvider>
+        <Providers>
           {children}
-        </AuthProvider>
+        </Providers>
       </body>
     </html>
   );

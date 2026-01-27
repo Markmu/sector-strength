@@ -1,4 +1,5 @@
-import { configureStore, useDispatch, useSelector } from '@reduxjs/toolkit'
+import { configureStore } from '@reduxjs/toolkit'
+import { useDispatch, useSelector } from 'react-redux'
 import stocksReducer from './slices/stocks'
 import sectorsReducer from './slices/sectors'
 import strengthReducer from './slices/strength'
@@ -27,3 +28,15 @@ export type AppDispatch = typeof store.dispatch
 // 导出类型化的 hooks
 export const useAppDispatch = () => useDispatch<AppDispatch>()
 export const useAppSelector: <T>(selector: (state: RootState) => T) => T = useSelector
+
+// 重新导出 sectorClassification slice 的内容
+export {
+  fetchClassifications,
+  clearError,
+  reset,
+  selectClassifications,
+  selectLoading,
+  selectError,
+  selectLastFetch,
+  selectShouldRefresh,
+} from './slices/sectorClassificationSlice'

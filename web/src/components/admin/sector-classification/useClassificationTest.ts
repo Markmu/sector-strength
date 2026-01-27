@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { apiClient } from '@/lib/apiClient'
+import { adminApiClient } from '@/lib/api'
 import type {
   ClassificationTestResult,
   UseClassificationTestReturn,
 } from './useClassificationTest.types'
 
-const TEST_ENDPOINT = '/api/v1/admin/sector-classification/test'
+const TEST_ENDPOINT = '/admin/sector-classification/test'
 
 /**
  * useClassificationTest Hook
@@ -34,7 +34,7 @@ export function useClassificationTest(): UseClassificationTestReturn {
     setTestResult(null)
 
     try {
-      const response = await apiClient.post<any, TestApiResponse>(
+      const response = await adminApiClient.post<any, TestApiResponse>(
         TEST_ENDPOINT
       )
 

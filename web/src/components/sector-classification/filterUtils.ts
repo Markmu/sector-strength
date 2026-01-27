@@ -18,6 +18,7 @@ import type { SectorClassification } from '@/types/sector-classification'
  * - 自动 trim 首尾空格
  * - 支持中文搜索
  * - 处理 undefined/null 边界情况
+ * - 优先搜索 sector_name，如果不存在则搜索 symbol
  */
 export function filterClassifications(
   data: SectorClassification[],
@@ -30,7 +31,9 @@ export function filterClassifications(
 
   const query = searchQuery.toLowerCase().trim()
 
-  return data.filter((item) =>
-    item.sector_name.toLowerCase().includes(query)
-  )
+  return data.filter((item) => {
+    // 优先使用 sector_name，如果不存在则使用 symbol
+    const nameToSearch = item.sector_name || item.symbol
+    return nameToSearch?.toLowerCase().includes(query) ?? false
+  })
 }

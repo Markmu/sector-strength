@@ -15,11 +15,6 @@ export interface DashboardLayoutProps {
 // 基础菜单项（所有用户可见）
 const baseSidebarItems: SidebarItem[] = [
   {
-    title: '仪表板',
-    href: '/dashboard',
-    icon: <Home className="w-5 h-5" />,
-  },
-  {
     title: '强度分析',
     href: '/dashboard/analysis',
     icon: <ScatterChart className="w-5 h-5" />,

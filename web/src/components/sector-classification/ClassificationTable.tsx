@@ -214,7 +214,11 @@ export function ClassificationTable({
   }
 
   // 渲染涨跌幅
-  const renderChangePercent = (value: number) => {
+  const renderChangePercent = (value: number | null) => {
+    if (value === null) {
+      return <span className="text-gray-400">-</span>
+    }
+
     const color = getChangeColor(value)
     const sign = value > 0 ? '+' : ''
 
@@ -412,7 +416,7 @@ export function ClassificationTable({
                   }}
                 >
                   <span className="tabular-nums text-[#1a1a2e]">
-                    {record.current_price.toFixed(2)}
+                    {record.current_price !== null ? record.current_price.toFixed(2) : '-'}
                   </span>
                 </td>
 

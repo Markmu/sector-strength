@@ -137,8 +137,8 @@ export const healthApi = {
 // 股票 API
 export const stocksApi = {
   getStocks: (params?: { skip?: number; limit?: number }) =>
-    apiClient.get<any[]>('/v1/stocks', params),
-  getStock: (stockId: string) => apiClient.get<any>(`/v1/stocks/${stockId}`),
+    apiClient.get<any[]>('/stocks', params),
+  getStock: (stockId: string) => apiClient.get<any>(`/stocks/${stockId}`),
 }
 
 // 板块 API
@@ -158,10 +158,10 @@ export const sectorsApi = {
         page: number
         page_size: number
       }
-    }>('/v1/sectors', params),
-  getSector: (sectorId: number) => apiClient.get<any>(`/v1/sectors/${sectorId}`),
+    }>('/sectors', params),
+  getSector: (sectorId: number) => apiClient.get<any>(`/sectors/${sectorId}`),
   getSectorStocks: (sectorId: number, params?: { skip?: number; limit?: number }) =>
-    apiClient.get<any[]>(`/v1/sectors/${sectorId}/stocks`, params),
+    apiClient.get<any[]>(`/sectors/${sectorId}/stocks`, params),
   searchSectors: (keyword: string, params?: { sector_type?: string; limit?: number }) =>
     apiClient.get<{
       success: boolean
@@ -173,7 +173,7 @@ export const sectorsApi = {
         label: string
         value: number
       }>
-    }>('/v1/sectors/search', { keyword, ...params }),
+    }>('/sectors/search', { keyword, ...params }),
   // 获取板块强度历史数据 (用于图表)
   getSectorStrengthHistory: (sectorId: number, params?: { start_date?: string; end_date?: string }) =>
     apiClient.get<{
@@ -184,7 +184,7 @@ export const sectorsApi = {
         score: number | null
         current_price: number | null
       }>
-    }>(`/v1/sectors/${sectorId}/strength-history`, params),
+    }>(`/sectors/${sectorId}/strength-history`, params),
   // 获取板块均线历史数据 (用于图表)
   getSectorMAHistory: (sectorId: number, params?: { start_date?: string; end_date?: string }) =>
     apiClient.get<{
@@ -202,7 +202,7 @@ export const sectorsApi = {
         ma120: number | null
         ma240: number | null
       }>
-    }>(`/v1/sectors/${sectorId}/ma-history`, params),
+    }>(`/sectors/${sectorId}/ma-history`, params),
 }
 
 // 强度数据 API
@@ -215,61 +215,61 @@ export const strengthApi = {
     date_to?: string
     skip?: number
     limit?: number
-  }) => apiClient.get<any[]>('/v1/strength', params),
+  }) => apiClient.get<any[]>('/strength', params),
   getLatestStrength: (params?: { sector_id?: string; period?: string }) =>
-    apiClient.get<any[]>('/v1/strength/latest', params),
+    apiClient.get<any[]>('/strength/latest', params),
 }
 
 // 用户资料 API
 export const userApi = {
   // 获取用户资料
-  getProfile: () => apiClient.get<any>('/v1/user/profile'),
+  getProfile: () => apiClient.get<any>('/user/profile'),
 
   // 更新用户资料
   updateProfile: (data: {
     display_name?: string
     timezone?: string
     language?: string
-  }) => apiClient.put<any>('/v1/user/profile', data),
+  }) => apiClient.put<any>('/user/profile', data),
 
   // 获取用户偏好设置
-  getPreferences: () => apiClient.get<any>('/v1/user/preferences'),
+  getPreferences: () => apiClient.get<any>('/user/preferences'),
 
   // 更新用户偏好设置
   updatePreferences: (data: {
     email_notifications?: boolean
     push_notifications?: boolean
     marketing_emails?: boolean
-  }) => apiClient.put<any>('/v1/user/preferences', data),
+  }) => apiClient.put<any>('/user/preferences', data),
 
   // 更改密码
   changePassword: (data: {
     current_password: string
     new_password: string
-  }) => apiClient.post<any>('/v1/user/change-password', data),
+  }) => apiClient.post<any>('/user/change-password', data),
 
   // 获取活跃会话
-  getSessions: () => apiClient.get<any>('/v1/user/sessions'),
+  getSessions: () => apiClient.get<any>('/user/sessions'),
 
   // 终止特定会话
   terminateSession: (sessionId: string) =>
-    apiClient.delete<any>(`/v1/user/sessions/${sessionId}`),
+    apiClient.delete<any>(`/user/sessions/${sessionId}`),
 
   // 终止所有其他会话
   terminateAllOtherSessions: () =>
-    apiClient.delete<any>('/v1/user/sessions/all'),
+    apiClient.delete<any>('/user/sessions/all'),
 
   // 停用账户
-  deactivateAccount: () => apiClient.post<any>('/v1/user/deactivate'),
+  deactivateAccount: () => apiClient.post<any>('/user/deactivate'),
 
   // 删除账户
-  deleteAccount: () => apiClient.delete<any>('/v1/user/account'),
+  deleteAccount: () => apiClient.delete<any>('/user/account'),
 }
 
 // 热力图 API
 export const heatmapApi = {
   getHeatmap: (params?: { sector_type?: 'industry' | 'concept' }) =>
-    apiClient.get<any>('/v1/heatmap', params),
+    apiClient.get<any>('/heatmap', params),
 }
 
 // 管理员 API
@@ -364,27 +364,27 @@ export { adminApiClient }
 
 export const adminApi = {
   // 数据更新
-  triggerUpdate: () => adminApiClient.post<{ success: boolean; message: string; task_id: string }>('/v1/admin/data/update'),
-  getUpdateStatus: () => adminApiClient.get<any>('/v1/admin/data/update-status'),
+  triggerUpdate: () => adminApiClient.post<{ success: boolean; message: string; task_id: string }>('/admin/data/update'),
+  getUpdateStatus: () => adminApiClient.get<any>('/admin/data/update-status'),
   getUpdateHistory: (params?: { page?: number; page_size?: number }) =>
-    adminApiClient.get<any>('/v1/admin/data/update-history', params),
-  cancelUpdate: () => adminApiClient.post<any>('/v1/admin/data/update/cancel'),
+    adminApiClient.get<any>('/admin/data/update-history', params),
+  cancelUpdate: () => adminApiClient.post<any>('/admin/data/update/cancel'),
 
   // 调度器管理
-  getSchedulerStatus: () => adminApiClient.get<{ is_running: boolean; jobs: any }>('/v1/admin/data/scheduler/status'),
-  startScheduler: () => adminApiClient.post<any>('/v1/admin/data/scheduler/start'),
-  stopScheduler: () => adminApiClient.post<any>('/v1/admin/data/scheduler/stop'),
-  triggerJob: (jobId: string) => adminApiClient.post<any>(`/v1/admin/data/scheduler/trigger/${jobId}`),
+  getSchedulerStatus: () => adminApiClient.get<{ is_running: boolean; jobs: any }>('/admin/data/scheduler/status'),
+  startScheduler: () => adminApiClient.post<any>('/admin/data/scheduler/start'),
+  stopScheduler: () => adminApiClient.post<any>('/admin/data/scheduler/stop'),
+  triggerJob: (jobId: string) => adminApiClient.post<any>(`/admin/data/scheduler/trigger/${jobId}`),
 
   // 数据质量
-  checkDataQuality: () => adminApiClient.get<any>('/v1/admin/data/quality/check'),
+  checkDataQuality: () => adminApiClient.get<any>('/admin/data/quality/check'),
 
   // 缓存管理
-  getCacheStats: () => adminApiClient.get<any>('/v1/admin/data/cache/stats'),
-  clearCache: (pattern?: string) => adminApiClient.post<any>('/v1/admin/data/cache/clear', undefined, { pattern }),
+  getCacheStats: () => adminApiClient.get<any>('/admin/data/cache/stats'),
+  clearCache: (pattern?: string) => adminApiClient.post<any>('/admin/data/cache/clear', undefined, { pattern }),
 
   // 系统健康
-  getSystemHealth: () => adminApiClient.get<any>('/v1/admin/data/health'),
+  getSystemHealth: () => adminApiClient.get<any>('/admin/data/health'),
 
   // 板块分类管理
   getMonitoringStatus: () => adminApiClient.get<any>('/admin/sector-classification/status'),
@@ -418,7 +418,7 @@ export const tasksApi = {
 
   // 获取已注册的任务类型
   getRegisteredTasks: () =>
-    adminApiClient.get<string[]>('/v1/admin/tasks/registered'),
+    adminApiClient.get<string[]>('/admin/tasks/registered'),
 
   // 创建任务
   createTask: (data: {
@@ -435,7 +435,7 @@ export const tasksApi = {
       total: number
       percent: number
       createdAt: string
-    }>('/v1/admin/tasks', data),
+    }>('/admin/tasks', data),
 
   // 获取任务列表
   listTasks: (params?: {
@@ -460,7 +460,7 @@ export const tasksApi = {
       }>
       total: number
       page: number
-    }>('/v1/admin/tasks', params),
+    }>('/admin/tasks', params),
 
   // 获取任务详情
   getTask: (taskId: string) =>
@@ -478,11 +478,11 @@ export const tasksApi = {
       createdAt: string
       startedAt?: string
       completedAt?: string
-    }>(`/v1/admin/tasks/${taskId}`),
+    }>(`/admin/tasks/${taskId}`),
 
   // 取消任务
   cancelTask: (taskId: string) =>
-    adminApiClient.post<{ taskId: string; cancelled: boolean }>(`/v1/admin/tasks/${taskId}/cancel`),
+    adminApiClient.post<{ taskId: string; cancelled: boolean }>(`/admin/tasks/${taskId}/cancel`),
 
   // 获取任务日志
   getTaskLogs: (taskId: string, params?: {
@@ -500,7 +500,7 @@ export const tasksApi = {
       }>
       total: number
       page: number
-    }>(`/v1/admin/tasks/${taskId}/logs`, params),
+    }>(`/admin/tasks/${taskId}/logs`, params),
 
   // 获取任务统计
   getTaskStats: () =>
@@ -511,5 +511,5 @@ export const tasksApi = {
       failed: number
       cancelled: number
       total: number
-    }>('/v1/admin/tasks/stats/summary'),
+    }>('/admin/tasks/stats/summary'),
 }

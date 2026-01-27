@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../contexts/AuthContext';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 /**
  * 管理员权限检查 Hook
  *
@@ -104,7 +106,7 @@ export function useVerifyAdmin() {
     }
 
     try {
-      const response = await fetch(`/api/v1/admin/check`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/check`, {
         method: 'GET',
         headers: {
           'Authorization': `${tokenType} ${accessToken}`

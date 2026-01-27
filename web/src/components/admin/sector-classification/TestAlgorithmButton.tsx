@@ -1,6 +1,6 @@
 'use client'
 
-import { Button } from '@/components/ui/Button'
+import Button from '@/components/ui/Button'
 import { Play, Loader2 } from 'lucide-react'
 import type { TestAlgorithmButtonProps } from './TestAlgorithmButton.types'
 

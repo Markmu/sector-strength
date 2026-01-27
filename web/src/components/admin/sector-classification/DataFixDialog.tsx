@@ -8,8 +8,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import Button from '@/components/ui/Button'
+import Input from '@/components/ui/Input'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { AlertCircle } from 'lucide-react'
 import type { DataFixDialogProps, SectorOption } from './DataFixDialog.types.ts'

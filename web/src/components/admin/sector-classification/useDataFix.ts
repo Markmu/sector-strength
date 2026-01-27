@@ -5,8 +5,8 @@ import { adminApiClient } from '@/lib/api'
 import type {
   DataFixRequest,
   DataFixResponse,
-  DataFixStatus as FixStatus,
 } from '@/types/data-fix'
+import { DataFixStatus as FixStatus } from '@/types/data-fix'
 import type { UseDataFixReturn } from './useDataFix.types'
 
 const FIX_ENDPOINT = '/admin/sector-classification/fix'
