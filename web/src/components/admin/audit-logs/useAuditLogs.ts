@@ -13,7 +13,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { apiClient } from '@/lib/apiClient'
+import { adminApiClient } from '@/lib/api'
 import type {
   AuditLog,
   AuditLogsFilters,
