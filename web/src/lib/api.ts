@@ -385,10 +385,6 @@ export const adminApi = {
 
   // 系统健康
   getSystemHealth: () => adminApiClient.get<any>('/admin/data/health'),
-
-  // 板块分类管理
-  getMonitoringStatus: () => adminApiClient.get<any>('/admin/sector-classification/status'),
-  testClassification: () => adminApiClient.post<any>('/admin/sector-classification/test'),
 }
 
 // 导出任务状态类型供组件使用
