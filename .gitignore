@@ -139,3 +139,5 @@ temp/
 .coverage
 
 .claude
+_bmad
+.codex
