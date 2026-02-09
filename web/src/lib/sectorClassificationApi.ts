@@ -5,6 +5,7 @@
  */
 
 import type { SectorClassification } from '@/types/sector-classification'
+import { handleUnauthorizedRedirect } from './authRedirect'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const API_BASE_WITH_PREFIX = `${API_BASE}/api/v1`
@@ -91,6 +92,10 @@ class SectorClassificationAPI {
    */
   private async handleResponse(response: Response): Promise<any> {
     if (!response.ok) {
+      if (response.status === 401) {
+        handleUnauthorizedRedirect()
+      }
+
       // 尝试解析标准错误响应格式
       const contentType = response.headers.get('content-type')
       if (contentType?.includes('application/json')) {
@@ -171,6 +176,10 @@ class SectorClassificationAPI {
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 401) {
+          handleUnauthorizedRedirect()
+        }
+
         // 尝试解析错误格式
         let errorMessage = `HTTP ${response.status}`
         if (typeof data === 'object' && data !== null) {
@@ -225,6 +234,10 @@ class SectorClassificationAPI {
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 401) {
+          handleUnauthorizedRedirect()
+        }
+
         // 尝试解析错误格式
         let errorMessage = `HTTP ${response.status}`
         if (typeof data === 'object' && data !== null) {

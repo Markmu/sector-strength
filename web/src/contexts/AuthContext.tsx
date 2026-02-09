@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { AUTH_EXPIRED_EVENT } from '@/lib/authRedirect';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -48,6 +49,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [tokenType, setTokenType] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const clearAuth = useCallback(() => {
+    setUser(null);
+    setAccessToken(null);
+    setRefreshToken(null);
+    setTokenType(null);
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('tokenType');
+    localStorage.removeItem('expiresIn');
+    localStorage.removeItem('user');
+  }, []);
+
   // 从localStorage初始化认证状态
   useEffect(() => {
     const initializeAuth = async () => {
@@ -86,6 +99,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     initializeAuth();
   }, []);
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      clearAuth();
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, [clearAuth]);
 
   // 刷新访问令牌
   const refreshAccessToken = useCallback(async () => {
@@ -215,18 +237,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clearAuth();
       router.push('/login');
     }
-  };
-
-  const clearAuth = () => {
-    setUser(null);
-    setAccessToken(null);
-    setRefreshToken(null);
-    setTokenType(null);
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('tokenType');
-    localStorage.removeItem('expiresIn');
-    localStorage.removeItem('user');
   };
 
   const value: AuthContextType = {

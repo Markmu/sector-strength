@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { handleUnauthorizedRedirect } from './authRedirect'
 
 // API 基础配置
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -92,7 +93,7 @@ export class ApiClient {
         // 401 认证失败特殊处理
         if (response.status === 401) {
           console.error('Authentication failed:', data.error?.message || data.detail || '认证失败')
-          // 触发登出逻辑（可选）
+          handleUnauthorizedRedirect()
         }
         throw new Error(data.error?.message || data.detail || `HTTP error! status: ${response.status}`)
       }
@@ -325,7 +326,7 @@ class AdminApiClient extends ApiClient {
         // 认证失败的特殊处理
         if (response.status === 401) {
           console.error('Authentication failed:', errorMsg)
-          // 可以在这里触发重新登录逻辑
+          handleUnauthorizedRedirect()
         }
 
         throw new Error(errorMsg)

@@ -3,6 +3,7 @@
  *
  * 提供统一的 API 请求 fetcher，自动携带认证令牌
  */
+import { handleUnauthorizedRedirect } from './authRedirect'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -36,6 +37,9 @@ export async function fetcher<T>(url: string): Promise<T> {
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorizedRedirect()
+    }
     const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
     throw new Error(error.detail || error.error?.message || `API 请求失败: ${response.status}`)
   }
@@ -60,6 +64,9 @@ export async function postFetcher<T>(url: string, data?: any): Promise<T> {
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorizedRedirect()
+    }
     const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
     throw new Error(error.detail || error.error?.message || `API 请求失败: ${response.status}`)
   }
