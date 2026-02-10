@@ -4,7 +4,7 @@
 定义板块分类 API 的 Pydantic 响应模型。
 """
 
-from pydantic import BaseModel, Field, field_serializer, ConfigDict
+from pydantic import BaseModel, Field, field_serializer, ConfigDict, field_validator
 from decimal import Decimal
 from datetime import date, datetime
 from typing import List, Optional
@@ -61,3 +61,53 @@ class SectorClassificationListResponse(BaseModel):
 
     data: List[SectorClassificationResponse] = Field(..., description="分类数据列表")
     total: int = Field(..., description="总记录数")
+
+
+# ============== 请求模型 ==============
+
+class InitializeClassificationRequest(BaseModel):
+    """初始化分类数据请求"""
+    start_date: Optional[str] = Field(None, description="起始日期 (YYYY-MM-DD)，None 表示从最早日期开始")
+    overwrite: bool = Field(False, description="是否覆盖已有数据")
+
+    @field_validator('start_date')
+    @classmethod
+    def validate_start_date(cls, v: Optional[str]) -> Optional[str]:
+        """验证起始日期格式"""
+        if v is None:
+            return v
+        try:
+            # 尝试解析日期
+            datetime.strptime(v, '%Y-%m-%d')
+            return v
+        except ValueError:
+            raise ValueError('start_date 必须为 YYYY-MM-DD 格式')
+
+
+class UpdateDailyClassificationRequest(BaseModel):
+    """每日更新分类数据请求"""
+    target_date: Optional[str] = Field(None, description="目标日期 (YYYY-MM-DD)，None 表示今天")
+    overwrite: bool = Field(False, description="是否覆盖已有数据")
+
+    @field_validator('target_date')
+    @classmethod
+    def validate_target_date(cls, v: Optional[str]) -> Optional[str]:
+        """验证目标日期格式"""
+        if v is None:
+            return v
+        try:
+            # 尝试解析日期
+            datetime.strptime(v, '%Y-%m-%d')
+            return v
+        except ValueError:
+            raise ValueError('target_date 必须为 YYYY-MM-DD 格式')
+
+
+# ============== 状态响应模型 ==============
+
+class ClassificationStatusResponse(BaseModel):
+    """分类状态响应"""
+    latest_date: Optional[str] = Field(None, description="最新分类日期")
+    total_sectors: int = Field(0, description="板块总数")
+    by_level: dict = Field(default_factory=dict, description="按级别统计")
+    by_state: dict = Field(default_factory=dict, description="按状态统计")

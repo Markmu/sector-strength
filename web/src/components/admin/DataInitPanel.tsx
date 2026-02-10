@@ -75,7 +75,7 @@ export default function DataInitPanel() {
     }
   };
 
-  const startInit = async (type: 'sectors' | 'stocks' | 'historical' | 'sector_historical' | 'all') => {
+  const startInit = async (type: 'sectors' | 'stocks' | 'historical' | 'sector_historical' | 'sector_classification' | 'all') => {
     try {
       setLoading(true);
       setError(null);
@@ -86,11 +86,12 @@ export default function DataInitPanel() {
         stocks: 'init_stocks',
         historical: 'init_historical_data',
         sector_historical: 'init_sector_historical_data',
+        sector_classification: 'init_sector_classifications',
         all: 'init_stocks'  // 全部初始化默认为初始化股票（最常用）
       };
 
       // 映射参数 - 使用日期范围
-      const params = (type === 'historical' || type === 'sector_historical') ? {
+      const params = (type === 'historical' || type === 'sector_historical' || type === 'sector_classification') ? {
         start_date: startDate,
         end_date: endDate
       } : undefined;
@@ -374,7 +375,7 @@ export default function DataInitPanel() {
       </div>
 
       {/* 初始化按钮 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <button
           onClick={() => startInit('sectors')}
           disabled={loading}
@@ -409,6 +410,15 @@ export default function DataInitPanel() {
         >
           <TrendingUp className="w-5 h-5 text-purple-600" />
           <span className="font-medium">股票历史数据</span>
+        </button>
+
+        <button
+          onClick={() => startInit('sector_classification')}
+          disabled={loading}
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-orange-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <BarChart3 className="w-5 h-5 text-orange-600" />
+          <span className="font-medium">板块分类初始化</span>
         </button>
 
         <button

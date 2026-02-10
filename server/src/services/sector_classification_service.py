@@ -10,12 +10,13 @@ from datetime import date, timedelta
 from dataclasses import dataclass
 from functools import wraps
 import time
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.sector import Sector
 from src.models.daily_market_data import DailyMarketData
 from src.models.moving_average_data import MovingAverageData
+from src.models.sector_classification import SectorClassification
 
 # 导入自定义异常类
 from src.exceptions.classification import (
@@ -407,14 +408,16 @@ class SectorClassificationService:
                 results.append(classification_result)
 
             except (MissingMADataError, InvalidPriceError) as e:
-                logger.warning(f"板块 {sector.name} 分类计算失败: {e}")
+                # 已知异常，数据不足是预期情况
+                logger.info(f"板块 {sector.name} 数据不足，跳过: {e}")
                 errors.append({
                     'sector_id': sector.id,
                     'sector_name': sector.name,
                     'error': str(e)
                 })
             except Exception as e:
-                logger.error(f"处理板块 {sector.name} 时出错: {e}")
+                # 非预期异常使用 error 级别
+                logger.error(f"处理板块 {sector.name} 时出错: {e}", exc_info=True)
                 errors.append({
                     'sector_id': sector.id,
                     'sector_name': sector.name,
@@ -422,6 +425,359 @@ class SectorClassificationService:
                 })
 
         if errors:
-            logger.warning(f"批量计算完成，{len(errors)} 个板块失败")
+            logger.info(f"批量计算完成，{len(errors)} 个板块失败")
 
         return results
+
+    # ===============================
+    # 数据持久化方法
+    # ===============================
+
+    def _update_ma_fields(self, target: Any, ma_values: Dict[str, float], change_percent: Optional[float]) -> None:
+        """更新均线字段到目标对象
+
+        Args:
+            target: 目标对象（SectorClassification 实例）
+            ma_values: 均线值字典
+            change_percent: 涨跌幅
+        """
+        target.ma_5 = ma_values.get('ma_5')
+        target.ma_10 = ma_values.get('ma_10')
+        target.ma_20 = ma_values.get('ma_20')
+        target.ma_30 = ma_values.get('ma_30')
+        target.ma_60 = ma_values.get('ma_60')
+        target.ma_90 = ma_values.get('ma_90')
+        target.ma_120 = ma_values.get('ma_120')
+        target.ma_240 = ma_values.get('ma_240')
+
+    async def _save_classification_result(
+        self,
+        result: ClassificationResult,
+        overwrite: bool = False
+    ) -> Dict[str, Any]:
+        """保存单个分类结果到数据库
+
+        Args:
+            result: 分类计算结果
+            overwrite: 是否覆盖已有数据
+
+        Returns:
+            操作结果字典 {"action": "created" | "skipped" | "updated", "record": SectorClassification}
+        """
+        # 检查是否已存在
+        stmt = select(SectorClassification).where(
+            and_(
+                SectorClassification.sector_id == result.sector_id,
+                SectorClassification.classification_date == result.classification_date
+            )
+        )
+        db_result = await self.session.execute(stmt)
+        existing = db_result.scalar_one_or_none()
+
+        if existing and not overwrite:
+            return {"action": "skipped", "record": existing}
+
+        # 计算涨跌幅
+        change_percent = None
+        if result.price_5_days_ago and result.price_5_days_ago > 0:
+            change_percent = ((result.current_price - result.price_5_days_ago) / result.price_5_days_ago) * 100
+
+        if existing:
+            # 更新现有记录
+            existing.symbol = result.symbol
+            existing.classification_level = result.classification_level
+            existing.state = result.state
+            existing.current_price = result.current_price
+            existing.change_percent = change_percent
+            existing.price_5_days_ago = result.price_5_days_ago
+            self._update_ma_fields(existing, result.ma_values, change_percent)
+            return {"action": "updated", "record": existing}
+        else:
+            # 创建新记录
+            new_classification = SectorClassification(
+                sector_id=result.sector_id,
+                symbol=result.symbol,
+                classification_date=result.classification_date,
+                classification_level=result.classification_level,
+                state=result.state,
+                current_price=result.current_price,
+                change_percent=change_percent,
+                price_5_days_ago=result.price_5_days_ago
+            )
+            self._update_ma_fields(new_classification, result.ma_values, change_percent)
+            self.session.add(new_classification)
+            return {"action": "created", "record": new_classification}
+
+    async def initialize_classifications(
+        self,
+        start_date: Optional[date] = None,
+        overwrite: bool = False,
+        progress_callback: Optional[Callable] = None
+    ) -> Dict[str, Any]:
+        """初始化所有板块的分类数据
+
+        Args:
+            start_date: 起始日期，None 表示从每个板块最早日期开始
+            overwrite: 是否覆盖已有数据
+            progress_callback: 进度回调函数
+
+        Returns:
+            初始化结果字典
+        """
+        if progress_callback:
+            self.set_progress_callback(progress_callback)
+
+        logger.info(
+            f"开始初始化板块分类数据: start_date={start_date}, overwrite={overwrite}"
+        )
+
+        # 获取所有板块
+        stmt = select(Sector).order_by(Sector.id)
+        result = await self.session.execute(stmt)
+        sectors = result.scalars().all()
+
+        if not sectors:
+            return {"success": False, "error": "未找到板块数据"}
+
+        total = len(sectors)
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
+        error_count = 0
+
+        for idx, sector in enumerate(sectors):
+            try:
+                await self._report_progress(
+                    idx + 1,
+                    total,
+                    f"初始化板块分类: {sector.name} ({sector.code})"
+                )
+
+                # 获取该板块的日期范围
+                if start_date:
+                    # 使用指定起始日期
+                    date_stmt = select(func.min(DailyMarketData.date)).where(
+                        and_(
+                            DailyMarketData.entity_type == "sector",
+                            DailyMarketData.entity_id == sector.id,
+                            DailyMarketData.date >= start_date
+                        )
+                    )
+                else:
+                    # 从最早日期开始
+                    date_stmt = select(func.min(DailyMarketData.date)).where(
+                        and_(
+                            DailyMarketData.entity_type == "sector",
+                            DailyMarketData.entity_id == sector.id
+                        )
+                    )
+
+                date_result = await self.session.execute(date_stmt)
+                min_date = date_result.scalar()
+
+                if min_date is None:
+                    logger.warning(f"板块 {sector.name} 无市场数据，跳过")
+                    skipped_count += 1
+                    continue
+
+                # 获取最大日期
+                max_date_stmt = select(func.max(DailyMarketData.date)).where(
+                    and_(
+                        DailyMarketData.entity_type == "sector",
+                        DailyMarketData.entity_id == sector.id
+                    )
+                )
+                max_date_result = await self.session.execute(max_date_stmt)
+                max_date = max_date_result.scalar()
+
+                # 生成日期列表
+                current = min_date
+                date_count = 0
+
+                # 批量预加载已存在的分类数据（性能优化）
+                if not overwrite:
+                    existing_stmt = select(SectorClassification).where(
+                        and_(
+                            SectorClassification.sector_id == sector.id,
+                            SectorClassification.classification_date >= min_date,
+                            SectorClassification.classification_date <= max_date
+                        )
+                    )
+                    existing_result = await self.session.execute(existing_stmt)
+                    existing_records = existing_result.scalars().all()
+                    existing_dates = {record.classification_date for record in existing_records}
+                else:
+                    existing_dates = set()
+
+                while current <= max_date:
+                    try:
+                        # 检查数据是否已存在（使用预加载的数据）
+                        if current in existing_dates and not overwrite:
+                            date_count += 1
+                            skipped_count += 1
+                            current += timedelta(days=1)
+                            continue
+
+                        # 计算分类
+                        classification_result = await self.calculate_classification(
+                            sector.id, current
+                        )
+                        save_result = await self._save_classification_result(
+                            classification_result, overwrite
+                        )
+
+                        if save_result["action"] == "created":
+                            created_count += 1
+                        elif save_result["action"] == "updated":
+                            updated_count += 1
+                        else:
+                            skipped_count += 1
+
+                        date_count += 1
+
+                        # 每处理 10 个日期 flush 一次
+                        if date_count % 10 == 0:
+                            await self.session.flush()
+
+                    except (MissingMADataError, InvalidPriceError) as e:
+                        # 数据不足是预期情况，使用 debug 级别
+                        logger.debug(f"日期 {current} 数据不足，跳过: {e}")
+                    except Exception as e:
+                        # 非预期异常使用 warning 级别
+                        logger.warning(f"处理日期 {current} 失败: {e}", exc_info=True)
+
+                    current += timedelta(days=1)
+
+                # 完成一个板块后 flush
+                await self.session.flush()
+
+            except Exception as e:
+                error_count += 1
+                logger.error(f"处理板块 {sector.name} 时出错: {e}")
+
+        return {
+            "success": True,
+            "total_sectors": total,
+            "created": created_count,
+            "updated": updated_count,
+            "skipped": skipped_count,
+            "errors": error_count
+        }
+
+    async def update_daily_classification(
+        self,
+        target_date: Optional[date] = None,
+        overwrite: bool = False,
+        progress_callback: Optional[Callable] = None
+    ) -> Dict[str, Any]:
+        """每日增量更新板块分类
+
+        Args:
+            target_date: 目标日期，None 表示使用今天
+            overwrite: 是否覆盖已有数据
+            progress_callback: 进度回调函数
+
+        Returns:
+            更新结果字典
+        """
+        if target_date is None:
+            target_date = date.today()
+
+        if progress_callback:
+            self.set_progress_callback(progress_callback)
+
+        logger.info(f"开始每日板块分类更新: target_date={target_date}, overwrite={overwrite}")
+
+        # 数据新鲜度检查：验证是否有当日市场数据
+        data_check_stmt = select(func.count(DailyMarketData.id)).where(
+            and_(
+                DailyMarketData.entity_type == "sector",
+                DailyMarketData.date == target_date
+            )
+        )
+        data_check_result = await self.session.execute(data_check_stmt)
+        data_count = data_check_result.scalar()
+
+        if data_count == 0:
+            return {
+                "success": False,
+                "error": f"市场数据未就绪: {target_date} 无板块市场数据"
+            }
+
+        # 批量计算当天所有板块分类
+        results = await self.batch_calculate_all_sectors(target_date)
+
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
+
+        for result in results:
+            save_result = await self._save_classification_result(result, overwrite)
+            if save_result["action"] == "created":
+                created_count += 1
+            elif save_result["action"] == "updated":
+                updated_count += 1
+            else:
+                skipped_count += 1
+
+        # 完成后清除缓存
+        try:
+            from src.services.classification_cache import classification_cache
+            cache_cleared = classification_cache.clear_pattern("classification:")
+            logger.info(f"已清除 {cache_cleared} 条分类缓存")
+        except Exception as e:
+            logger.warning(f"清除缓存失败: {e}")
+
+        return {
+            "success": True,
+            "target_date": target_date.isoformat(),
+            "total_sectors": len(results),
+            "created": created_count,
+            "updated": updated_count,
+            "skipped": skipped_count
+        }
+
+    async def get_classification_status(self) -> Dict[str, Any]:
+        """获取分类数据状态统计
+
+        Returns:
+            状态统计字典
+        """
+        # 获取最新日期
+        latest_date_stmt = select(func.max(SectorClassification.classification_date))
+        latest_date_result = await self.session.execute(latest_date_stmt)
+        latest_date = latest_date_result.scalar()
+
+        # 获取板块总数
+        total_sectors_stmt = select(func.count(func.distinct(SectorClassification.sector_id)))
+        total_sectors_result = await self.session.execute(total_sectors_stmt)
+        total_sectors = total_sectors_result.scalar() or 0
+
+        # 按级别统计
+        by_level_stmt = select(
+            SectorClassification.classification_level,
+            func.count(SectorClassification.id)
+        ).where(
+            SectorClassification.classification_date == latest_date
+        ).group_by(SectorClassification.classification_level)
+
+        by_level_result = await self.session.execute(by_level_stmt)
+        by_level = {level: count for level, count in by_level_result.all()}
+
+        # 按状态统计
+        by_state_stmt = select(
+            SectorClassification.state,
+            func.count(SectorClassification.id)
+        ).where(
+            SectorClassification.classification_date == latest_date
+        ).group_by(SectorClassification.state)
+
+        by_state_result = await self.session.execute(by_state_stmt)
+        by_state = {state: count for state, count in by_state_result.all()}
+
+        return {
+            "latest_date": latest_date.isoformat() if latest_date else None,
+            "total_sectors": total_sectors,
+            "by_level": by_level,
+            "by_state": by_state
+        }

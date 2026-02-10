@@ -61,6 +61,17 @@ class JobManager:
             replace_existing=True
         )
 
+        # 每日 16:00 执行板块分类更新
+        self.scheduler.add_job(
+            self._daily_sector_classification_update,
+            trigger=CronTrigger(hour=16, minute=0),
+            id='daily_sector_classification',
+            name='板块分类每日更新',
+            replace_existing=True,
+            max_instances=1,  # 防止并发执行
+            misfire_grace_time=3600  # 错过执行时间后1小时内仍可执行
+        )
+
     async def _daily_data_update(self):
         """每日数据更新任务"""
         from src.services.data_updater.collector import DataCollector
@@ -104,6 +115,30 @@ class JobManager:
             logger.info(f"[定时任务] 清理了 {count} 条过期缓存")
         except Exception as e:
             logger.error(f"[定时任务] 缓存清理失败: {e}")
+
+    async def _daily_sector_classification_update(self):
+        """每日板块分类更新任务
+
+        注意：数据新鲜度检查已在服务层 update_daily_classification() 中统一处理
+        """
+        from src.services.sector_classification_service import SectorClassificationService
+        from src.db.database import AsyncSessionLocal
+
+        logger.info("[定时任务] 开始执行板块分类更新")
+
+        try:
+            async with AsyncSessionLocal() as session:
+                service = SectorClassificationService(session)
+                result = await service.update_daily_classification()
+
+                if result.get("success"):
+                    logger.info(f"[定时任务] 板块分类更新完成: {result}")
+                else:
+                    # 服务层返回失败（如数据未就绪），不抛出异常
+                    logger.warning(f"[定时任务] 板块分类更新跳过: {result.get('error')}")
+        except Exception as e:
+            logger.error(f"[定时任务] 板块分类更新失败: {e}")
+            raise  # 其他异常继续抛出，触发任务重试
 
     def start(self):
         """启动调度器"""

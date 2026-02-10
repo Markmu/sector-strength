@@ -7,6 +7,7 @@
 import logging
 from datetime import date
 from typing import Dict, Any
+from enum import Enum
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +17,40 @@ from src.services.data_init import DataInitService
 from src.services.data_update import DataUpdateService
 from src.services.sector_ma_service import SectorMAService
 from src.services.sector_strength_service import SectorStrengthService
+from src.services.sector_classification_service import SectorClassificationService
 
 logger = logging.getLogger(__name__)
+
+
+# ============== 任务类型常量 ==============
+
+class TaskType(str, Enum):
+    """任务类型枚举，避免硬编码字符串"""
+
+    # 数据初始化任务
+    INIT_SECTORS = "init_sectors"
+    INIT_STOCKS = "init_stocks"
+    INIT_HISTORICAL_DATA = "init_historical_data"
+    INIT_SECTOR_HISTORICAL_DATA = "init_sector_historical_data"
+    INIT_SECTOR_STOCKS = "init_sector_stocks"
+
+    # 数据补齐任务
+    BACKFILL_BY_DATE = "backfill_by_date"
+    BACKFILL_BY_RANGE = "backfill_by_range"
+
+    # 均线计算任务
+    CALCULATE_SECTOR_MA = "calculate_sector_ma"
+    BACKFILL_SECTOR_MA_BY_DATE = "backfill_sector_ma_by_date"
+    CALCULATE_SECTOR_MA_FULL_HISTORY = "calculate_sector_ma_full_history"
+
+    # 强度计算任务
+    CALCULATE_SECTOR_STRENGTH_BY_DATE = "calculate_sector_strength_by_date"
+    CALCULATE_SECTOR_STRENGTH_BY_RANGE = "calculate_sector_strength_by_range"
+    CALCULATE_SECTOR_STRENGTH_FULL_HISTORY = "calculate_sector_strength_full_history"
+
+    # 板块分类任务
+    INIT_SECTOR_CLASSIFICATIONS = "init_sector_classifications"
+    UPDATE_SECTOR_CLASSIFICATION_DAILY = "update_sector_classification_daily"
 
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
@@ -38,7 +71,7 @@ async def _make_progress_callback(manager: TaskManager, task_id: str):
     return progress_callback
 
 
-@TaskRegistry.register("init_sectors")
+@TaskRegistry.register(TaskType.INIT_SECTORS)
 async def init_sectors_task(
     task_id: str,
     params: Dict[str, Any],
@@ -82,7 +115,7 @@ async def init_sectors_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("init_stocks")
+@TaskRegistry.register(TaskType.INIT_STOCKS)
 async def init_stocks_task(
     task_id: str,
     params: Dict[str, Any],
@@ -120,7 +153,7 @@ async def init_stocks_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("init_historical_data")
+@TaskRegistry.register(TaskType.INIT_HISTORICAL_DATA)
 async def init_historical_data_task(
     task_id: str,
     params: Dict[str, Any],
@@ -186,7 +219,7 @@ async def init_historical_data_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("init_sector_historical_data")
+@TaskRegistry.register(TaskType.INIT_SECTOR_HISTORICAL_DATA)
 async def init_sector_historical_data_task(
     task_id: str,
     params: Dict[str, Any],
@@ -257,7 +290,7 @@ async def init_sector_historical_data_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("init_sector_stocks")
+@TaskRegistry.register(TaskType.INIT_SECTOR_STOCKS)
 async def init_sector_stocks_task(
     task_id: str,
     params: Dict[str, Any],
@@ -295,7 +328,7 @@ async def init_sector_stocks_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("backfill_by_date")
+@TaskRegistry.register(TaskType.BACKFILL_BY_DATE)
 async def backfill_by_date_task(
     task_id: str,
     params: Dict[str, Any],
@@ -350,7 +383,7 @@ async def backfill_by_date_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("backfill_by_range")
+@TaskRegistry.register(TaskType.BACKFILL_BY_RANGE)
 async def backfill_by_range_task(
     task_id: str,
     params: Dict[str, Any],
@@ -408,7 +441,7 @@ async def backfill_by_range_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("calculate_sector_ma")
+@TaskRegistry.register(TaskType.CALCULATE_SECTOR_MA)
 async def calculate_sector_ma_task(
     task_id: str,
     params: Dict[str, Any],
@@ -481,7 +514,7 @@ async def calculate_sector_ma_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("backfill_sector_ma_by_date")
+@TaskRegistry.register(TaskType.BACKFILL_SECTOR_MA_BY_DATE)
 async def backfill_sector_ma_by_date_task(
     task_id: str,
     params: Dict[str, Any],
@@ -531,7 +564,7 @@ async def backfill_sector_ma_by_date_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("calculate_sector_ma_full_history")
+@TaskRegistry.register(TaskType.CALCULATE_SECTOR_MA_FULL_HISTORY)
 async def calculate_sector_ma_full_history_task(
     task_id: str,
     params: Dict[str, Any],
@@ -611,12 +644,14 @@ __all__ = [
     "calculate_sector_strength_by_date_task",
     "calculate_sector_strength_by_range_task",
     "calculate_sector_strength_full_history_task",
+    "init_sector_classifications_task",
+    "update_sector_classification_daily_task",
 ]
 
 
 # ============== 板块强度计算任务 ==============
 
-@TaskRegistry.register("calculate_sector_strength_by_date")
+@TaskRegistry.register(TaskType.CALCULATE_SECTOR_STRENGTH_BY_DATE)
 async def calculate_sector_strength_by_date_task(
     task_id: str,
     params: Dict[str, Any],
@@ -679,7 +714,7 @@ async def calculate_sector_strength_by_date_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("calculate_sector_strength_by_range")
+@TaskRegistry.register(TaskType.CALCULATE_SECTOR_STRENGTH_BY_RANGE)
 async def calculate_sector_strength_by_range_task(
     task_id: str,
     params: Dict[str, Any],
@@ -747,7 +782,7 @@ async def calculate_sector_strength_by_range_task(
         raise Exception(error_msg)
 
 
-@TaskRegistry.register("calculate_sector_strength_full_history")
+@TaskRegistry.register(TaskType.CALCULATE_SECTOR_STRENGTH_FULL_HISTORY)
 async def calculate_sector_strength_full_history_task(
     task_id: str,
     params: Dict[str, Any],
@@ -805,4 +840,115 @@ async def calculate_sector_strength_full_history_task(
     else:
         error_msg = result.get("error", "Unknown error")
         await manager.log_message(task_id, "ERROR", f"Sector strength calculation failed: {error_msg}")
+        raise Exception(error_msg)
+
+
+# ============== 板块分类数据初始化任务 ==============
+
+@TaskRegistry.register(TaskType.INIT_SECTOR_CLASSIFICATIONS)
+async def init_sector_classifications_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    板块分类历史初始化任务
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数 {
+            "start_date": "YYYY-MM-DD" | None,  # 起始日期，None表示从最早日期开始
+            "overwrite": false  # 是否覆盖已有数据
+        }
+        manager: 任务管理器
+    """
+    service = SectorClassificationService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    start_date_str = params.get("start_date")
+    start_date = date.fromisoformat(start_date_str) if start_date_str else None
+    overwrite = params.get("overwrite", False)
+
+    await manager.log_message(
+        task_id,
+        "INFO",
+        f"Starting sector classification initialization (start_date: {start_date or 'earliest'}, overwrite: {overwrite})"
+    )
+
+    result = await service.initialize_classifications(
+        start_date=start_date,
+        overwrite=overwrite
+    )
+
+    if result.get("success"):
+        total = result.get("total_sectors", 0)
+        created = result.get("created", 0)
+        updated = result.get("updated", 0)
+        skipped = result.get("skipped", 0)
+        errors = result.get("errors", 0)
+
+        await manager.log_message(
+            task_id,
+            "INFO",
+            f"Sector classification initialization completed: {total} sectors processed, "
+            f"{created} created, {updated} updated, {skipped} skipped, {errors} errors"
+        )
+    else:
+        error_msg = result.get("error", "Unknown error")
+        await manager.log_message(task_id, "ERROR", f"Classification initialization failed: {error_msg}")
+        raise Exception(error_msg)
+
+
+@TaskRegistry.register(TaskType.UPDATE_SECTOR_CLASSIFICATION_DAILY)
+async def update_sector_classification_daily_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    板块分类每日增量更新任务
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数 {
+            "target_date": "YYYY-MM-DD" | None,  # 目标日期，None表示今天
+            "overwrite": false  # 是否覆盖已有数据
+        }
+        manager: 任务管理器
+    """
+    service = SectorClassificationService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    target_date_str = params.get("target_date")
+    target_date = date.fromisoformat(target_date_str) if target_date_str else None
+    overwrite = params.get("overwrite", False)
+
+    await manager.log_message(
+        task_id,
+        "INFO",
+        f"Starting daily classification update (target_date: {target_date or 'today'}, overwrite: {overwrite})"
+    )
+
+    result = await service.update_daily_classification(
+        target_date=target_date,
+        overwrite=overwrite
+    )
+
+    if result.get("success"):
+        total = result.get("total_sectors", 0)
+        created = result.get("created", 0)
+        updated = result.get("updated", 0)
+        skipped = result.get("skipped", 0)
+
+        await manager.log_message(
+            task_id,
+            "INFO",
+            f"Daily classification update completed: {total} sectors processed, "
+            f"{created} created, {updated} updated, {skipped} skipped, cache cleared"
+        )
+    else:
+        error_msg = result.get("error", "Unknown error")
+        await manager.log_message(task_id, "ERROR", f"Daily classification update failed: {error_msg}")
         raise Exception(error_msg)
