@@ -28,6 +28,7 @@ data/postgres/
 
 # Coverage directory used by tools like istanbul
 coverage/
+htmlcov/
 *.lcov
 
 # nyc test coverage
