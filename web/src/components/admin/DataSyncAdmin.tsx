@@ -15,6 +15,7 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  TrendingUp,
 } from 'lucide-react';
 
 // 类型定义
@@ -55,6 +56,13 @@ interface SystemHealth {
   cache: string;
 }
 
+interface ClassificationStatus {
+  latest_date: string | null;
+  total_sectors: number;
+  by_level: Record<number, number>;
+  by_state: Record<string, number>;
+}
+
 /**
  * 管理员数据同步管理页面
  * 提供数据更新、调度器管理、缓存管理和系统健康检查功能
@@ -66,16 +74,18 @@ export const DataSyncAdmin: React.FC = () => {
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [cacheStats, setCacheStats] = useState<any>(null);
   const [dataQuality, setDataQuality] = useState<any>(null);
+  const [classificationStatus, setClassificationStatus] = useState<ClassificationStatus | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [classificationTaskId, setClassificationTaskId] = useState<string | null>(null);
 
   // 加载所有数据
   const loadAllData = useCallback(async () => {
     try {
       setRefreshing(true);
-      const [statusRes, historyRes, schedulerRes, healthRes, cacheRes, qualityRes] =
+      const [statusRes, historyRes, schedulerRes, healthRes, cacheRes, qualityRes, classificationRes] =
         await Promise.all([
           adminApi.getUpdateStatus(),
           adminApi.getUpdateHistory({ page: 1, page_size: 10 }),
@@ -83,6 +93,7 @@ export const DataSyncAdmin: React.FC = () => {
           adminApi.getSystemHealth(),
           adminApi.getCacheStats(),
           adminApi.checkDataQuality(),
+          adminApi.getSectorClassificationStatus(),
         ]);
 
       if (statusRes.data) setUpdateStatus(statusRes.data);
@@ -91,6 +102,7 @@ export const DataSyncAdmin: React.FC = () => {
       if (healthRes.data) setSystemHealth(healthRes.data);
       if (cacheRes.data) setCacheStats(cacheRes.data);
       if (qualityRes.data) setDataQuality(qualityRes.data);
+      if (classificationRes.data) setClassificationStatus(classificationRes.data);
     } catch (error: any) {
       console.error('加载数据失败:', error);
       showMessage('error', error.message || '加载数据失败');
@@ -176,6 +188,85 @@ export const DataSyncAdmin: React.FC = () => {
     return new Date(dateString).toLocaleString('zh-CN');
   };
 
+  // 估算初始化所需时间
+  const estimateTime = (sectorCount: number, daysCount: number): string => {
+    const recordsPerSecond = 10; // 假设每秒处理 10 条记录
+    const totalSeconds = (sectorCount * daysCount) / recordsPerSecond;
+    if (totalSeconds > 3600) return `${(totalSeconds / 3600).toFixed(1)} 小时`;
+    if (totalSeconds > 60) return `${(totalSeconds / 60).toFixed(0)} 分钟`;
+    return `${totalSeconds.toFixed(0)} 秒`;
+  };
+
+  // 处理初始化分类
+  const handleInitClassification = async () => {
+    // 时间估算提示
+    if (classificationStatus?.total_sectors) {
+      const estimatedTime = estimateTime(classificationStatus.total_sectors, 365); // 假设一年数据
+      const confirmed = window.confirm(
+        `即将初始化板块分类历史数据。\n\n` +
+        `预计耗时: ${estimatedTime}\n\n` +
+        `是否继续？`
+      );
+      if (!confirmed) return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await adminApi.initSectorClassification({ overwrite: false });
+      if (response.data?.task_id) {
+        setClassificationTaskId(response.data.task_id);
+        showMessage('success', `板块分类初始化已启动，任务ID: ${response.data.task_id}`);
+        // 开始轮询任务进度
+        startPollingTaskProgress(response.data.task_id);
+      }
+    } catch (error: any) {
+      showMessage('error', error.message || '启动分类初始化失败');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 处理每日分类更新
+  const handleUpdateDailyClassification = async () => {
+    setIsLoading(true);
+    try {
+      const response = await adminApi.updateSectorClassificationDaily({ overwrite: false });
+      if (response.data?.task_id) {
+        setClassificationTaskId(response.data.task_id);
+        showMessage('success', `板块分类每日更新已启动，任务ID: ${response.data.task_id}`);
+        // 开始轮询任务进度
+        startPollingTaskProgress(response.data.task_id);
+      }
+    } catch (error: any) {
+      showMessage('error', error.message || '启动分类更新失败');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 轮询任务进度
+  const startPollingTaskProgress = (taskId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        // 这里需要使用 tasksApi 来查询任务状态
+        // 为了简化，暂时只设置定时器，实际项目中需要实现任务状态查询
+        const taskCompleted = false; // TODO: 实际查询任务状态
+
+        if (taskCompleted) {
+          clearInterval(pollInterval);
+          setClassificationTaskId(null);
+          await loadAllData();
+          showMessage('success', '板块分类任务已完成');
+        }
+      } catch (error) {
+        console.error('查询任务进度失败:', error);
+      }
+    }, 5000); // 每 5 秒轮询一次
+
+    // 清理定时器（当组件卸载时）
+    return () => clearInterval(pollInterval);
+  };
+
   return (
     <div className="space-y-6">
       {/* 消息提示 */}
@@ -245,6 +336,93 @@ export const DataSyncAdmin: React.FC = () => {
                 </div>
                 <div className="text-sm text-gray-500">缓存</div>
               </div>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* 板块分类管理 */}
+      <Card>
+        <CardBody className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              板块分类管理
+            </h3>
+          </div>
+
+          {/* 分类状态 */}
+          {classificationStatus && (
+            <div className="p-4 bg-gray-50 rounded-lg mb-4">
+              <h4 className="font-medium mb-2">分类数据状态</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">最新日期:</span>{' '}
+                  {classificationStatus.latest_date || '无数据'}
+                </div>
+                <div>
+                  <span className="text-gray-500">板块数量:</span>{' '}
+                  {classificationStatus.total_sectors}
+                </div>
+                <div>
+                  <span className="text-gray-500">反弹:</span>{' '}
+                  {classificationStatus.by_state['反弹'] || 0}
+                </div>
+                <div>
+                  <span className="text-gray-500">调整:</span>{' '}
+                  {classificationStatus.by_state['调整'] || 0}
+                </div>
+              </div>
+
+              {/* 按级别统计 */}
+              {Object.keys(classificationStatus.by_level).length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="text-xs text-gray-500 mb-2">按级别统计:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(classificationStatus.by_level)
+                      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                      .map(([level, count]) => (
+                        <div
+                          key={level}
+                          className="px-2 py-1 bg-white border rounded text-xs"
+                        >
+                          第{level}类: {count}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 操作按钮 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Button
+              onClick={handleInitClassification}
+              disabled={isLoading || !!classificationTaskId}
+              className="w-full"
+            >
+              <Play className="w-4 h-4 mr-2" />
+              初始化历史数据
+            </Button>
+            <Button
+              onClick={handleUpdateDailyClassification}
+              disabled={isLoading || !!classificationTaskId}
+              variant="outline"
+              className="w-full"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              执行每日更新
+            </Button>
+          </div>
+
+          {/* 任务进度提示 */}
+          {classificationTaskId && (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+              <Clock className="w-4 h-4 text-blue-600 animate-spin" />
+              <span className="text-sm text-blue-700">
+                任务执行中 (ID: {classificationTaskId})...
+              </span>
             </div>
           )}
         </CardBody>

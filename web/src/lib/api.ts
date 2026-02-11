@@ -386,6 +386,14 @@ export const adminApi = {
 
   // 系统健康
   getSystemHealth: () => adminApiClient.get<any>('/admin/data/health'),
+
+  // 板块分类管理
+  initSectorClassification: (params?: { start_date?: string; overwrite?: boolean }) =>
+    adminApiClient.post<{task_id: string; message: string}>('/admin/sector-classification/initialize', params),
+  updateSectorClassificationDaily: (params?: { target_date?: string; overwrite?: boolean }) =>
+    adminApiClient.post<{task_id: string; message: string}>('/admin/sector-classification/update-daily', params),
+  getSectorClassificationStatus: () =>
+    adminApiClient.get<any>('/admin/sector-classification/status'),
 }
 
 // 导出任务状态类型供组件使用
@@ -402,6 +410,8 @@ export const tasksApi = {
     INIT_SECTOR_STOCKS: 'init_sector_stocks',
     BACKFILL_BY_DATE: 'backfill_by_date',
     BACKFILL_BY_RANGE: 'backfill_by_range',
+    INIT_SECTOR_CLASSIFICATIONS: 'init_sector_classifications',
+    UPDATE_SECTOR_CLASSIFICATION_DAILY: 'update_sector_classification_daily',
   } as const,
 
   // 任务状态定义
