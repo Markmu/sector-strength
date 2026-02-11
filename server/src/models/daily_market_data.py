@@ -41,5 +41,22 @@ class DailyMarketData(Base):
         Index('idx_daily_market_data_symbol_date', 'symbol', 'date'),
     )
 
+    def __init__(self, **kwargs):
+        # Legacy test compatibility: map old sector_* and *_price fields.
+        if "sector_id" in kwargs and "entity_id" not in kwargs:
+            kwargs["entity_id"] = kwargs.pop("sector_id")
+            kwargs.setdefault("entity_type", "sector")
+        if "open_price" in kwargs and "open" not in kwargs:
+            kwargs["open"] = kwargs.pop("open_price")
+        if "high_price" in kwargs and "high" not in kwargs:
+            kwargs["high"] = kwargs.pop("high_price")
+        if "low_price" in kwargs and "low" not in kwargs:
+            kwargs["low"] = kwargs.pop("low_price")
+        if "close_price" in kwargs and "close" not in kwargs:
+            kwargs["close"] = kwargs.pop("close_price")
+        if "entity_id" in kwargs and "symbol" not in kwargs:
+            kwargs["symbol"] = str(kwargs["entity_id"])
+        super().__init__(**kwargs)
+
     def __repr__(self):
         return f"<DailyMarketData(entity_type={self.entity_type}, symbol={self.symbol}, date={self.date})>"

@@ -119,6 +119,21 @@ def setup_exception_handlers(app):
 
     logger = logging.getLogger(__name__)
 
+    def _make_json_safe(value):
+        """Convert nested validation payloads to JSON-serializable structures."""
+        if isinstance(value, dict):
+            return {k: _make_json_safe(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_make_json_safe(v) for v in value]
+        if isinstance(value, tuple):
+            return [_make_json_safe(v) for v in value]
+        try:
+            import json
+            json.dumps(value)
+            return value
+        except Exception:
+            return str(value)
+
     @app.exception_handler(BaseCustomException)
     async def custom_exception_handler(request: Request, exc: BaseCustomException):
         """处理自定义异常"""
@@ -126,6 +141,7 @@ def setup_exception_handlers(app):
         return JSONResponse(
             status_code=exc.status_code,
             content={
+                "detail": exc.detail,
                 "error": {
                     "type": exc.__class__.__name__,
                     "message": exc.detail,
@@ -142,6 +158,7 @@ def setup_exception_handlers(app):
         return JSONResponse(
             status_code=exc.status_code,
             content={
+                "detail": exc.detail,
                 "error": {
                     "type": "HTTPException",
                     "message": exc.detail,
@@ -153,14 +170,16 @@ def setup_exception_handlers(app):
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         """处理请求验证异常"""
-        logger.warning(f"Validation error: {exc.errors()}")
+        safe_errors = _make_json_safe(exc.errors())
+        logger.warning(f"Validation error: {safe_errors}")
         return JSONResponse(
             status_code=422,
             content={
+                "detail": safe_errors,
                 "error": {
                     "type": "ValidationError",
                     "message": "Invalid request data",
-                    "details": exc.errors(),
+                    "details": safe_errors,
                     "status_code": 422
                 }
             }

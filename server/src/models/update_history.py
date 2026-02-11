@@ -57,7 +57,6 @@ class UpdateHistory(Base):
 
     # 表级约束和索引
     __table_args__ = (
-        Index('ix_update_history_task_id', 'task_id'),
         Index('ix_update_history_status_created', 'status', 'created_at'),
         Index('ix_update_history_type_date', 'update_type', 'start_date'),
     )

@@ -7,7 +7,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class StockInfo(BaseModel):
@@ -71,22 +71,13 @@ class DailyQuote(BaseModel):
 
     symbol: str = Field(..., description="股票代码")
     trade_date: date = Field(..., description="交易日期")
-    open: float = Field(..., description="开盘价", gt=0)
-    high: float = Field(..., description="最高价", gt=0)
-    low: float = Field(..., description="最低价", gt=0)
-    close: float = Field(..., description="收盘价", gt=0)
+    open: float = Field(..., description="开盘价", ge=0)
+    high: float = Field(..., description="最高价", ge=0)
+    low: float = Field(..., description="最低价", ge=0)
+    close: float = Field(..., description="收盘价", ge=0)
     volume: float = Field(..., description="成交量", ge=0)
     amount: Optional[float] = Field(None, description="成交额", ge=0)
     turnover: Optional[float] = Field(None, description="换手率")
-
-    @model_validator(mode="after")
-    def validate_price_relationship(self) -> "DailyQuote":
-        """验证价格关系: high >= max(open, close), low <= min(open, close)"""
-        if self.high < max(self.open, self.close):
-            raise ValueError("最高价不能低于开盘价和收盘价的最大值")
-        if self.low > min(self.open, self.close):
-            raise ValueError("最低价不能高于开盘价和收盘价的最小值")
-        return self
 
 
 class SectorConstituent(BaseModel):

@@ -1,21 +1,10 @@
 """登录API测试"""
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from unittest.mock import patch
 
-from src.main import app
-from src.db.database import get_db
 from src.models.user import User
 from src.core.security import hash_password
-
-@pytest.fixture(scope="module")
-def client():
-    """创建测试客户端"""
-    with TestClient(app) as c:
-        yield c
 
 @pytest.fixture
 async def test_user(db: AsyncSession):
@@ -35,7 +24,7 @@ async def test_user(db: AsyncSession):
 @pytest.mark.asyncio
 async def test_login_success(client, test_user):
     """测试登录成功"""
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",
@@ -60,7 +49,7 @@ async def test_login_success(client, test_user):
 @pytest.mark.asyncio
 async def test_login_invalid_email(client):
     """测试无效邮箱"""
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/login",
         json={
             "email": "wrong@example.com",
@@ -74,7 +63,7 @@ async def test_login_invalid_email(client):
 @pytest.mark.asyncio
 async def test_login_invalid_password(client, test_user):
     """测试无效密码"""
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",
@@ -99,7 +88,7 @@ async def test_login_inactive_user(db: AsyncSession, client):
     await db.commit()
     await db.refresh(user)
 
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/login",
         json={
             "email": "inactive@example.com",
@@ -113,7 +102,7 @@ async def test_login_inactive_user(db: AsyncSession, client):
 @pytest.mark.asyncio
 async def test_login_invalid_data(client):
     """测试无效数据格式"""
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/login",
         json={
             "email": "invalid-email",
@@ -126,7 +115,7 @@ async def test_login_invalid_data(client):
 @pytest.mark.asyncio
 async def test_remember_me(client, test_user):
     """测试记住我功能"""
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",
@@ -145,7 +134,7 @@ async def test_remember_me(client, test_user):
 async def test_refresh_token_success(client, test_user):
     """测试刷新令牌成功"""
     # 先登录获取刷新令牌
-    login_response = client.post(
+    login_response = await client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",
@@ -156,7 +145,7 @@ async def test_refresh_token_success(client, test_user):
     refresh_token = login_response.json()["refresh_token"]
 
     # 使用刷新令牌获取新访问令牌
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/refresh",
         json={"refresh_token": refresh_token}
     )
@@ -170,7 +159,7 @@ async def test_refresh_token_success(client, test_user):
 @pytest.mark.asyncio
 async def test_refresh_token_invalid(client):
     """测试无效刷新令牌"""
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/refresh",
         json={"refresh_token": "invalid_token"}
     )
@@ -182,7 +171,7 @@ async def test_refresh_token_invalid(client):
 async def test_logout(client, test_user):
     """测试注销功能"""
     # 先登录
-    login_response = client.post(
+    login_response = await client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",
@@ -193,7 +182,7 @@ async def test_logout(client, test_user):
     token = login_response.json()["access_token"]
 
     # 注销
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/logout",
         headers={"Authorization": f"Bearer {token}"}
     )

@@ -276,7 +276,7 @@ class DataUpdateLog(Base):
 ### 测试标准摘要
 
 - 使用 `pytest` + `pytest-asyncio` 进行异步测试
-- 使用测试数据库（PostgreSQL 或 SQLite 内存数据库）
+- 使用测试数据库（PostgreSQL，需与生产类型一致）
 - 测试覆盖率目标: > 85%
 - 必须测试：
   * 模型创建和读取

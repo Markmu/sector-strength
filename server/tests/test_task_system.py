@@ -5,6 +5,7 @@
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,13 +23,17 @@ from src.services.task_handlers import (
 from src.db.database import AsyncSessionLocal
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def db_session():
     """创建测试数据库会话"""
     async with AsyncSessionLocal() as session:
         yield session
         # 清理：回滚测试创建的数据
-        await session.rollback()
+        try:
+            await session.rollback()
+        except RuntimeError as exc:
+            if "Event loop is closed" not in str(exc):
+                raise
 
 
 @pytest.mark.asyncio
@@ -262,4 +267,3 @@ async def test_task_handlers_exist():
 if __name__ == "__main__":
     # 运行测试
     pytest.main([__file__, "-v"])
-

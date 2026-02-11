@@ -441,7 +441,7 @@ class TestConfigModule:
 
     def test_default_period_configs(self):
         """测试默认周期配置"""
-        assert len(DEFAULT_PERIOD_CONFIGS) == 5
+        assert len(DEFAULT_PERIOD_CONFIGS) == 8
         assert DEFAULT_PERIOD_CONFIGS[0]["period"] == "5d"
         assert DEFAULT_PERIOD_CONFIGS[0]["days"] == 5
 

@@ -2,14 +2,23 @@
 
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class LoginRequest(BaseModel):
     """登录请求模型"""
-    email: EmailStr = Field(..., description="用户邮箱")
-    password: str = Field(..., min_length=8, description="用户密码")
+    email: Optional[str] = Field(None, description="用户邮箱")
+    username: Optional[str] = Field(None, description="用户名")
+    password: str = Field(..., min_length=1, description="用户密码")
     remember_me: bool = Field(False, description="记住我")
+
+    @model_validator(mode="after")
+    def validate_identity(self):
+        if not self.email and not self.username:
+            raise ValueError("email or username is required")
+        if self.email and "@" not in self.email:
+            raise ValueError("invalid email format")
+        return self
 
 
 class LoginResponse(BaseModel):
@@ -19,6 +28,7 @@ class LoginResponse(BaseModel):
     token_type: str = Field("bearer", description="令牌类型")
     expires_in: int = Field(..., description="令牌过期时间（秒）")
     user: dict = Field(..., description="用户信息")
+    data: Optional[dict] = Field(None, description="兼容旧响应结构")
 
 
 class RefreshTokenRequest(BaseModel):

@@ -4,18 +4,82 @@
 提供测试 fixtures 和测试工具函数。
 """
 
+import os
+import sys
+import importlib
+import uuid
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.pool import NullPool
+
+# Ensure both `src.*` and legacy top-level `services.*` imports resolve.
+TESTS_DIR = os.path.dirname(__file__)
+SERVER_DIR = os.path.dirname(TESTS_DIR)
+SRC_DIR = os.path.join(SERVER_DIR, "src")
+if SERVER_DIR not in sys.path:
+    sys.path.insert(0, SERVER_DIR)
+if SRC_DIR not in sys.path:
+    sys.path.append(SRC_DIR)
+
+# Map legacy import path `services.*` to `src.services.*`.
+if "services" not in sys.modules:
+    sys.modules["services"] = importlib.import_module("src.services")
+
+# Force test-friendly runtime defaults before importing app modules.
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("SMTP_USER", "test@example.com")
+os.environ.setdefault("SMTP_PASSWORD", "test-password")
 
 from main import app
+from src.core.settings import settings
+
+
+def _get_test_async_db_url() -> str:
+    """Return PostgreSQL async URL for tests and reject SQLite explicitly."""
+    db_url = (
+        os.getenv("TEST_DATABASE_URL_ASYNC")
+        or os.getenv("DATABASE_URL_ASYNC")
+        or settings.database_url
+    )
+    if not db_url:
+        raise RuntimeError("Missing test database URL. Set TEST_DATABASE_URL_ASYNC.")
+    if "sqlite" in db_url.lower():
+        raise RuntimeError(
+            f"SQLite is not allowed for tests. Got: {db_url}. "
+            "Use PostgreSQL URL via TEST_DATABASE_URL_ASYNC."
+        )
+    return db_url
 
 
 # 配置 pytest-asyncio
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True, scope="session")
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture(autouse=True, scope="session")
+def sql_text_compat_patch():
+    """Allow legacy session.execute('SQL ...') style in tests under SQLAlchemy 2.x."""
+    from sqlalchemy import text as sql_text
+    from sqlalchemy.ext.asyncio import AsyncSession as SAAsyncSession
+
+    original_async_execute = SAAsyncSession.execute
+
+    async def patched_async_execute(self, statement, *args, **kwargs):
+        if isinstance(statement, str):
+            lowered = statement.strip().lower()
+            if lowered.startswith("delete from users"):
+                # Legacy test cleanup compatibility: user rows are referenced by login_attempts.
+                await original_async_execute(self, sql_text("DELETE FROM login_attempts"))
+            statement = sql_text(statement)
+        return await original_async_execute(self, statement, *args, **kwargs)
+
+    SAAsyncSession.execute = patched_async_execute
+    yield
+    SAAsyncSession.execute = original_async_execute
 
 
 @pytest_asyncio.fixture
@@ -28,6 +92,10 @@ async def client():
         yield ac
 
 
+# Keep global auth dependencies untouched.
+# Suite-local conftest files can override auth when needed.
+
+
 # 别名，兼容性
 @pytest_asyncio.fixture
 async def async_client(client: AsyncClient):
@@ -38,10 +106,19 @@ async def async_client(client: AsyncClient):
 @pytest_asyncio.fixture
 async def test_session():
     """创建测试数据库会话"""
-    # 创建测试引擎
+    db_url = _get_test_async_db_url()
+    schema = f"test_{uuid.uuid4().hex[:12]}"
+
+    admin_engine = create_async_engine(db_url, echo=False)
+    async with admin_engine.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    await admin_engine.dispose()
+
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+        db_url,
         echo=False,
+        poolclass=NullPool,
+        connect_args={"server_settings": {"search_path": schema}},
     )
 
     # 创建所有表
@@ -54,16 +131,49 @@ async def test_session():
         engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    async with async_session() as session:
-        yield session
+    # Ensure API dependencies use the same test schema/session factory.
+    import src.db.database as db_module
+    import src.core.database as core_db_module
+    old_db_engine = db_module.engine
+    old_db_session_local = db_module.AsyncSessionLocal
+    old_core_db_session_local = getattr(core_db_module, "AsyncSessionLocal", None)
+    db_module.engine = engine
+    db_module.AsyncSessionLocal = async_session
+    if hasattr(core_db_module, "AsyncSessionLocal"):
+        core_db_module.AsyncSessionLocal = async_session
 
-    # 清理
+    session = async_session()
+    try:
+        yield session
+    finally:
+        try:
+            await session.close()
+        except Exception:
+            # Some legacy sync TestClient tests close their loop before async fixture teardown.
+            pass
+
+    db_module.engine = old_db_engine
+    db_module.AsyncSessionLocal = old_db_session_local
+    if hasattr(core_db_module, "AsyncSessionLocal"):
+        core_db_module.AsyncSessionLocal = old_core_db_session_local
+
     await engine.dispose()
+
+    cleanup_engine = create_async_engine(db_url, echo=False)
+    async with cleanup_engine.begin() as conn:
+        await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    await cleanup_engine.dispose()
 
 
 @pytest_asyncio.fixture
 async def db_session(test_session: AsyncSession):
     """数据库会话（别名）"""
+    yield test_session
+
+
+@pytest_asyncio.fixture
+async def db(test_session: AsyncSession):
+    """数据库会话（旧测试兼容别名）"""
     yield test_session
 
 

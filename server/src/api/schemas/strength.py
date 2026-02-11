@@ -48,9 +48,12 @@ class StrengthListResponse(BaseModel):
 class RankingItem(BaseModel):
     """V1 排名项 (兼容)"""
     rank: int
-    entity_id: str
-    entity_type: str
-    symbol: str
+    entity_id: Optional[str] = None
+    entity_type: Optional[str] = None
+    symbol: Optional[str] = None
+    # Legacy response compatibility fields
+    id: Optional[str] = None
+    code: Optional[str] = None
     name: Optional[str] = None
     strength_score: Optional[float] = None
     trend_direction: Optional[float] = None
@@ -62,6 +65,7 @@ class RankingResponse(BaseModel):
     success: bool
     data: List[RankingItem] = Field(default_factory=list)
     total: int = 0
+    top_n: Optional[int] = None
 
 
 # ========== V2 类型 (MA 系统强度) ==========

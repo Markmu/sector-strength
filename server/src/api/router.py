@@ -22,6 +22,8 @@ router.include_router(v1_router)     # /api/v1/*
 
 # 认证路由 - 放在 v1 下
 router.include_router(auth_router, prefix="/v1/auth")   # /api/v1/auth/*
+# 兼容旧路径
+router.include_router(auth_router, prefix="/auth")      # /api/auth/*
 
 # 管理员路由 - 放在 v1 下
 router.include_router(admin_router, prefix="/v1/admin")  # /api/v1/admin/*

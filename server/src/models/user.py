@@ -30,11 +30,24 @@ class User(Base):
     permissions = Column(JSON, comment="用户权限列表")
 
     def __init__(self, **kwargs):
-        
+        # Backward-compatible field aliases used in legacy tests/code.
+        if "hashed_password" in kwargs and "password_hash" not in kwargs:
+            kwargs["password_hash"] = kwargs.pop("hashed_password")
+        if "full_name" in kwargs and "display_name" not in kwargs:
+            kwargs["display_name"] = kwargs.pop("full_name")
+        if "is_admin" in kwargs and "role" not in kwargs:
+            kwargs["role"] = "admin" if kwargs.pop("is_admin") else "user"
+        if "id" not in kwargs:
+            kwargs["id"] = uuid.uuid4()
+
         if 'role' not in kwargs:
             kwargs['role'] = 'user'
         if 'permissions' not in kwargs:
             kwargs['permissions'] = []
+        if 'is_active' not in kwargs:
+            kwargs['is_active'] = False
+        if 'is_verified' not in kwargs:
+            kwargs['is_verified'] = False
         super().__init__(**kwargs)
 
     # 关联关系
@@ -92,6 +105,13 @@ class EmailVerificationToken(Base):
         Index('idx_verification_user', 'user_id'),
     )
 
+    def __init__(self, **kwargs):
+        if "id" not in kwargs:
+            kwargs["id"] = uuid.uuid4()
+        if "is_used" not in kwargs:
+            kwargs["is_used"] = False
+        super().__init__(**kwargs)
+
 
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
@@ -136,7 +156,12 @@ class LoginAttempt(Base):
     __tablename__ = "login_attempts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="登录尝试唯一标识")
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, comment="用户ID（登录成功时填写)")
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="用户ID（登录成功时填写)"
+    )
     email = Column(String(255), nullable=False, comment="尝试登录的邮箱")
     ip_address = Column(String(45), comment="IP地址")
     user_agent = Column(String(500), comment="用户代理")

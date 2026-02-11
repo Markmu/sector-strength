@@ -207,7 +207,7 @@ async def search_sectors(
 
 @router.get("/{sector_id}", response_model=SectorDetailResponse)
 async def get_sector_detail(
-    sector_id: int,
+    sector_id: str,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> SectorDetailResponse:
@@ -216,8 +216,12 @@ async def get_sector_detail(
 
     包括板块基本信息、强度得分、成分股数量等。
     """
+    if not sector_id.isdigit():
+        raise NotFoundError(f"板块 {sector_id} 不存在")
+    sector_id_int = int(sector_id)
+
     # 查询板块
-    stmt = select(SectorModel).where(SectorModel.id == sector_id)
+    stmt = select(SectorModel).where(SectorModel.id == sector_id_int)
     result = await session.execute(stmt)
     sector = result.scalar_one_or_none()
 
@@ -249,7 +253,7 @@ async def get_sector_detail(
 
 @router.get("/{sector_id}/stocks", response_model=SectorStocksResponse)
 async def get_sector_stocks(
-    sector_id: int,
+    sector_id: str,
     sort_by: str = Query("strength_score", description="排序字段"),
     sort_order: str = Query("desc", description="排序方向"),
     page: int = Query(1, ge=1, description="页码"),
@@ -263,7 +267,11 @@ async def get_sector_stocks(
     返回指定板块的成分股列表，支持按强度排序。
     """
     # 验证板块存在并获取板块代码
-    sector_stmt = select(SectorModel).where(SectorModel.id == sector_id)
+    if not sector_id.isdigit():
+        raise NotFoundError(f"板块 {sector_id} 不存在")
+    sector_id_int = int(sector_id)
+
+    sector_stmt = select(SectorModel).where(SectorModel.id == sector_id_int)
     sector_result = await session.execute(sector_stmt)
     sector = sector_result.scalar_one_or_none()
 

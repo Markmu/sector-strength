@@ -7,9 +7,7 @@ from datetime import datetime, date
 from typing import Optional
 from sqlalchemy import String, Integer, Date, DateTime, Numeric, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
+from .base import Base
 
 
 class SectorClassification(Base):

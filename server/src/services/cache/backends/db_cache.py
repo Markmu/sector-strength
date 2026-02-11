@@ -6,13 +6,25 @@
 
 import pickle
 import asyncio
+import inspect
 from typing import Optional, Any, Dict
 from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.cache import CacheEntry
 from src.db.database import AsyncSessionLocal
+
+
+@asynccontextmanager
+async def get_session():
+    """Compatibility session provider for tests that patch this symbol."""
+    session = AsyncSessionLocal()
+    try:
+        yield session
+    finally:
+        await session.close()
 
 
 class DatabaseCache:
@@ -37,14 +49,13 @@ class DatabaseCache:
         Returns:
             缓存值，如果不存在或已过期则返回 None
         """
-        session = AsyncSessionLocal()
-        try:
+        async with get_session() as session:
             stmt = select(CacheEntry).where(
                 CacheEntry.key == key,
                 CacheEntry.expires_at > datetime.now()
             )
             result = await session.execute(stmt)
-            entry = result.scalar_one_or_none()
+            entry = await self._scalar_one_or_none(result)
 
             if entry:
                 try:
@@ -52,8 +63,6 @@ class DatabaseCache:
                 except (pickle.PickleError, EOFError):
                     return None
             return None
-        finally:
-            await session.close()
 
     async def set(
         self,
@@ -83,11 +92,8 @@ class DatabaseCache:
             if session:
                 await self._set_in_session(key, serialized_value, expires_at, session)
             else:
-                new_session = AsyncSessionLocal()
-                try:
+                async with get_session() as new_session:
                     await self._set_in_session(key, serialized_value, expires_at, new_session)
-                finally:
-                    await new_session.close()
 
             return True
         except (pickle.PickleError, Exception) as e:
@@ -106,7 +112,7 @@ class DatabaseCache:
         # 检查是否已存在
         stmt = select(CacheEntry).where(CacheEntry.key == key)
         result = await session.execute(stmt)
-        existing = result.scalar_one_or_none()
+        existing = await self._scalar_one_or_none(result)
 
         if existing:
             # 更新现有条目
@@ -135,14 +141,11 @@ class DatabaseCache:
         Returns:
             是否成功
         """
-        session = AsyncSessionLocal()
-        try:
+        async with get_session() as session:
             stmt = delete(CacheEntry).where(CacheEntry.key == key)
             result = await session.execute(stmt)
             await session.commit()
             return result.rowcount > 0
-        finally:
-            await session.close()
 
     async def clear_pattern(self, pattern: str) -> int:
         """
@@ -154,14 +157,11 @@ class DatabaseCache:
         Returns:
             清除的缓存数量
         """
-        session = AsyncSessionLocal()
-        try:
+        async with get_session() as session:
             stmt = delete(CacheEntry).where(CacheEntry.key.like(pattern))
             result = await session.execute(stmt)
             await session.commit()
             return result.rowcount
-        finally:
-            await session.close()
 
     async def clear_all(self) -> int:
         """
@@ -170,14 +170,11 @@ class DatabaseCache:
         Returns:
             清除的缓存数量
         """
-        session = AsyncSessionLocal()
-        try:
+        async with get_session() as session:
             stmt = delete(CacheEntry)
             result = await session.execute(stmt)
             await session.commit()
             return result.rowcount
-        finally:
-            await session.close()
 
     async def cleanup_expired(self) -> int:
         """
@@ -186,16 +183,13 @@ class DatabaseCache:
         Returns:
             清理的缓存数量
         """
-        session = AsyncSessionLocal()
-        try:
+        async with get_session() as session:
             stmt = delete(CacheEntry).where(
                 CacheEntry.expires_at <= datetime.now()
             )
             result = await session.execute(stmt)
             await session.commit()
             return result.rowcount
-        finally:
-            await session.close()
 
     async def get_many(self, keys: list[str]) -> Dict[str, Any]:
         """
@@ -253,18 +247,22 @@ class DatabaseCache:
         Returns:
             剩余秒数，如果不存在返回 None
         """
-        session = AsyncSessionLocal()
-        try:
+        async with get_session() as session:
             stmt = select(CacheEntry).where(
                 CacheEntry.key == key,
                 CacheEntry.expires_at > datetime.now()
             )
             result = await session.execute(stmt)
-            entry = result.scalar_one_or_none()
+            entry = await self._scalar_one_or_none(result)
 
             if entry:
                 remaining = (entry.expires_at - datetime.now()).total_seconds()
                 return max(0, int(remaining))
             return None
-        finally:
-            await session.close()
+    @staticmethod
+    async def _scalar_one_or_none(result):
+        """Handle sync/async scalar_one_or_none for AsyncMock compatibility."""
+        value = result.scalar_one_or_none()
+        if inspect.isawaitable(value):
+            value = await value
+        return value

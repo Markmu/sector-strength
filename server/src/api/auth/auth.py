@@ -1,7 +1,7 @@
 """认证相关 API - 邮箱验证等"""
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
@@ -24,6 +24,7 @@ from src.core.deps import get_settings
 router = APIRouter()
 security = HTTPBearer()
 auth_service = AuthService()
+revoked_access_tokens: set[str] = set()
 
 
 @router.post("/refresh", response_model=RefreshTokenResponse)
@@ -97,16 +98,29 @@ async def refresh_token(
 @router.post("/logout")
 async def logout(
     logout_request: LogoutRequest,
+    credentials = Depends(security),
     db: AsyncSession = Depends(get_db)
 ):
     """
     注销登录
     """
     try:
-        # 使刷新令牌失效
-        await auth_service.invalidate_refresh_token(db, logout_request.refresh_token)
+        token = credentials.credentials
+        payload = auth_service.verify_token(token)
+        if payload.get("type") != "access":
+            raise AuthenticationError("无效的访问令牌")
+
+        # Revoke current access token in-memory for immediate sign-out semantics.
+        revoked_access_tokens.add(token)
+
+        if await auth_service.is_refresh_token_valid(db, logout_request.refresh_token):
+            # 使刷新令牌失效
+            await auth_service.invalidate_refresh_token(db, logout_request.refresh_token)
+
         return {"message": "注销成功"}
 
+    except (AuthenticationError, ValidationError):
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(
@@ -126,6 +140,8 @@ async def get_current_user(
     try:
         # 验证令牌
         token = credentials.credentials
+        if token in revoked_access_tokens:
+            raise AuthenticationError("令牌已失效，请重新登录")
         payload = auth_service.verify_token(token)
         user_id = payload.get("sub")
 

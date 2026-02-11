@@ -125,8 +125,12 @@ async def get_stock_detail(
 
     包括个股基本信息、强度得分、所属板块列表等。
     """
+    if not stock_id.isdigit():
+        raise NotFoundError(f"股票 {stock_id} 不存在")
+    stock_id_int = int(stock_id)
+
     # 查询股票
-    stmt = select(StockModel).where(StockModel.id == stock_id)
+    stmt = select(StockModel).where(StockModel.id == stock_id_int)
     result = await session.execute(stmt)
     stock = result.scalar_one_or_none()
 
@@ -189,8 +193,12 @@ async def get_stock_strength(
     Returns:
         个股强度响应
     """
+    if not stock_id.isdigit():
+        raise NotFoundError(f"股票 {stock_id} 不存在")
+    stock_id_int = int(stock_id)
+
     # 查询股票是否存在
-    stmt = select(StockModel).where(StockModel.id == stock_id)
+    stmt = select(StockModel).where(StockModel.id == stock_id_int)
     result = await session.execute(stmt)
     stock = result.scalar_one_or_none()
 
@@ -311,8 +319,12 @@ async def get_stock_strength_history(
     Returns:
         历史数据响应
     """
+    if not stock_id.isdigit():
+        raise NotFoundError(f"股票 {stock_id} 不存在")
+    stock_id_int = int(stock_id)
+
     # 查询股票是否存在
-    stmt = select(StockModel).where(StockModel.id == stock_id)
+    stmt = select(StockModel).where(StockModel.id == stock_id_int)
     result = await session.execute(stmt)
     stock = result.scalar_one_or_none()
 

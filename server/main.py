@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import time
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Callable
 
@@ -31,33 +32,45 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _is_test_env() -> bool:
+    env = (settings.ENVIRONMENT or "").lower()
+    return env == "test" or "PYTEST_CURRENT_TEST" in os.environ
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
     logger.info("Starting up Sector Strength API...")
 
-    # 启动任务执行器
-    init_task_executor(poll_interval=5.0, max_concurrent_tasks=2)
-    start_task_executor()
-    logger.info("TaskExecutor started")
+    job_manager = None
+    if not _is_test_env():
+        # 启动任务执行器
+        init_task_executor(poll_interval=5.0, max_concurrent_tasks=2)
+        start_task_executor()
+        logger.info("TaskExecutor started")
 
-    # 启动定时任务调度器
-    job_manager = get_job_manager()
-    job_manager.start()
-    logger.info("JobManager started - scheduled tasks active")
+        # 启动定时任务调度器
+        job_manager = get_job_manager()
+        job_manager.start()
+        logger.info("JobManager started - scheduled tasks active")
+    else:
+        logger.info("Test environment detected, skip background workers")
 
     yield
     # 关闭时执行
     logger.info("Shutting down Sector Strength API...")
 
-    # 停止任务执行器
-    stop_task_executor()
-    logger.info("TaskExecutor stopped")
+    if not _is_test_env():
+        # 停止任务执行器
+        stop_task_executor()
+        logger.info("TaskExecutor stopped")
 
-    # 停止定时任务调度器
-    job_manager.shutdown(wait=True)
-    logger.info("JobManager stopped")
+        # 停止定时任务调度器
+        if job_manager is not None:
+            job_manager.shutdown(wait=True)
+            logger.info("JobManager stopped")
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -97,6 +110,8 @@ app.add_middleware(
 
 # 注册 API 路由
 app.include_router(api_router, prefix="/api")
+# 兼容旧路径：保留无 /api 前缀访问（如 /v1/*）。
+app.include_router(api_router)
 
 # 根路径
 @app.get("/")

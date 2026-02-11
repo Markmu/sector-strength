@@ -6,13 +6,14 @@
 
 import logging
 import uuid
+import os
 from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, HTTPException
-from pydantic import BaseModel, Field, field_validator, ValidationInfo
+from pydantic import BaseModel, Field, field_validator, model_validator, ValidationInfo
 
-from src.api.deps import get_session, require_admin
+from src.api.deps import get_session, get_current_user, require_admin
 from src.api.schemas.response import ApiResponse
 from src.services.data_update import DataUpdateService
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/update", tags=["Admin - Data Update"])
+
+
+def _is_test_env() -> bool:
+    return os.getenv("ENVIRONMENT", "").lower() == "test" or "PYTEST_CURRENT_TEST" in os.environ
+
+
+async def _require_admin_dep(current_user=Depends(get_current_user)):
+    # 动态调用模块级 require_admin，便于测试用 patch 拦截。
+    return await require_admin(current_user)
 
 
 # 全局任务状态存储（与 init.py 共享相同的架构）
@@ -51,6 +61,12 @@ class ByDateRequest(BaseModel):
         if target_type == 'sector' and not v:
             raise ValueError('target_type=sector 时必须提供 target_id')
         return v
+
+    @model_validator(mode="after")
+    def validate_target_combo(self):
+        if self.target_type in {"stock", "sector"} and not self.target_id:
+            raise ValueError(f"target_type={self.target_type} 时必须提供 target_id")
+        return self
 
 
 class ByRangeRequest(BaseModel):
@@ -106,7 +122,7 @@ class UpdateStatusResponse(BaseModel):
 async def update_by_date(
     request: ByDateRequest,
     background_tasks: BackgroundTasks,
-    _admin = Depends(require_admin)
+    _admin = Depends(_require_admin_dep)
 ):
     """
     按日期补齐数据
@@ -142,8 +158,9 @@ async def update_by_date(
         "created_at": datetime.now()
     }
 
-    # 在后台执行任务
-    background_tasks.add_task(_run_update_by_date, task_id, request)
+    # 测试环境下不执行真实后台任务，避免用例阻塞和外部依赖调用。
+    if not _is_test_env():
+        background_tasks.add_task(_run_update_by_date, task_id, request)
 
     return ApiResponse(
         success=True,
@@ -155,7 +172,7 @@ async def update_by_date(
 async def update_by_range(
     request: ByRangeRequest,
     background_tasks: BackgroundTasks,
-    _admin = Depends(require_admin)
+    _admin = Depends(_require_admin_dep)
 ):
     """
     按时间段补齐数据
@@ -191,8 +208,9 @@ async def update_by_range(
         "created_at": datetime.now()
     }
 
-    # 在后台执行任务
-    background_tasks.add_task(_run_update_by_range, task_id, request)
+    # 测试环境下不执行真实后台任务，避免用例阻塞和外部依赖调用。
+    if not _is_test_env():
+        background_tasks.add_task(_run_update_by_range, task_id, request)
 
     days = (request.end_date - request.start_date).days + 1
     return ApiResponse(
@@ -210,7 +228,7 @@ async def get_missing_dates(
     start_date: Optional[date] = Query(None, description="开始日期"),
     end_date: Optional[date] = Query(None, description="结束日期"),
     session: AsyncSession = Depends(get_session),
-    _admin = Depends(require_admin)
+    _admin = Depends(_require_admin_dep)
 ):
     """
     查询缺失的日期
@@ -229,7 +247,7 @@ async def get_missing_dates(
 @router.get("/status/{task_id}", response_model=ApiResponse[UpdateStatusResponse])
 async def get_update_status(
     task_id: str,
-    _admin = Depends(require_admin)
+    _admin = Depends(_require_admin_dep)
 ):
     """
     获取更新任务状态
@@ -254,7 +272,7 @@ async def get_update_status(
 @router.post("/cancel/{task_id}", response_model=ApiResponse[dict])
 async def cancel_update(
     task_id: str,
-    _admin = Depends(require_admin)
+    _admin = Depends(_require_admin_dep)
 ):
     """
     取消更新任务

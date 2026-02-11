@@ -6,10 +6,32 @@ API 测试配置
 
 import pytest
 import pytest_asyncio
+import os
+import uuid
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from main import app
+from src.core.settings import settings
+from src.api.deps import get_current_user
+from src.models.user import User
+
+
+def _get_test_async_db_url() -> str:
+    db_url = (
+        os.getenv("TEST_DATABASE_URL_ASYNC")
+        or os.getenv("DATABASE_URL_ASYNC")
+        or settings.database_url
+    )
+    if not db_url:
+        raise RuntimeError("Missing test database URL. Set TEST_DATABASE_URL_ASYNC.")
+    if "sqlite" in db_url.lower():
+        raise RuntimeError(
+            f"SQLite is not allowed for tests. Got: {db_url}. "
+            "Use PostgreSQL URL via TEST_DATABASE_URL_ASYNC."
+        )
+    return db_url
 
 
 # 配置 pytest-asyncio
@@ -32,17 +54,46 @@ async def client():
         yield ac
 
 
+@pytest.fixture(autouse=True)
+def api_auth_override():
+    """Keep production auth dependencies intact; override only for API tests."""
+    fastapi_app = app.app if hasattr(app, "app") else app
+
+    async def _mock_current_user():
+        return User(
+            email="api-test@example.com",
+            password_hash="test-hash",
+            username="api_test_user",
+            is_active=True,
+            is_verified=True,
+            role="admin",
+            permissions=["read", "write", "admin"],
+        )
+
+    fastapi_app.dependency_overrides[get_current_user] = _mock_current_user
+    yield
+    fastapi_app.dependency_overrides.pop(get_current_user, None)
+
+
 @pytest_asyncio.fixture
 async def test_session():
     """
     创建测试数据库会话
 
-    使用内存 SQLite 数据库进行测试。
+    使用 PostgreSQL 测试数据库进行测试。
     """
-    # 创建测试引擎
+    db_url = _get_test_async_db_url()
+    schema = f"test_{uuid.uuid4().hex[:12]}"
+
+    admin_engine = create_async_engine(db_url, echo=False)
+    async with admin_engine.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    await admin_engine.dispose()
+
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+        db_url,
         echo=False,
+        connect_args={"server_settings": {"search_path": schema}},
     )
 
     # 创建所有表
@@ -58,8 +109,12 @@ async def test_session():
     async with async_session() as session:
         yield session
 
-    # 清理
     await engine.dispose()
+
+    cleanup_engine = create_async_engine(db_url, echo=False)
+    async with cleanup_engine.begin() as conn:
+        await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    await cleanup_engine.dispose()
 
 
 # 测试数据 fixtures

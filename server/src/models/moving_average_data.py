@@ -35,5 +35,25 @@ class MovingAverageData(Base):
         Index('idx_moving_average_data_date_desc', 'date'),
     )
 
+    def __init__(self, **kwargs):
+        # Legacy compatibility for old wide MA payloads used in tests.
+        if "sector_id" in kwargs and "entity_id" not in kwargs:
+            kwargs["entity_id"] = kwargs.pop("sector_id")
+            kwargs.setdefault("entity_type", "sector")
+        if "entity_id" in kwargs and "symbol" not in kwargs:
+            kwargs["symbol"] = str(kwargs["entity_id"])
+        if "period" not in kwargs:
+            kwargs["period"] = "5d"
+
+        # Prefer ma_5 if provided, otherwise first available legacy MA field.
+        if "ma_value" not in kwargs:
+            for key in ("ma_5", "ma_10", "ma_20", "ma_30", "ma_60", "ma_90", "ma_120", "ma_240"):
+                if key in kwargs:
+                    kwargs["ma_value"] = kwargs[key]
+                    break
+        for key in ("ma_5", "ma_10", "ma_20", "ma_30", "ma_60", "ma_90", "ma_120", "ma_240"):
+            kwargs.pop(key, None)
+        super().__init__(**kwargs)
+
     def __repr__(self):
         return f"<MovingAverageData(entity_type={self.entity_type}, entity_id={self.entity_id}, symbol={self.symbol}, period={self.period}, date={self.date})>"

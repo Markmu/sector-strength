@@ -211,7 +211,7 @@ async def get_stock_rankings_v2(
                 symbol=strength.symbol,
                 name=stock.name,
                 score=strength.score,
-                percentile=strength.percentile,
+                percentile=getattr(strength, "percentile", None),
                 strength_grade=strength.strength_grade,
                 change_rate_1d=strength.change_rate_1d,
             )
@@ -277,7 +277,7 @@ async def get_sector_rankings_v2(
                 symbol=strength.symbol,
                 name=sector.name,
                 score=strength.score,
-                percentile=strength.percentile,
+                percentile=getattr(strength, "percentile", None),
                 strength_grade=strength.strength_grade,
                 change_rate_1d=strength.change_rate_1d,
             )

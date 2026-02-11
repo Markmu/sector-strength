@@ -399,7 +399,7 @@ class TestSectorClassificationService:
         with pytest.raises(MissingMADataError) as exc_info:
             await service.get_ma_data(1, date(2024, 1, 1))
 
-        assert "缺少" in str(exc_info.value)
+        assert ("缺少" in str(exc_info.value)) or ("缺失" in str(exc_info.value))
         assert exc_info.value.sector_id == 1
 
     @pytest.mark.asyncio

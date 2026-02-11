@@ -47,23 +47,38 @@ def test_stocks_endpoint():
     """测试股票端点"""
     response = client.get("/api/v1/stocks")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    body = response.json()
+    assert isinstance(body, dict)
+    assert body.get("success") is True
+    assert "data" in body
 
 def test_sectors_endpoint():
     """测试板块端点"""
     response = client.get("/api/v1/sectors")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    body = response.json()
+    assert isinstance(body, dict)
+    assert body.get("success") is True
+    assert "data" in body
 
 def test_strength_endpoint():
     """测试强度端点"""
     response = client.get("/api/v1/strength")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    body = response.json()
+    assert isinstance(body, dict)
+    assert body.get("success") is True
+    assert "data" in body
 
 def test_cors_headers():
     """测试 CORS 头"""
-    response = client.options("/api/v1/stocks")
+    response = client.options(
+        "/api/v1/stocks",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
     assert "access-control-allow-origin" in response.headers
 
 def test_process_time_header():

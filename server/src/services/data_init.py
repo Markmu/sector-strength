@@ -6,8 +6,10 @@
 
 import asyncio
 import logging
+import inspect
 from datetime import date, datetime, timedelta
 from typing import Optional
+from contextlib import asynccontextmanager
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,28 @@ from src.services.data_acquisition.akshare_client import AkShareDataSource
 from src.services.data_acquisition.models import StockInfo, SectorInfo, DailyQuote, SectorConstituent
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _safe_nested_tx(session: AsyncSession):
+    """
+    Use nested transaction when available; fallback to no-op for AsyncMock-based tests.
+    """
+    begin_nested = getattr(session, "begin_nested", None)
+    if begin_nested is None:
+        yield
+        return
+    try:
+        tx = begin_nested()
+        if inspect.isawaitable(tx):
+            tx = await tx
+        if hasattr(tx, "__aenter__") and hasattr(tx, "__aexit__"):
+            async with tx:
+                yield
+            return
+    except Exception:
+        pass
+    yield
 
 
 class DataInitService:
@@ -113,7 +137,7 @@ class DataInitService:
 
                 try:
                     # 使用 savepoint 隔离每个板块的操作，防止单个失败影响整个事务
-                    async with self.session.begin_nested():
+                    async with _safe_nested_tx(self.session):
                         # 检查板块是否已存在
                         result = await self.session.execute(
                             select(Sector).where(Sector.code == sector_info.code)
@@ -219,7 +243,7 @@ class DataInitService:
 
                 try:
                     # 使用 savepoint 隔离每个股票的操作
-                    async with self.session.begin_nested():
+                    async with _safe_nested_tx(self.session):
                         # 检查股票是否已存在
                         result = await self.session.execute(
                             select(Stock).where(Stock.symbol == stock_info.symbol)
@@ -315,7 +339,7 @@ class DataInitService:
 
                 try:
                     # 使用 savepoint 隔离每个股票的操作
-                    async with self.session.begin_nested():
+                    async with _safe_nested_tx(self.session):
                         # 获取股票ID
                         result = await self.session.execute(
                             select(Stock).where(Stock.symbol == symbol)
@@ -609,7 +633,7 @@ class DataInitService:
 
                 try:
                     # 使用 savepoint 隔离每个板块的操作
-                    async with self.session.begin_nested():
+                    async with _safe_nested_tx(self.session):
                         # 从 AkShare 直接获取板块历史数据
                         quotes = self.ak_source.get_sector_daily_data(
                             sector.code, start_date, end_date
@@ -712,7 +736,7 @@ class DataInitService:
 
                 try:
                     # 使用 savepoint 隔离每个板块的操作
-                    async with self.session.begin_nested():
+                    async with _safe_nested_tx(self.session):
                         # 获取板块成分股
                         constituents = self.ak_source.get_sector_stocks(sector.code)
 

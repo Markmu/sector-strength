@@ -1,6 +1,7 @@
 """测试认证中间件"""
 
 import pytest
+import pytest_asyncio
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from jose import jwt
@@ -62,7 +63,7 @@ async def optional_auth(user: User = Depends(get_current_user_optional)):
 client = TestClient(app)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_user(db_session: AsyncSession):
     """创建测试用户"""
     user = User(
@@ -77,7 +78,7 @@ async def test_user(db_session: AsyncSession):
     return user
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def admin_user(db_session: AsyncSession):
     """创建管理员测试用户"""
     admin = User(
@@ -135,7 +136,7 @@ def expired_token(test_user):
 class TestGetCurrentUser:
     """测试get_current_user函数"""
 
-    def test_valid_token(self, client, valid_token):
+    def test_valid_token(self, valid_token):
         """使用有效令牌应成功"""
         response = client.get(
             "/protected",
@@ -144,12 +145,12 @@ class TestGetCurrentUser:
         assert response.status_code == 200
         assert "test@example.com" in response.json()["message"]
 
-    def test_no_token(self, client):
+    def test_no_token(self):
         """没有令牌应返回401"""
         response = client.get("/protected")
         assert response.status_code == 403  # FastAPI HTTPBearer返回403而不是401
 
-    def test_invalid_token(self, client):
+    def test_invalid_token(self):
         """无效令牌应返回401"""
         response = client.get(
             "/protected",
@@ -158,7 +159,7 @@ class TestGetCurrentUser:
         assert response.status_code == 401
         assert response.json()["detail"] == "Could not validate credentials"
 
-    def test_expired_token(self, client, expired_token):
+    def test_expired_token(self, expired_token):
         """过期令牌应返回401"""
         response = client.get(
             "/protected",
@@ -166,7 +167,7 @@ class TestGetCurrentUser:
         )
         assert response.status_code == 401
 
-    def test_refresh_token_type(self, client, test_user):
+    def test_refresh_token_type(self, test_user):
         """使用刷新令牌类型应返回401"""
         # 创建刷新令牌而非访问令牌
         token_data = {
@@ -188,7 +189,7 @@ class TestGetCurrentUser:
 class TestRequireRole:
     """测试require_role装饰器"""
 
-    def test_admin_role_success(self, client, admin_token):
+    def test_admin_role_success(self, admin_token):
         """管理员访问admin-only端点应成功"""
         response = client.get(
             "/admin-only",
@@ -197,7 +198,7 @@ class TestRequireRole:
         assert response.status_code == 200
         assert "admin" in response.json()["message"]
 
-    def test_user_role_failure(self, client, valid_token):
+    def test_user_role_failure(self, valid_token):
         """普通用户访问admin-only端点应失败"""
         response = client.get(
             "/admin-only",
@@ -206,7 +207,7 @@ class TestRequireRole:
         assert response.status_code == 403
         assert "Insufficient privileges" in response.json()["detail"]
 
-    def test_user_role_success(self, client, valid_token):
+    def test_user_role_success(self, valid_token):
         """普通用户访问user-only端点应成功"""
         response = client.get(
             "/user-only",
@@ -215,7 +216,7 @@ class TestRequireRole:
         assert response.status_code == 200
         assert "User access granted" in response.json()["message"]
 
-    def test_admin_role_success_for_user_endpoint(self, client, admin_token):
+    def test_admin_role_success_for_user_endpoint(self, admin_token):
         """管理员访问user-only端点也应成功（admin > user）"""
         response = client.get(
             "/user-only",
@@ -228,7 +229,7 @@ class TestRequireRole:
 class TestRequirePermission:
     """测试require_permission装饰器"""
 
-    def test_has_permission(self, client, admin_token):
+    def test_has_permission(self, admin_token):
         """具有权限的用户应成功"""
         response = client.get(
             "/delete-permission",
@@ -237,7 +238,7 @@ class TestRequirePermission:
         assert response.status_code == 200
         assert "Delete permission granted" in response.json()["message"]
 
-    def test_no_permission(self, client, valid_token):
+    def test_no_permission(self, valid_token):
         """没有权限的用户应失败"""
         response = client.get(
             "/delete-permission",
@@ -251,7 +252,7 @@ class TestRequirePermission:
 class TestGetCurrentUserOptional:
     """测试get_current_user_optional函数"""
 
-    def test_with_valid_token(self, client, valid_token):
+    def test_with_valid_token(self, valid_token):
         """提供有效令牌应返回用户信息"""
         response = client.get(
             "/optional-auth",
@@ -260,13 +261,13 @@ class TestGetCurrentUserOptional:
         assert response.status_code == 200
         assert "test@example.com" in response.json()["message"]
 
-    def test_without_token(self, client):
+    def test_without_token(self):
         """不提供令牌应返回匿名用户信息"""
         response = client.get("/optional-auth")
         assert response.status_code == 200
         assert "anonymous user" in response.json()["message"]
 
-    def test_with_invalid_token(self, client):
+    def test_with_invalid_token(self):
         """提供无效令牌应返回匿名用户信息"""
         response = client.get(
             "/optional-auth",

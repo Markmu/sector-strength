@@ -1,4 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.pool import NullPool
 import os
 from dotenv import load_dotenv
 
@@ -7,21 +8,35 @@ load_dotenv()
 
 # 获取异步数据库连接URL
 DATABASE_URL = os.getenv("DATABASE_URL_ASYNC", "postgresql+asyncpg://sector_user:sector_pass@localhost:5432/sector_strength")
+IS_TEST_ENV = (os.getenv("ENVIRONMENT", "").lower() == "test") or ("PYTEST_CURRENT_TEST" in os.environ)
 
-# 创建主异步引擎（用于 API 请求）
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,  # 关闭SQL日志以提高性能
-    pool_size=10,
-    max_overflow=20,
-    pool_timeout=30,
-    pool_recycle=1800,
-    pool_pre_ping=True,  # 连接前检查连接是否有效
-    connect_args={
-        "server_settings": {"jit": "off"},  # 关闭JIT以提高简单查询性能
-        "command_timeout": 60,
-    },
-)
+if IS_TEST_ENV:
+    # Tests can switch event loops frequently; disable pooling to avoid loop-bound connection reuse.
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        poolclass=NullPool,
+        pool_pre_ping=False,
+        connect_args={
+            "server_settings": {"jit": "off"},
+            "command_timeout": 60,
+        },
+    )
+else:
+    # 创建主异步引擎（用于 API 请求）
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,  # 关闭SQL日志以提高性能
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=1800,
+        pool_pre_ping=True,  # 连接前检查连接是否有效
+        connect_args={
+            "server_settings": {"jit": "off"},  # 关闭JIT以提高简单查询性能
+            "command_timeout": 60,
+        },
+    )
 
 # 创建异步会话工厂（主引擎）
 AsyncSessionLocal = async_sessionmaker(
@@ -47,19 +62,31 @@ def get_task_executor_engine():
     global _task_executor_engine, _task_executor_session_factory
 
     if _task_executor_engine is None:
-        _task_executor_engine = create_async_engine(
-            DATABASE_URL,
-            echo=False,
-            pool_size=5,  # 任务执行器需要的连接较少
-            max_overflow=5,
-            pool_timeout=30,
-            pool_recycle=1800,
-            pool_pre_ping=True,
-            connect_args={
-                "server_settings": {"jit": "off"},
-                "command_timeout": 60,
-            },
-        )
+        if IS_TEST_ENV:
+            _task_executor_engine = create_async_engine(
+                DATABASE_URL,
+                echo=False,
+                poolclass=NullPool,
+                pool_pre_ping=False,
+                connect_args={
+                    "server_settings": {"jit": "off"},
+                    "command_timeout": 60,
+                },
+            )
+        else:
+            _task_executor_engine = create_async_engine(
+                DATABASE_URL,
+                echo=False,
+                pool_size=5,  # 任务执行器需要的连接较少
+                max_overflow=5,
+                pool_timeout=30,
+                pool_recycle=1800,
+                pool_pre_ping=True,
+                connect_args={
+                    "server_settings": {"jit": "off"},
+                    "command_timeout": 60,
+                },
+            )
         _task_executor_session_factory = async_sessionmaker(
             bind=_task_executor_engine,
             class_=AsyncSession,

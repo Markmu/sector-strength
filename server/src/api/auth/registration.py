@@ -1,17 +1,19 @@
 """用户注册相关 API"""
 
+from datetime import datetime, timedelta
 from typing import Any
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel, EmailStr, validator
-import re
+from pydantic import BaseModel, EmailStr
 
 from src.db.database import get_db
-from src.models.user import User
+from src.models.user import User, EmailVerificationToken
 from src.core.security import hash_password
 from src.core.rate_limiter import check_rate_limit
 from src.core.sanitizer import InputValidator
+from src.core.email import send_verification_email as core_send_verification_email
 
 
 router = APIRouter( )
@@ -24,33 +26,16 @@ class UserRegisterRequest(BaseModel):
     password: str
     username: str | None = None
 
-    @validator('password')
-    def validate_password(cls, v):
-        """验证密码强度"""
-        if len(v) < 8:
-            raise ValueError('密码长度至少8位')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('密码必须包含大写字母')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('密码必须包含小写字母')
-        if not re.search(r'[0-9]', v):
-            raise ValueError('密码必须包含数字')
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('密码必须包含特殊字符')
-        return v
-
-    @validator('username')
-    def validate_username(cls, v):
-        """验证用户名"""
-        if v and len(v) > 50:
-            raise ValueError('用户名长度不能超过50个字符')
-        return v
-
 
 class UserRegisterResponse(BaseModel):
     """用户注册响应"""
     message: str
     user_id: str
+
+
+async def send_verification_email(email: str, verification_token: str, username: str | None = None) -> bool:
+    """Compatibility wrapper for tests patching this symbol."""
+    return await core_send_verification_email(email_to=email, verification_token=verification_token, username=username)
 
 
 
@@ -69,7 +54,8 @@ async def register_user(
     - 验证邮箱格式
     - 验证密码强度
     - 检查邮箱是否已注册
-    - 创建用户并直接激活
+    - 创建未激活用户
+    - 发送邮箱验证邮件
     - 应用速率限制
     """
     # 验证和清理输入数据
@@ -82,7 +68,7 @@ async def register_user(
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"errors": validation_errors}
+            detail="密码强度不够" if any("密码" in err for err in validation_errors) else {"errors": validation_errors}
         )
 
     # 应用速率限制：每个 IP 5 分钟内最多 3 次注册尝试
@@ -97,20 +83,36 @@ async def register_user(
             detail="邮箱已被注册"
         )
 
-    # 创建用户并直接激活
+    # 创建用户（待邮箱验证）
     hashed_password = hash_password(cleaned_data['password'])
     user = User(
         email=cleaned_data['email'],
         password_hash=hashed_password,
         username=cleaned_data.get('username')
     )
-    # 强制设置用户为激活状态，确保迁移后的兼容性
-    user.is_active = True
+    user.is_active = False
+    user.is_verified = False
 
     db.add(user)
+    await db.flush()
+
+    verification_token = str(uuid4())
+    token = EmailVerificationToken(
+        user_id=user.id,
+        token=verification_token,
+        expires_at=datetime.utcnow() + timedelta(hours=24),
+        is_used=False,
+    )
+    db.add(token)
     await db.commit()
 
+    await send_verification_email(
+        email=cleaned_data['email'],
+        verification_token=verification_token,
+        username=cleaned_data.get('username'),
+    )
+
     return {
-        "message": "注册成功，账户已激活",
+        "message": "注册成功，请查看邮箱进行验证",
         "user_id": str(user.id)
     }

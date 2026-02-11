@@ -8,7 +8,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, asc
-from datetime import datetime
+from datetime import date
 
 from src.api.deps import get_session, get_current_user
 from src.models.user import User
@@ -45,8 +45,20 @@ async def _build_strength_data(
     Returns:
         StrengthData: 强度数据
     """
+    # 兼容旧接口：路径参数可能是字符串，模型主键为整型时先做安全转换。
+    lookup_id = entity_id
+    is_int_pk = False
+    try:
+        is_int_pk = entity_model.id.type.python_type is int
+    except Exception:
+        is_int_pk = False
+    if is_int_pk:
+        if not str(entity_id).isdigit():
+            return None
+        lookup_id = int(entity_id)
+
     # 查询实体
-    stmt = select(entity_model).where(entity_model.id == entity_id)
+    stmt = select(entity_model).where(entity_model.id == lookup_id)
     result = await session.execute(stmt)
     entity = result.scalar_one_or_none()
 
@@ -62,7 +74,7 @@ async def _build_strength_data(
     period_strengths = {}
     for config in period_configs:
         ma_stmt = select(MovingAverageDataModel).where(
-            MovingAverageDataModel.entity_id == entity_id,
+            MovingAverageDataModel.entity_id == lookup_id,
             MovingAverageDataModel.entity_type == entity_type,
             MovingAverageDataModel.period == config.period,
         ).order_by(desc(MovingAverageDataModel.date)).limit(1)
@@ -94,7 +106,7 @@ async def _build_strength_data(
         trend_direction=entity.trend_direction,
         current_price=current_price,
         period_strengths=period_strengths,
-        calculated_at=datetime.now(),
+        calculated_at=date.today(),
     )
 
 
@@ -146,13 +158,18 @@ async def get_strength_list(
     entity_model = StockModel if entity_type == "stock" else SectorModel
 
     # 解析 ID 列表
-    ids = []
+    ids: List[int] = []
     if entity_ids:
-        ids = [id.strip() for id in entity_ids.split(",") if id.strip()]
+        for raw in [id.strip() for id in entity_ids.split(",") if id.strip()]:
+            if raw.isdigit():
+                ids.append(int(raw))
 
     # 构建查询
     if entity_type:
         stmt = select(entity_model)
+        if entity_ids and not ids:
+            # 提供了无效 ID 列表时返回空集合（避免类型错误）
+            return StrengthListResponse(success=True, data=[])
         if ids:
             stmt = stmt.where(entity_model.id.in_(ids))
         stmt = stmt.order_by(desc(entity_model.strength_score)).limit(limit)

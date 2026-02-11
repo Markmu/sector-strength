@@ -45,25 +45,30 @@ async def login(
     # 获取客户端信息
     client_ip = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent", "")
+    login_identity = login_data.email or login_data.username
 
     try:
         # 检查速率限制
-        if not await auth_service.check_rate_limit(db, login_data.email, client_ip):
+        if not await auth_service.check_rate_limit(db, login_identity, client_ip):
             await auth_service.record_login_attempt(
-                db, login_data.email, client_ip, user_agent,
+                db, login_identity, client_ip, user_agent,
                 success=False, failure_reason="rate_limit_exceeded"
             )
             raise RateLimitExceeded("请求频率过高，请稍后再试")
 
         # 检查账户锁定
-        await auth_service.check_account_lock(db, login_data.email)
+        await auth_service.check_account_lock(db, login_identity)
 
         # 获取用户
-        user = await auth_service.get_user_by_email(db, login_data.email)
+        user = None
+        if login_data.email:
+            user = await auth_service.get_user_by_email(db, login_data.email)
+        if not user and login_data.username:
+            user = await auth_service.get_user_by_username(db, login_data.username)
         if not user:
             # 用户不存在，记录失败尝试
             await auth_service.record_login_attempt(
-                db, login_data.email, client_ip, user_agent,
+                db, login_identity, client_ip, user_agent,
                 success=False, failure_reason="user_not_found"
             )
             # 不暴露具体的用户不存在信息
@@ -72,15 +77,26 @@ async def login(
         # 检查账户状态
         if not user.is_active:
             await auth_service.record_login_attempt(
-                db, login_data.email, client_ip, user_agent,
+                db, login_identity, client_ip, user_agent,
                 success=False, failure_reason="account_inactive"
             )
-            raise AuthenticationError("账户未激活，请联系管理员")
+            # Legacy compatibility:
+            # - verified but deactivated account -> 401 disabled
+            # - unverified/inactive account -> 403 locked
+            if user.is_verified:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="账户已被禁用"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="账户已被锁定，请联系管理员"
+            )
 
         # 验证密码
         if not auth_service.verify_password(login_data.password, user.password_hash):
             await auth_service.record_login_attempt(
-                db, login_data.email, client_ip, user_agent,
+                db, login_identity, client_ip, user_agent,
                 success=False, failure_reason="invalid_password"
             )
             raise AuthenticationError("邮箱或密码错误")
@@ -131,7 +147,7 @@ async def login(
 
         # 记录成功登录
         await auth_service.record_login_attempt(
-            db, login_data.email, client_ip, user_agent,
+            db, login_identity, client_ip, user_agent,
             user_id=str(user.id), success=True
         )
 
@@ -148,10 +164,17 @@ async def login(
             refresh_token=refresh_token,
             token_type="bearer",
             expires_in=int(access_token_expire.total_seconds()),
-            user=user_data
+            user=user_data,
+            data={
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in": int(access_token_expire.total_seconds()),
+                "user": user_data,
+            },
         )
 
-    except (RateLimitExceeded, AccountLockedError, AuthenticationError):
+    except (RateLimitExceeded, AccountLockedError, AuthenticationError, HTTPException):
         raise
     except Exception as e:
         await db.rollback()

@@ -10,7 +10,8 @@ from src.models.user import User
 from src.core.auth import AuthService
 from src.core.database import get_db
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
+optional_security = HTTPBearer(auto_error=False)
 auth_service = AuthService()
 
 
@@ -23,6 +24,12 @@ async def get_current_user(
     验证JWT令牌并从数据库获取用户对象
     """
     try:
+        if credentials is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         # 验证令牌
         payload = auth_service.verify_token(credentials.credentials)
 
@@ -75,7 +82,7 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
     db: AsyncSession = Depends(get_db)
 ) -> Optional[User]:
     """可选的当前用户获取
@@ -93,7 +100,7 @@ async def get_current_user_optional(
 
 def require_authenticated():
     """要求用户必须认证"""
-    return Depends(get_current_user)
+    return get_current_user
 
 
 def require_role(required_role: str):
@@ -112,7 +119,7 @@ def require_role(required_role: str):
             )
         return current_user
 
-    return Depends(role_checker)
+    return role_checker
 
 
 def require_permission(required_permission: str):
@@ -131,7 +138,7 @@ def require_permission(required_permission: str):
             )
         return current_user
 
-    return Depends(permission_checker)
+    return permission_checker
 
 
 def require_any_role(roles: List[str]):
@@ -150,7 +157,7 @@ def require_any_role(roles: List[str]):
             )
         return current_user
 
-    return Depends(any_role_checker)
+    return any_role_checker
 
 
 def require_all_permissions(permissions: List[str]):
@@ -174,4 +181,4 @@ def require_all_permissions(permissions: List[str]):
             )
         return current_user
 
-    return Depends(all_permissions_checker)
+    return all_permissions_checker

@@ -3,7 +3,8 @@
 import pytest
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import create_engine
+import uuid
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 import sys
@@ -14,16 +15,51 @@ from src.models.strength_score import StrengthScore
 from src.models.base import Base
 
 
+def _get_test_sync_db_url() -> str:
+    test_url = os.getenv("TEST_DATABASE_URL")
+    if not test_url:
+        async_url = os.getenv("TEST_DATABASE_URL_ASYNC") or os.getenv("DATABASE_URL_ASYNC")
+        if async_url:
+            test_url = async_url.replace("+asyncpg", "")
+    if not test_url:
+        from src.core.settings import settings
+        test_url = settings.sync_database_url
+    if "sqlite" in test_url.lower():
+        raise RuntimeError(
+            f"SQLite is not allowed for tests. Got: {test_url}. "
+            "Use PostgreSQL URL via TEST_DATABASE_URL or TEST_DATABASE_URL_ASYNC."
+        )
+    return test_url
+
+
 @pytest.fixture
 def db_session():
     """创建测试数据库会话"""
-    engine = create_engine("sqlite:///:memory:")
-    # 只创建 strength_scores 表，避免 UUID 类型问题
+    db_url = _get_test_sync_db_url()
+    schema = f"test_{uuid.uuid4().hex[:12]}"
+
+    admin_engine = create_engine(db_url)
+    with admin_engine.begin() as conn:
+        conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    admin_engine.dispose()
+
+    engine = create_engine(
+        db_url,
+        connect_args={"options": f"-csearch_path={schema}"},
+    )
+
+    # 只创建 strength_scores 表
     StrengthScore.__table__.create(engine, checkfirst=True)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
     yield session
     session.close()
+    engine.dispose()
+
+    cleanup_engine = create_engine(db_url)
+    with cleanup_engine.begin() as conn:
+        conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    cleanup_engine.dispose()
 
 
 class TestStrengthScore:
