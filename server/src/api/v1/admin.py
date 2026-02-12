@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
-from uuid import uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Query, Depends
 from pydantic import BaseModel
@@ -17,7 +16,6 @@ from src.api.deps import get_current_user
 from src.models.user import User
 
 from src.core.settings import settings
-from src.services.data_updater.collector import DataCollector
 from src.services.scheduler.job_manager import get_job_manager
 from src.services.cache.cache_manager import get_cache_manager
 
@@ -52,39 +50,6 @@ async def check_admin_permission(current_user: User = Depends(get_current_user))
     role = getattr(current_user, "role", "user") or "user"
     is_admin = role == "admin"
     return AdminCheckResponse(success=True, data=AdminCheckData(is_admin=is_admin, role=role))
-
-
-@router.post("/update")
-async def trigger_update(api_key: Optional[str] = Header(None, alias="api_key")):
-    _require_api_key(api_key)
-    task_id = str(uuid4())
-    return {"success": True, "data": {"success": True, "task_id": task_id}}
-
-
-@router.get("/update-status")
-async def get_update_status(api_key: Optional[str] = Header(None, alias="api_key")):
-    _require_api_key(api_key)
-    collector = DataCollector()
-    data = await collector.get_latest_update_status()
-    return {"success": True, "data": data}
-
-
-@router.get("/update-history")
-async def get_update_history(
-    api_key: Optional[str] = Header(None, alias="api_key"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
-):
-    _require_api_key(api_key)
-    collector = DataCollector()
-    data = await collector.get_update_history(page=page, page_size=page_size)
-    return {"success": True, "data": data}
-
-
-@router.post("/update/cancel")
-async def cancel_update(api_key: Optional[str] = Header(None, alias="api_key")):
-    _require_api_key(api_key)
-    return {"success": True, "message": "待实现：取消正在运行的更新任务"}
 
 
 @router.get("/scheduler/status")

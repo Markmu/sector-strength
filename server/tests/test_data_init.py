@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from sqlalchemy.orm import Query
 
 from src.services.data_init import DataInitService
-from src.services.data_acquisition.models import SectorInfo, StockInfo, DailyQuote, SectorConstituent
+from src.services.data_acquisition.models import SectorInfo, StockInfo, DailyQuote
 
 
 @pytest.fixture
@@ -170,45 +170,44 @@ class TestDataInitService:
         assert result["total_symbols"] == 1
         mock_ak_share.get_daily_data.assert_called_once()
 
-    async def test_init_sector_stocks_success(self, mock_session, mock_ak_share):
-        """测试成功初始化板块成分股关联"""
-        # 模拟板块和股票存在
+    async def test_init_sector_historical_data_passes_sector_type(self, mock_session, mock_ak_share):
+        """测试板块历史初始化时按 sector.type 调用数据源"""
         mock_sector = MagicMock()
         mock_sector.id = "sector-id-1"
-        mock_sector.code = "sector1"
+        mock_sector.code = "885001"
+        mock_sector.type = "industry"
+        mock_sector.name = "测试行业"
 
-        mock_stock = MagicMock()
-        mock_stock.id = "stock-id-1"
-
-        # 第一次调用获取板块列表
-        # 需要正确模拟 .scalars().all() 链式调用
         mock_scalars_result = MagicMock()
         mock_scalars_result.all.return_value = [mock_sector]
-
         mock_result1 = MagicMock()
         mock_result1.scalars.return_value = mock_scalars_result
 
-        # 第二次调用查找股票
         mock_result2 = MagicMock()
-        mock_result2.scalar_one_or_none.return_value = mock_stock
+        mock_result2.scalar_one_or_none.return_value = None
+        mock_session.execute.side_effect = [mock_result1, mock_result2]
 
-        # 第三次调用检查关联不存在
-        mock_result3 = MagicMock()
-        mock_result3.scalar_one_or_none.return_value = None
-
-        mock_session.execute.side_effect = [mock_result1, mock_result2, mock_result3]
-
-        # 设置模拟数据
-        mock_ak_share.get_sector_stocks.return_value = [
-            SectorConstituent(sector_code="sector1", symbol="000001", name="测试股票")
+        mock_ak_share.get_sector_daily_data.return_value = [
+            DailyQuote(
+                symbol="885001",
+                trade_date=date.today(),
+                open=10.0,
+                high=11.0,
+                low=9.0,
+                close=10.5,
+                volume=1000,
+                amount=2000.0,
+            )
         ]
 
         service = DataInitService(mock_session)
-        result = await service.init_sector_stocks()
+        result = await service.init_sector_historical_data(days=1)
 
         assert result["success"] is True
-        assert result["total_sectors"] == 1
-        mock_ak_share.get_sector_stocks.assert_called_once_with("sector1")
+        assert mock_ak_share.get_sector_daily_data.call_count == 1
+        call = mock_ak_share.get_sector_daily_data.call_args
+        assert call.args[0] == "885001"
+        assert call.args[1] == "industry"
 
     async def test_progress_callback(self, mock_session, mock_ak_share):
         """测试进度回调"""

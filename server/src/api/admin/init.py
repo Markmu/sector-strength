@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/init", tags=["Admin - Data Init"])
+SECTOR_MIGRATION_PREREQ_HINT = "迁移前请先在停机窗口人工执行 scripts/truncate_sector_related_tables.sql 清空相关表。"
+SECTOR_MIGRATION_CONFIRM_KEY = "confirm_truncate_executed"
 
 
 # 全局任务状态存储（生产环境应使用 Redis 或数据库）
@@ -31,6 +33,9 @@ _running_tasks: set = set()
 class InitRequest(BaseModel):
     """初始化请求模型"""
     days: int = Field(60, ge=1, le=365, description="回溯天数")
+    confirm_truncate_executed: bool = Field(
+        False, description="是否已在停机窗口人工执行清空脚本"
+    )
 
 
 class InitStatusResponse(BaseModel):
@@ -52,6 +57,10 @@ def _check_if_task_running() -> bool:
 @router.post("/sectors", response_model=ApiResponse[dict])
 async def init_sectors(
     background_tasks: BackgroundTasks,
+    confirm_truncate_executed: bool = Query(
+        False,
+        description="确认已在停机窗口执行 scripts/truncate_sector_related_tables.sql",
+    ),
     _admin = Depends(require_admin)
 ):
     """
@@ -65,6 +74,12 @@ async def init_sectors(
             success=False,
             data=None,
             message="已有初始化任务正在运行，请等待当前任务完成"
+        )
+    if not confirm_truncate_executed:
+        return ApiResponse(
+            success=False,
+            data=None,
+            message=f"必须先确认 {SECTOR_MIGRATION_CONFIRM_KEY}=true。{SECTOR_MIGRATION_PREREQ_HINT}",
         )
 
     task_id = str(uuid.uuid4())
@@ -85,7 +100,12 @@ async def init_sectors(
 
     return ApiResponse(
         success=True,
-        data={"task_id": task_id, "message": "板块初始化任务已创建"}
+        data={
+            "task_id": task_id,
+            "message": f"板块初始化任务已创建。{SECTOR_MIGRATION_PREREQ_HINT}",
+            "prerequisite": SECTOR_MIGRATION_PREREQ_HINT,
+        },
+        message=SECTOR_MIGRATION_PREREQ_HINT,
     )
 
 
@@ -232,6 +252,12 @@ async def init_all(
             data=None,
             message="已有初始化任务正在运行，请等待当前任务完成"
         )
+    if not request.confirm_truncate_executed:
+        return ApiResponse(
+            success=False,
+            data=None,
+            message=f"必须先确认 {SECTOR_MIGRATION_CONFIRM_KEY}=true。{SECTOR_MIGRATION_PREREQ_HINT}",
+        )
 
     task_id = str(uuid.uuid4())
 
@@ -247,7 +273,12 @@ async def init_all(
     }
 
     # 在后台执行任务
-    background_tasks.add_task(_run_init_all, task_id, request.days)
+    background_tasks.add_task(
+        _run_init_all,
+        task_id,
+        request.days,
+        request.confirm_truncate_executed,
+    )
 
     return ApiResponse(
         success=True,
@@ -531,17 +562,20 @@ async def _run_init_historical(task_id: str, days: int):
         _running_tasks.discard(task_id)
 
 
-async def _run_init_all(task_id: str, days: int):
+async def _run_init_all(task_id: str, days: int, confirm_truncate_executed: bool):
     """执行完整初始化任务"""
     from src.db.database import AsyncSessionLocal
 
     _running_tasks.add(task_id)
     try:
+        if not confirm_truncate_executed:
+            raise ValueError(f"缺少前置确认: {SECTOR_MIGRATION_CONFIRM_KEY}=true")
+
         # 检查取消状态
         if _check_task_cancelled(task_id):
             raise InterruptedError("任务已取消")
 
-        # 1. 初始化板块（现在包含自动建立板块-股票关联）
+        # 1. 初始化板块实体
         await _run_init_sectors(f"{task_id}_sectors")
         if _check_task_cancelled(task_id):
             raise InterruptedError("任务已取消")

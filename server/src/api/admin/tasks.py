@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["Admin - Tasks"])
+SECTOR_MIGRATION_CONFIRM_KEY = "confirm_truncate_executed"
+SECTOR_MIGRATION_TASK_TYPES = {"init_sectors", "init_sector_historical_data"}
 
 
 # ============== 请求/响应模型 ==============
@@ -81,6 +83,43 @@ class TaskLogListResponse(BaseModel):
     page: int = Field(1, description="页码")
 
 
+def _validate_task_create_request(request: CreateTaskRequest) -> Optional[str]:
+    """校验任务创建参数语义，避免非法迁移任务进入队列。"""
+    params = request.params or {}
+
+    if request.task_type in SECTOR_MIGRATION_TASK_TYPES:
+        if not params.get(SECTOR_MIGRATION_CONFIRM_KEY, False):
+            return (
+                f"板块迁移任务必须显式提供 `{SECTOR_MIGRATION_CONFIRM_KEY}=true`，"
+                "并确认已人工执行清空脚本。"
+            )
+
+    if request.task_type == "init_sectors":
+        sector_type = params.get("sector_type")
+        if sector_type is not None and sector_type not in {"industry", "concept"}:
+            return "init_sectors 的 sector_type 仅支持 industry/concept。"
+
+    if request.task_type == "init_sector_historical_data":
+        has_days = params.get("days") is not None
+        has_range = bool(params.get("start_date")) and bool(params.get("end_date"))
+        if not (has_days or has_range):
+            return "init_sector_historical_data 需提供 days 或 start_date+end_date。"
+        if has_days:
+            days = params.get("days")
+            if not isinstance(days, int) or days < 1 or days > 365:
+                return "init_sector_historical_data 的 days 必须是 1-365 的整数。"
+        if has_range:
+            try:
+                start_date = date.fromisoformat(params["start_date"])
+                end_date = date.fromisoformat(params["end_date"])
+            except ValueError:
+                return "start_date/end_date 必须是 YYYY-MM-DD 格式。"
+            if start_date > end_date:
+                return "start_date 不能晚于 end_date。"
+
+    return None
+
+
 # ============== API 端点 ==============
 
 @router.post("", response_model=ApiResponse[TaskResponse])
@@ -110,6 +149,10 @@ async def create_task(
                     f"可用类型: {', '.join(registered_tasks)}"
         )
 
+    validation_error = _validate_task_create_request(request)
+    if validation_error:
+        return ApiResponse(success=False, data=None, message=validation_error)
+
     manager = TaskManager(session)
 
     # 获取当前用户ID
@@ -120,7 +163,7 @@ async def create_task(
     # 创建任务
     task = await manager.create_task(
         task_type=request.task_type,
-        params=request.params,
+        params=request.params or {},
         max_retries=request.max_retries,
         timeout_seconds=request.timeout_seconds,
         created_by=user_id,

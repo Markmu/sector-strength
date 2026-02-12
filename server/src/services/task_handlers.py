@@ -32,7 +32,6 @@ class TaskType(str, Enum):
     INIT_STOCKS = "init_stocks"
     INIT_HISTORICAL_DATA = "init_historical_data"
     INIT_SECTOR_HISTORICAL_DATA = "init_sector_historical_data"
-    INIT_SECTOR_STOCKS = "init_sector_stocks"
 
     # 数据补齐任务
     BACKFILL_BY_DATE = "backfill_by_date"
@@ -83,7 +82,6 @@ async def init_sectors_task(
     此任务会：
     1. 从 AkShare 获取板块列表
     2. 创建板块记录
-    3. 自动获取每个板块的成分股并建立关联关系
 
     Args:
         task_id: 任务ID
@@ -104,10 +102,7 @@ async def init_sectors_task(
     result = await service.init_sectors(sector_type)
 
     if result.get("success"):
-        relations_created = result.get("relations_created", 0)
         msg = f"Sector initialization completed: {result.get('created')} created, {result.get('skipped')} skipped"
-        if relations_created > 0:
-            msg += f", {relations_created} sector-stock relations created"
         await manager.log_message(task_id, "INFO", msg)
     else:
         error_msg = result.get("error", "Unknown error")
@@ -228,7 +223,7 @@ async def init_sector_historical_data_task(
     """
     板块历史数据初始化任务
 
-    使用 AkShare 的 stock_board_industry_hist_em 接口直接获取板块历史数据。
+    使用 AkShare 同花顺接口按板块类型路由获取历史数据。
 
     Args:
         task_id: 任务ID
@@ -287,44 +282,6 @@ async def init_sector_historical_data_task(
     else:
         error_msg = result.get("error", "Unknown error")
         await manager.log_message(task_id, "ERROR", f"Sector historical data initialization failed: {error_msg}")
-        raise Exception(error_msg)
-
-
-@TaskRegistry.register(TaskType.INIT_SECTOR_STOCKS)
-async def init_sector_stocks_task(
-    task_id: str,
-    params: Dict[str, Any],
-    manager: TaskManager,
-) -> None:
-    """
-    板块成分股关联初始化任务
-
-    Args:
-        task_id: 任务ID
-        params: 任务参数 (空)
-        manager: 任务管理器
-    """
-    # 使用 TaskManager 的会话，而不是创建新的会话
-    service = DataInitService(manager.db)
-
-    # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
-    service.set_progress_callback(callback)
-
-    await manager.log_message(task_id, "INFO", "Starting sector-stock relation initialization")
-
-    # 执行初始化
-    result = await service.init_sector_stocks()
-
-    if result.get("success"):
-        await manager.log_message(
-            task_id,
-            "INFO",
-            f"Sector-stock relation initialization completed: {result.get('created')} relations created"
-        )
-    else:
-        error_msg = result.get("error", "Unknown error")
-        await manager.log_message(task_id, "ERROR", f"Sector-stock relation initialization failed: {error_msg}")
         raise Exception(error_msg)
 
 
@@ -635,7 +592,6 @@ __all__ = [
     "init_stocks_task",
     "init_historical_data_task",
     "init_sector_historical_data_task",
-    "init_sector_stocks_task",
     "backfill_by_date_task",
     "backfill_by_range_task",
     "calculate_sector_ma_task",

@@ -16,10 +16,8 @@ from .exceptions import (
 from .models import (
     DailyQuote,
     DataFetchResult,
-    SectorConstituent,
     SectorInfo,
     SectorList,
-    SectorConstituentList,
     DailyQuoteList,
     StockInfo,
     StockList,
@@ -42,7 +40,5 @@ __all__ = [
     "SectorList",
     "DailyQuote",
     "DailyQuoteList",
-    "SectorConstituent",
-    "SectorConstituentList",
     "DataFetchResult",
 ]

@@ -10,7 +10,6 @@ from typing import List, Optional
 
 from .models import (
     DailyQuote,
-    SectorConstituent,
     SectorInfo,
     StockInfo,
 )
@@ -97,17 +96,26 @@ class BaseDataSource(ABC):
         pass
 
     @abstractmethod
-    def get_sector_stocks(self, sector_code: str) -> List[SectorConstituent]:
+    def get_sector_daily_data(
+        self,
+        sector_code: str,
+        sector_type: str,
+        start_date: date,
+        end_date: date,
+    ) -> List[DailyQuote]:
         """
-        获取板块成分股
+        获取板块日线行情数据
 
-        获取指定板块的所有成分股信息。
+        按板块类型获取指定板块在日期范围内的日线数据。
 
         Args:
             sector_code: 板块代码
+            sector_type: 板块类型（industry/concept）
+            start_date: 开始日期
+            end_date: 结束日期
 
         Returns:
-            板块成分股列表，包含股票代码、名称、权重等
+            板块日线行情数据列表
 
         Raises:
             DataFetchError: 数据获取失败

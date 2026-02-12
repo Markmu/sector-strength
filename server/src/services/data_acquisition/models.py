@@ -80,24 +80,6 @@ class DailyQuote(BaseModel):
     turnover: Optional[float] = Field(None, description="换手率")
 
 
-class SectorConstituent(BaseModel):
-    """板块成分股"""
-
-    sector_code: str = Field(..., description="板块代码")
-    symbol: str = Field(..., description="股票代码")
-    name: str = Field(..., description="股票名称")
-    weight: Optional[float] = Field(None, description="权重", ge=0, le=100)
-
-    @field_validator("symbol")
-    @classmethod
-    def validate_symbol(cls, v: str) -> str:
-        """验证股票代码"""
-        v = v.strip().upper()
-        if not v:
-            raise ValueError("股票代码不能为空")
-        return v
-
-
 class DataFetchResult(BaseModel):
     """
     数据获取结果封装
@@ -106,9 +88,9 @@ class DataFetchResult(BaseModel):
     """
 
     success: bool = Field(..., description="是否成功")
-    data: Optional[
-        List[StockInfo] | List[SectorInfo] | List[DailyQuote] | List[SectorConstituent]
-    ] = Field(None, description="返回数据")
+    data: Optional[List[StockInfo] | List[SectorInfo] | List[DailyQuote]] = Field(
+        None, description="返回数据"
+    )
     error_message: Optional[str] = Field(None, description="错误消息")
     cached: bool = Field(False, description="是否来自缓存")
     timestamp: datetime = Field(default_factory=datetime.now, description="获取时间")
@@ -118,4 +100,3 @@ class DataFetchResult(BaseModel):
 StockList = List[StockInfo]
 SectorList = List[SectorInfo]
 DailyQuoteList = List[DailyQuote]
-SectorConstituentList = List[SectorConstituent]

@@ -8,6 +8,8 @@ import pytest
 import pytest_asyncio
 import asyncio
 from datetime import date
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.task_manager import TaskManager
@@ -16,7 +18,6 @@ from src.services.task_handlers import (
     init_sectors_task,
     init_stocks_task,
     init_historical_data_task,
-    init_sector_stocks_task,
     backfill_by_date_task,
     backfill_by_range_task,
 )
@@ -45,7 +46,6 @@ async def test_task_registry():
         'init_sectors',
         'init_stocks',
         'init_historical_data',
-        'init_sector_stocks',
         'backfill_by_date',
         'backfill_by_range',
     ]
@@ -253,7 +253,6 @@ async def test_task_handlers_exist():
         'init_sectors': init_sectors_task,
         'init_stocks': init_stocks_task,
         'init_historical_data': init_historical_data_task,
-        'init_sector_stocks': init_sector_stocks_task,
         'backfill_by_date': backfill_by_date_task,
         'backfill_by_range': backfill_by_range_task,
     }
@@ -262,6 +261,147 @@ async def test_task_handlers_exist():
         actual_handler = TaskRegistry.get_handler(task_type)
         assert actual_handler is not None, f"No handler for {task_type}"
         assert actual_handler == expected_handler, f"Handler mismatch for {task_type}"
+
+
+@pytest.mark.asyncio
+async def test_admin_tasks_api_rejects_migration_without_truncate_confirmation():
+    """验证板块迁移任务缺少清空确认时会被拒绝"""
+    from src.api.admin.tasks import CreateTaskRequest, create_task
+
+    request = CreateTaskRequest(task_type="init_sectors", params={"sector_type": "industry"})
+
+    with patch("src.api.admin.tasks.TaskRegistry.list_registered_tasks", return_value=["init_sectors"]):
+        response = await create_task(
+            request=request,
+            session=AsyncMock(),
+            _admin=SimpleNamespace(id="admin-1"),
+        )
+
+    assert response.success is False
+    assert "confirm_truncate_executed" in response.message
+
+
+@pytest.mark.asyncio
+async def test_admin_tasks_api_create_task_fields():
+    """验证 API 创建任务时 task_type/params/status 字段语义一致"""
+    from src.api.admin.tasks import CreateTaskRequest, create_task
+
+    request = CreateTaskRequest(
+        task_type="init_sectors",
+        params={"sector_type": "industry", "confirm_truncate_executed": True},
+    )
+    fake_task = SimpleNamespace(
+        task_id="task_123",
+        task_type="init_sectors",
+        to_dict=lambda: {
+            "taskId": "task_123",
+            "taskType": "init_sectors",
+            "status": "pending",
+            "progress": 0,
+            "total": 0,
+            "percent": 0,
+            "errorMessage": None,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "timeoutSeconds": 14400,
+            "createdBy": "admin-1",
+            "createdAt": None,
+            "startedAt": None,
+            "completedAt": None,
+            "cancelledAt": None,
+        },
+    )
+
+    with patch("src.api.admin.tasks.TaskRegistry.list_registered_tasks", return_value=["init_sectors"]), \
+         patch("src.api.admin.tasks.TaskManager") as mock_manager_cls:
+        mock_manager = mock_manager_cls.return_value
+        mock_manager.create_task = AsyncMock(return_value=fake_task)
+
+        response = await create_task(
+            request=request,
+            session=AsyncMock(),
+            _admin=SimpleNamespace(id="admin-1"),
+        )
+
+    assert response.success is True
+    assert response.data["taskType"] == "init_sectors"
+    assert response.data["status"] == "pending"
+    create_call = mock_manager.create_task.call_args.kwargs
+    assert create_call["params"]["sector_type"] == "industry"
+    assert create_call["params"]["confirm_truncate_executed"] is True
+
+
+@pytest.mark.asyncio
+async def test_admin_tasks_api_rejects_invalid_sector_type():
+    """验证 init_sectors 仅允许 industry/concept。"""
+    from src.api.admin.tasks import CreateTaskRequest, create_task
+
+    request = CreateTaskRequest(
+        task_type="init_sectors",
+        params={"sector_type": "invalid", "confirm_truncate_executed": True},
+    )
+
+    with patch("src.api.admin.tasks.TaskRegistry.list_registered_tasks", return_value=["init_sectors"]):
+        response = await create_task(
+            request=request,
+            session=AsyncMock(),
+            _admin=SimpleNamespace(id="admin-1"),
+        )
+
+    assert response.success is False
+    assert "sector_type" in response.message
+
+
+@pytest.mark.asyncio
+async def test_admin_tasks_api_rejects_invalid_init_sector_historical_data_days():
+    """验证 init_sector_historical_data 的 days 参数范围校验。"""
+    from src.api.admin.tasks import CreateTaskRequest, create_task
+
+    request = CreateTaskRequest(
+        task_type="init_sector_historical_data",
+        params={"days": 0, "confirm_truncate_executed": True},
+    )
+
+    with patch(
+        "src.api.admin.tasks.TaskRegistry.list_registered_tasks",
+        return_value=["init_sector_historical_data"],
+    ):
+        response = await create_task(
+            request=request,
+            session=AsyncMock(),
+            _admin=SimpleNamespace(id="admin-1"),
+        )
+
+    assert response.success is False
+    assert "days" in response.message
+
+
+@pytest.mark.asyncio
+async def test_admin_tasks_api_rejects_invalid_init_sector_historical_data_date_range():
+    """验证 init_sector_historical_data 的日期范围校验。"""
+    from src.api.admin.tasks import CreateTaskRequest, create_task
+
+    request = CreateTaskRequest(
+        task_type="init_sector_historical_data",
+        params={
+            "start_date": "2026-01-10",
+            "end_date": "2026-01-01",
+            "confirm_truncate_executed": True,
+        },
+    )
+
+    with patch(
+        "src.api.admin.tasks.TaskRegistry.list_registered_tasks",
+        return_value=["init_sector_historical_data"],
+    ):
+        response = await create_task(
+            request=request,
+            session=AsyncMock(),
+            _admin=SimpleNamespace(id="admin-1"),
+        )
+
+    assert response.success is False
+    assert "start_date" in response.message
 
 
 if __name__ == "__main__":

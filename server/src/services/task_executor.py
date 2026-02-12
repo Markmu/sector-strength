@@ -11,6 +11,8 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, Callable, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 
 from src.db.database import AsyncSessionLocal, get_task_executor_engine, close_task_executor_engine
 from src.services.task_manager import TaskManager
@@ -123,10 +125,13 @@ class TaskExecutor:
         logger.info("TaskExecutor database engine initialized in background thread")
 
         try:
+            self._loop.run_until_complete(self._wait_for_database_ready())
             self._loop.run_until_complete(self._poll_and_execute())
         except Exception as e:
-            logger.error(f"TaskExecutor loop error: {e}")
+            logger.exception("TaskExecutor loop error")
         finally:
+            # 先收敛正在执行的任务，再关闭数据库引擎，避免连接被动断开
+            self._loop.run_until_complete(self._shutdown_running_tasks())
             # 清理数据库引擎
             self._loop.run_until_complete(close_task_executor_engine())
             self._loop.close()
@@ -170,7 +175,15 @@ class TaskExecutor:
                         async_task.add_done_callback(lambda t: self._running_tasks.discard(t))
 
             except Exception as e:
-                logger.error(f"Error in poll loop: {e}")
+                if self._is_retryable_db_error(e):
+                    logger.warning(
+                        "Poll loop DB transient error: %s. Will retry after %.1fs",
+                        str(e),
+                        self.poll_interval,
+                    )
+                    await self._reset_session_factory()
+                else:
+                    logger.exception("Error in poll loop")
 
             await asyncio.sleep(self.poll_interval)
 
@@ -230,6 +243,7 @@ class TaskExecutor:
 
         async with self._session_factory() as db:
             manager = TaskManager(db)
+            task = None
 
             try:
                 # 获取任务信息
@@ -257,7 +271,14 @@ class TaskExecutor:
                 params = await manager.get_task_params(task_id)
 
                 # 执行任务
-                logger.info(f"Executing task {task_id} (type: {task.task_type})")
+                logger.info(
+                    f"Executing task {task_id} (type: {task.task_type})",
+                    extra={
+                        "task_id": task_id,
+                        "task_type": task.task_type,
+                        "retry_count": task.retry_count,
+                    },
+                )
                 await handler(task_id, params, manager)
 
                 # 标记任务完成
@@ -270,14 +291,30 @@ class TaskExecutor:
                 await manager.cancel_task(task_id)
 
             except Exception as e:
-                logger.error(f"Error executing task {task_id}: {e}")
+                logger.error(
+                    f"Error executing task {task_id}: {e}",
+                    extra={
+                        "task_id": task_id,
+                        "task_type": getattr(task, "task_type", None),
+                        "retry_count": getattr(task, "retry_count", None),
+                        "error_class": type(e).__name__,
+                    },
+                )
 
                 # 检查是否需要重试
                 task = await manager.get_task(task_id)
                 if task and task.retry_count < task.max_retries:
                     await manager.increment_retry(task_id)
                     await manager.reset_for_retry(task_id)
-                    logger.info(f"Task {task_id} will be retried (attempt {task.retry_count + 1}/{task.max_retries})")
+                    logger.info(
+                        f"Task {task_id} will be retried (attempt {task.retry_count + 1}/{task.max_retries})",
+                        extra={
+                            "task_id": task_id,
+                            "task_type": task.task_type,
+                            "retry_count": task.retry_count + 1,
+                            "error_class": type(e).__name__,
+                        },
+                    )
                 else:
                     await manager.complete_task(task_id, success=False, error_message=str(e))
 
@@ -293,13 +330,86 @@ class TaskExecutor:
         if task.retry_count < task.max_retries:
             await manager.increment_retry(task.task_id)
             await manager.reset_for_retry(task.task_id)
-            logger.info(f"Task {task.task_id} timed out, will be retried (attempt {task.retry_count + 1}/{task.max_retries})")
+            logger.info(
+                f"Task {task.task_id} timed out, will be retried (attempt {task.retry_count + 1}/{task.max_retries})",
+                extra={
+                    "task_id": task.task_id,
+                    "task_type": task.task_type,
+                    "retry_count": task.retry_count + 1,
+                    "error_class": "TimeoutError",
+                },
+            )
         else:
             await manager.complete_task(
                 task.task_id,
                 success=False,
                 error_message=f"Task timed out after {task.timeout_seconds} seconds"
             )
+
+    async def _shutdown_running_tasks(self, timeout: float = 10.0):
+        """关闭前收敛后台任务，避免数据库连接在任务中途被销毁。"""
+        self._running_tasks = {task for task in self._running_tasks if not task.done()}
+        if not self._running_tasks:
+            return
+
+        logger.info(f"Shutting down {len(self._running_tasks)} running task(s)")
+        for task in self._running_tasks:
+            task.cancel()
+
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*self._running_tasks, return_exceptions=True),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout while shutting down running tasks after {timeout}s")
+        finally:
+            self._running_tasks.clear()
+
+    async def _reset_session_factory(self):
+        """连接异常后重建任务执行器的数据库引擎和会话工厂。"""
+        logger.warning("Resetting task executor database engine after connection loss")
+        await close_task_executor_engine()
+        _engine, self._session_factory = get_task_executor_engine()
+
+    @staticmethod
+    def _is_retryable_db_error(exc: Exception) -> bool:
+        """判断是否为可重试的数据库瞬时错误。"""
+        if isinstance(exc, (ConnectionError, OSError)):
+            return True
+        if isinstance(exc, SQLAlchemyError):
+            return True
+
+        msg = str(exc).lower()
+        return (
+            "connection_lost" in msg
+            or "connection was closed" in msg
+            or "server closed the connection" in msg
+            or "connection reset" in msg
+            or "cannotconnectnowerror" in msg
+            or "database system is starting up" in msg
+            or "the database system is starting up" in msg
+        )
+
+    async def _wait_for_database_ready(self, max_wait_seconds: float = 60.0):
+        """启动时等待数据库可用，减少冷启动期噪声。"""
+        start = time.time()
+        while self._running and (time.time() - start) < max_wait_seconds:
+            try:
+                if self._session_factory is None:
+                    await asyncio.sleep(1.0)
+                    continue
+                async with self._session_factory() as db:
+                    await db.execute(text("SELECT 1"))
+                    logger.info("TaskExecutor database readiness check passed")
+                    return
+            except Exception as e:
+                if not self._is_retryable_db_error(e):
+                    logger.exception("Unexpected DB error during readiness check")
+                    return
+                await asyncio.sleep(2.0)
+
+        logger.warning("TaskExecutor database readiness check timed out after %.1fs", max_wait_seconds)
 
     @property
     def is_running(self) -> bool:

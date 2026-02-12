@@ -16,10 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.sector import Sector
 from src.models.stock import Stock
-from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
 from src.services.data_acquisition.akshare_client import AkShareDataSource
-from src.services.data_acquisition.models import StockInfo, SectorInfo, DailyQuote, SectorConstituent
+from src.services.data_acquisition.models import StockInfo, SectorInfo, DailyQuote
 
 logger = logging.getLogger(__name__)
 
@@ -105,18 +104,17 @@ class DataInitService:
 
     async def init_sectors(self, sector_type: Optional[str] = None) -> dict:
         """
-        初始化板块数据及其成分股关联
+        初始化板块数据
 
         此方法会：
         1. 从 AkShare 获取板块列表
         2. 创建板块记录
-        3. 获取每个板块的成分股并建立关联关系
 
         Args:
             sector_type: 板块类型过滤 (industry/concept)，None 表示获取所有
 
         Returns:
-            初始化结果字典: {"success": bool, "created": int, "skipped": int, "relations_created": int, "errors": list}
+            初始化结果字典: {"success": bool, "created": int, "skipped": int, "errors": list}
         """
         self._cancelled = False
         logger.info(f"开始初始化板块数据 (类型: {sector_type or '全部'})")
@@ -128,7 +126,6 @@ class DataInitService:
 
             created = 0
             skipped = 0
-            relations_created = 0
             errors = []
 
             for i, sector_info in enumerate(sectors, 1):
@@ -159,36 +156,6 @@ class DataInitService:
                             created += 1
                             logger.debug(f"创建板块: {sector_info.code} - {sector_info.name}")
 
-                        # 获取板块成分股并建立关联（无论板块是新建还是已存在）
-                        try:
-                            constituents = self.ak_source.get_sector_stocks(sector_info.code)
-
-                            for constituent in constituents:
-                                # 检查关联是否已存在
-                                result = await self.session.execute(
-                                    select(SectorStock).where(
-                                        SectorStock.sector_code == sector_info.code,
-                                        SectorStock.stock_code == constituent.symbol
-                                    )
-                                )
-                                existing_relation = result.scalar_one_or_none()
-
-                                if not existing_relation:
-                                    # 创建板块-股票关联
-                                    sector_stock = SectorStock(
-                                        sector_code=sector_info.code,
-                                        stock_code=constituent.symbol
-                                    )
-                                    self.session.add(sector_stock)
-                                    relations_created += 1
-
-                            logger.debug(f"板块 {sector_info.code} 建立了 {len(constituents)} 个成分股关联")
-
-                        except Exception as e:
-                            # 成分股获取失败不影响板块创建
-                            logger.warning(f"获取板块 {sector_info.code} 成分股失败: {e}")
-                            errors.append(f"板块 {sector_info.code} 成分股获取失败: {e}")
-
                 except Exception as e:
                     error_msg = f"处理板块失败 {sector_info.code}: {e}"
                     errors.append(error_msg)
@@ -201,12 +168,11 @@ class DataInitService:
                 "success": True,
                 "created": created,
                 "skipped": skipped,
-                "relations_created": relations_created,
                 "errors": errors,
                 "total": len(sectors)
             }
 
-            logger.info(f"板块初始化完成: 创建 {created}, 跳过 {skipped}, 关联创建 {relations_created}, 错误 {len(errors)}")
+            logger.info(f"板块初始化完成: 创建 {created}, 跳过 {skipped}, 错误 {len(errors)}")
             return result
 
         except InterruptedError:
@@ -579,7 +545,7 @@ class DataInitService:
         """
         初始化板块历史行情数据
 
-        使用 AkShare 的 stock_board_industry_hist_em 接口直接获取板块历史数据。
+        使用 AkShare 的同花顺板块日线接口直接获取板块历史数据。
 
         Args:
             days: 回溯天数（1-365），如果提供 start_date/end_date 则忽略此参数
@@ -636,7 +602,10 @@ class DataInitService:
                     async with _safe_nested_tx(self.session):
                         # 从 AkShare 直接获取板块历史数据
                         quotes = self.ak_source.get_sector_daily_data(
-                            sector.code, start_date, end_date
+                            sector.code,
+                            sector.type,
+                            start_date,
+                            end_date,
                         )
 
                         if not quotes:
@@ -706,91 +675,4 @@ class DataInitService:
         except Exception as e:
             await self.session.rollback()
             logger.error(f"板块历史数据初始化失败: {e}")
-            return {"success": False, "error": str(e)}
-
-    async def init_sector_stocks(self) -> dict:
-        """
-        初始化板块成分股关联
-
-        Returns:
-            初始化结果字典
-        """
-        self._cancelled = False
-        logger.info("开始初始化板块成分股关联")
-
-        try:
-            # 获取所有板块
-            result = await self.session.execute(select(Sector))
-            sectors = result.scalars().all()
-
-            if not sectors:
-                return {"success": False, "error": "没有找到板块数据，请先初始化板块"}
-
-            created = 0
-            errors = []
-
-            total = len(sectors)
-            for i, sector in enumerate(sectors, 1):
-                self._check_cancelled()
-                await self._update_progress(i, total, f"正在获取板块成分股: {sector.name}")
-
-                try:
-                    # 使用 savepoint 隔离每个板块的操作
-                    async with _safe_nested_tx(self.session):
-                        # 获取板块成分股
-                        constituents = self.ak_source.get_sector_stocks(sector.code)
-
-                        for constituent in constituents:
-                            # 查找股票记录
-                            result = await self.session.execute(
-                                select(Stock).where(Stock.symbol == constituent.symbol)
-                            )
-                            stock = result.scalar_one_or_none()
-
-                            if not stock:
-                                continue
-
-                            # 检查关联是否已存在
-                            result = await self.session.execute(
-                                select(SectorStock).where(
-                                    SectorStock.sector_code == sector.code,
-                                    SectorStock.stock_code == stock.symbol
-                                )
-                            )
-                            existing = result.scalar_one_or_none()
-
-                            if not existing:
-                                # 创建关联
-                                sector_stock = SectorStock(
-                                    sector_code=sector.code,
-                                    stock_code=stock.symbol
-                                )
-                                self.session.add(sector_stock)
-                                created += 1
-
-                except Exception as e:
-                    error_msg = f"获取板块成分股失败 {sector.code}: {e}"
-                    errors.append(error_msg)
-                    logger.error(error_msg)
-
-            # 提交事务
-            await self.session.commit()
-
-            result = {
-                "success": True,
-                "created": created,
-                "errors": errors,
-                "total_sectors": total
-            }
-
-            logger.info(f"板块成分股关联完成: 创建 {created}, 错误 {len(errors)}")
-            return result
-
-        except InterruptedError:
-            await self.session.rollback()
-            logger.warning("板块成分股关联已取消")
-            return {"success": False, "cancelled": True, "message": "任务已取消"}
-        except Exception as e:
-            await self.session.rollback()
-            logger.error(f"板块成分股关联失败: {e}")
             return {"success": False, "error": str(e)}

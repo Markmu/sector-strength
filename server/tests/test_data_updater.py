@@ -74,8 +74,8 @@ class TestDataCollector:
     async def test_update_sectors(self, data_collector):
         """测试更新板块数据"""
         with patch('src.services.data_updater.collector.AkShareDataSource') as mock_source_class:
-            mock_source = AsyncMock()
-            mock_source.fetch_sectors.return_value = [
+            mock_source = MagicMock()
+            mock_source.get_sector_list.return_value = [
                 {'code': 'BK0001', 'name': '测试板块', 'type': 'concept'}
             ]
             mock_source_class.return_value = mock_source
@@ -88,8 +88,8 @@ class TestDataCollector:
     async def test_update_stocks(self, data_collector):
         """测试更新股票数据"""
         with patch('src.services.data_updater.collector.AkShareDataSource') as mock_source_class:
-            mock_source = AsyncMock()
-            mock_source.fetch_stocks.return_value = [
+            mock_source = MagicMock()
+            mock_source.get_stock_list.return_value = [
                 {'symbol': '000001', 'name': '测试股票', 'sector_code': 'BK0001'}
             ]
             mock_source_class.return_value = mock_source
@@ -101,16 +101,23 @@ class TestDataCollector:
     @pytest.mark.asyncio
     async def test_update_market_data(self, data_collector):
         """测试更新行情数据"""
-        with patch('src.services.data_updater.collector.AkShareDataSource') as mock_source_class:
-            mock_source = AsyncMock()
-            mock_source.fetch_daily_quotes.return_value = [
+        with patch('src.services.data_updater.collector.AkShareDataSource') as mock_source_class, \
+             patch('src.services.data_updater.collector.get_session') as mock_session_getter:
+            mock_source = MagicMock()
+            mock_source.get_daily_data.return_value = [
                 {'symbol': '000001', 'date': '2024-01-10', 'close': 10.5}
             ]
             mock_source_class.return_value = mock_source
 
+            mock_session = AsyncMock()
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = ['000001']
+            mock_session.execute.return_value = mock_result
+            mock_session_getter.return_value.__aenter__.return_value = mock_session
+
             count = await data_collector._update_market_data()
 
-            assert count >= 0
+            assert count == 1
 
     @pytest.mark.asyncio
     async def test_run_calculations(self, data_collector):

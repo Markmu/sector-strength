@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from .base import BaseDataSource
 from .exceptions import DataFetchError, DataSourceTimeoutError, RetryExhaustedError
-from .models import DailyQuote, SectorConstituent, SectorInfo, StockInfo
+from .models import DailyQuote, SectorInfo, StockInfo
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -308,29 +308,54 @@ class AkShareDataSource(BaseDataSource):
             RetryExhaustedError: 重试次数耗尽
         """
         ak = self._get_akshare()
+        normalized_filter = sector_type.strip().lower() if isinstance(sector_type, str) else sector_type
+        if normalized_filter is not None and normalized_filter not in ("industry", "concept"):
+            raise ValueError(f"无效的板块类型过滤: {sector_type}")
+
         sectors: List[SectorInfo] = []
+
+        def _normalize_text(*candidates: Any) -> Optional[str]:
+            for candidate in candidates:
+                if candidate is None or pd.isna(candidate):
+                    continue
+                text = str(candidate).strip()
+                if text and text.lower() != "nan":
+                    return text
+            return None
 
         def _fetch_industry() -> pd.DataFrame:
             logger.info("正在获取行业板块列表...")
-            return ak.stock_board_industry_name_em()
+            return ak.stock_board_industry_name_ths()
 
         def _fetch_concept() -> pd.DataFrame:
             logger.info("正在获取概念板块列表...")
-            return ak.stock_board_concept_name_em()
+            return ak.stock_board_concept_name_ths()
 
         try:
             # 根据类型决定获取哪些板块
-            fetch_industry = sector_type is None or sector_type == "industry"
-            fetch_concept = sector_type is None or sector_type == "concept"
+            fetch_industry = normalized_filter is None or normalized_filter == "industry"
+            fetch_concept = normalized_filter is None or normalized_filter == "concept"
 
             if fetch_industry:
                 df_industry = self._execute_with_retry(_fetch_industry)
                 for _, row in df_industry.iterrows():
                     try:
+                        code = _normalize_text(
+                            row.get("代码"),
+                            row.get("板块代码"),
+                            row.get("code"),
+                        )
+                        name = _normalize_text(
+                            row.get("名称"),
+                            row.get("板块名称"),
+                            row.get("name"),
+                        )
+                        if not code or not name:
+                            continue
                         sectors.append(
                             SectorInfo(
-                                code=str(row.get("板块代码", "")),
-                                name=str(row.get("板块名称", "")),
+                                code=code,
+                                name=name,
                                 type="industry",
                             )
                         )
@@ -344,10 +369,22 @@ class AkShareDataSource(BaseDataSource):
                 df_concept = self._execute_with_retry(_fetch_concept)
                 for _, row in df_concept.iterrows():
                     try:
+                        code = _normalize_text(
+                            row.get("代码"),
+                            row.get("板块代码"),
+                            row.get("code"),
+                        )
+                        name = _normalize_text(
+                            row.get("名称"),
+                            row.get("板块名称"),
+                            row.get("name"),
+                        )
+                        if not code or not name:
+                            continue
                         sectors.append(
                             SectorInfo(
-                                code=str(row.get("板块代码", "")),
-                                name=str(row.get("板块名称", "")),
+                                code=code,
+                                name=name,
                                 type="concept",
                             )
                         )
@@ -366,7 +403,7 @@ class AkShareDataSource(BaseDataSource):
             raise DataFetchError(
                 f"获取板块列表失败: {str(e)}",
                 source=self.source_name,
-                endpoint="stock_board_*_name_em",
+                endpoint="stock_board_*_name_ths",
                 original_error=e,
             )
 
@@ -489,16 +526,18 @@ class AkShareDataSource(BaseDataSource):
     def get_sector_daily_data(
         self,
         sector_code: str,
+        sector_type: str,
         start_date: date,
         end_date: date,
     ) -> List[DailyQuote]:
         """
         获取板块日线行情数据
 
-        使用 AkShare 的 stock_board_industry_hist_em 接口直接获取板块历史数据。
+        使用 AkShare 的同花顺板块日线接口获取历史数据。
 
         Args:
             sector_code: 板块代码
+            sector_type: 板块类型 (industry/concept)
             start_date: 开始日期
             end_date: 结束日期
 
@@ -513,21 +552,45 @@ class AkShareDataSource(BaseDataSource):
         if not sector_code:
             raise ValueError("板块代码不能为空")
 
+        if sector_type is None:
+            raise ValueError("板块类型不能为空")
+
+        normalized_sector_type = str(sector_type).strip().lower()
+        if normalized_sector_type not in ("industry", "concept"):
+            raise ValueError(f"无效的板块类型: {sector_type}")
+
         if start_date > end_date:
             raise ValueError("开始日期不能晚于结束日期")
 
         ak = self._get_akshare()
+        endpoint = (
+            "stock_board_industry_index_ths"
+            if normalized_sector_type == "industry"
+            else "stock_board_concept_index_ths"
+        )
 
         def _fetch() -> pd.DataFrame:
             logger.info(
-                f"正在获取板块 {sector_code} 的历史数据 ({start_date} 至 {end_date})...",
-                extra={"sector_code": sector_code, "start_date": str(start_date), "end_date": str(end_date)},
+                f"正在获取板块 {sector_code} ({normalized_sector_type}) 的历史数据 ({start_date} 至 {end_date})...",
+                extra={
+                    "sector_code": sector_code,
+                    "sector_type": normalized_sector_type,
+                    "start_date": str(start_date),
+                    "end_date": str(end_date),
+                    "endpoint": endpoint,
+                },
             )
-            # 使用 AkShare 的板块历史数据接口
-            return ak.stock_board_industry_hist_em(
+            if normalized_sector_type == "industry":
+                return ak.stock_board_industry_index_ths(
+                    symbol=sector_code,
+                    start_date=start_date.strftime("%Y%m%d"),
+                    end_date=end_date.strftime("%Y%m%d"),
+                )
+
+            return ak.stock_board_concept_index_ths(
                 symbol=sector_code,
                 start_date=start_date.strftime("%Y%m%d"),
-                end_date=end_date.strftime("%Y%m%d")
+                end_date=end_date.strftime("%Y%m%d"),
             )
 
         try:
@@ -557,19 +620,27 @@ class AkShareDataSource(BaseDataSource):
                             raise ValueError("价格数据为空")
                         return float(val)
 
+                    open_value = row.get("开盘价", row.get("开盘"))
+                    high_value = row.get("最高价", row.get("最高"))
+                    low_value = row.get("最低价", row.get("最低"))
+                    close_value = row.get("收盘价", row.get("收盘"))
+                    volume_value = row.get("成交量", row.get("成交量(股)"))
+                    amount_value = row.get("成交额", row.get("成交额(元)"))
+                    turnover_value = row.get("换手率")
+
                     quote = DailyQuote(
                         symbol=sector_code,
                         trade_date=trade_date,
-                        open=safe_float(row.get("开盘")),
-                        high=safe_float(row.get("最高")),
-                        low=safe_float(row.get("最低")),
-                        close=safe_float(row.get("收盘")),
-                        volume=safe_float(row.get("成交量")),
-                        amount=safe_float(row.get("成交额"))
-                        if "成交额" in row.index and pd.notna(row.get("成交额"))
+                        open=safe_float(open_value),
+                        high=safe_float(high_value),
+                        low=safe_float(low_value),
+                        close=safe_float(close_value),
+                        volume=safe_float(volume_value),
+                        amount=safe_float(amount_value)
+                        if pd.notna(amount_value)
                         else None,
-                        turnover=safe_float(row.get("换手率"))
-                        if "换手率" in row.index and pd.notna(row.get("换手率"))
+                        turnover=safe_float(turnover_value)
+                        if pd.notna(turnover_value)
                         else None,
                     )
                     quotes.append(quote)
@@ -599,86 +670,6 @@ class AkShareDataSource(BaseDataSource):
             raise DataFetchError(
                 f"获取板块 {sector_code} 日线数据失败: {str(e)}",
                 source=self.source_name,
-                endpoint="stock_board_industry_hist_em",
-                original_error=e,
-            )
-
-    def get_sector_stocks(self, sector_code: str) -> List[SectorConstituent]:
-        """
-        获取板块成分股
-
-        Args:
-            sector_code: 板块代码
-
-        Returns:
-            板块成分股列表
-
-        Raises:
-            DataFetchError: 数据获取失败
-            RetryExhaustedError: 重试次数耗尽
-            ValueError: 板块代码为空
-        """
-        if not sector_code:
-            raise ValueError("板块代码不能为空")
-
-        ak = self._get_akshare()
-
-        def _fetch() -> pd.DataFrame:
-            logger.info(
-                f"正在获取板块 {sector_code} 的成分股...",
-                extra={"sector_code": sector_code},
-            )
-            return ak.stock_board_concept_cons_em(symbol=sector_code)
-
-        try:
-            df = self._execute_with_retry(_fetch)
-
-            if df.empty:
-                logger.warning(
-                    f"板块 {sector_code} 无成分股数据",
-                    extra={"sector_code": sector_code},
-                )
-                return []
-
-            constituents: List[SectorConstituent] = []
-            errors = 0
-
-            for _, row in df.iterrows():
-                try:
-                    symbol = str(row.get("代码", ""))
-                    name = str(row.get("名称", ""))
-
-                    if not symbol or not name:
-                        continue
-
-                    constituent = SectorConstituent(
-                        sector_code=sector_code,
-                        symbol=symbol,
-                        name=name,
-                    )
-                    constituents.append(constituent)
-
-                except (ValidationError, ValueError) as e:
-                    errors += 1
-                    logger.debug(
-                        f"成分股数据验证失败: {e}",
-                        extra={"sector_code": sector_code, "symbol": row.get("代码", ""), "error": str(e)},
-                    )
-
-            logger.info(
-                f"成功转换 {len(constituents)} 只成分股，忽略 {errors} 条异常数据",
-                extra={"sector_code": sector_code, "success_count": len(constituents), "error_count": errors},
-            )
-            return constituents
-
-        except RetryExhaustedError:
-            raise
-        except ValueError:
-            raise
-        except Exception as e:
-            raise DataFetchError(
-                f"获取板块 {sector_code} 成分股失败: {str(e)}",
-                source=self.source_name,
-                endpoint="stock_board_concept_cons_em",
+                endpoint=endpoint,
                 original_error=e,
             )

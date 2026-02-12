@@ -364,13 +364,6 @@ const adminApiClient = new AdminApiClient()
 export { adminApiClient }
 
 export const adminApi = {
-  // 数据更新
-  triggerUpdate: () => adminApiClient.post<{ success: boolean; message: string; task_id: string }>('/admin/data/update'),
-  getUpdateStatus: () => adminApiClient.get<any>('/admin/data/update-status'),
-  getUpdateHistory: (params?: { page?: number; page_size?: number }) =>
-    adminApiClient.get<any>('/admin/data/update-history', params),
-  cancelUpdate: () => adminApiClient.post<any>('/admin/data/update/cancel'),
-
   // 调度器管理
   getSchedulerStatus: () => adminApiClient.get<{ is_running: boolean; jobs: any }>('/admin/data/scheduler/status'),
   startScheduler: () => adminApiClient.post<any>('/admin/data/scheduler/start'),

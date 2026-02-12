@@ -155,7 +155,7 @@ class DataCollector:
 
         try:
             data_source = AkShareDataSource()
-            sectors = await data_source.get_sector_list()
+            sectors = data_source.get_sector_list()
 
             count = 0
             async with get_session() as session:
@@ -181,7 +181,7 @@ class DataCollector:
 
         try:
             data_source = AkShareDataSource()
-            stocks = await data_source.get_stock_list()
+            stocks = data_source.get_stock_list()
 
             count = 0
             # TODO: 更新股票数据到数据库
@@ -220,7 +220,11 @@ class DataCollector:
             # TODO: 批量获取行情数据并保存
             for symbol in list(symbols)[:10]:  # 限制处理数量
                 try:
-                    quotes = await data_source.get_daily_quotes(symbol)
+                    quotes = data_source.get_daily_data(
+                        symbol=symbol,
+                        start_date=latest_date,
+                        end_date=latest_date,
+                    )
                     # TODO: 保存到 DailyMarketData 表
                     count += len(quotes)
                 except Exception as e:
