@@ -21,8 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["Admin - Tasks"])
-SECTOR_MIGRATION_CONFIRM_KEY = "confirm_truncate_executed"
-SECTOR_MIGRATION_TASK_TYPES = {"init_sectors", "init_sector_historical_data"}
 
 
 # ============== 请求/响应模型 ==============
@@ -86,13 +84,6 @@ class TaskLogListResponse(BaseModel):
 def _validate_task_create_request(request: CreateTaskRequest) -> Optional[str]:
     """校验任务创建参数语义，避免非法迁移任务进入队列。"""
     params = request.params or {}
-
-    if request.task_type in SECTOR_MIGRATION_TASK_TYPES:
-        if not params.get(SECTOR_MIGRATION_CONFIRM_KEY, False):
-            return (
-                f"板块迁移任务必须显式提供 `{SECTOR_MIGRATION_CONFIRM_KEY}=true`，"
-                "并确认已人工执行清空脚本。"
-            )
 
     if request.task_type == "init_sectors":
         sector_type = params.get("sector_type")

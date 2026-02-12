@@ -264,21 +264,46 @@ async def test_task_handlers_exist():
 
 
 @pytest.mark.asyncio
-async def test_admin_tasks_api_rejects_migration_without_truncate_confirmation():
-    """验证板块迁移任务缺少清空确认时会被拒绝"""
+async def test_admin_tasks_api_allows_migration_without_truncate_confirmation():
+    """验证板块迁移任务无需清空确认参数也可创建"""
     from src.api.admin.tasks import CreateTaskRequest, create_task
 
     request = CreateTaskRequest(task_type="init_sectors", params={"sector_type": "industry"})
+    fake_task = SimpleNamespace(
+        task_id="task_no_confirm",
+        task_type="init_sectors",
+        to_dict=lambda: {
+            "taskId": "task_no_confirm",
+            "taskType": "init_sectors",
+            "status": "pending",
+            "progress": 0,
+            "total": 0,
+            "percent": 0,
+            "errorMessage": None,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "timeoutSeconds": 14400,
+            "createdBy": "admin-1",
+            "createdAt": None,
+            "startedAt": None,
+            "completedAt": None,
+            "cancelledAt": None,
+        },
+    )
 
-    with patch("src.api.admin.tasks.TaskRegistry.list_registered_tasks", return_value=["init_sectors"]):
+    with patch("src.api.admin.tasks.TaskRegistry.list_registered_tasks", return_value=["init_sectors"]), \
+         patch("src.api.admin.tasks.TaskManager") as mock_manager_cls:
+        mock_manager = mock_manager_cls.return_value
+        mock_manager.create_task = AsyncMock(return_value=fake_task)
         response = await create_task(
             request=request,
             session=AsyncMock(),
             _admin=SimpleNamespace(id="admin-1"),
         )
 
-    assert response.success is False
-    assert "confirm_truncate_executed" in response.message
+    assert response.success is True
+    create_call = mock_manager.create_task.call_args.kwargs
+    assert create_call["params"]["sector_type"] == "industry"
 
 
 @pytest.mark.asyncio
@@ -288,7 +313,7 @@ async def test_admin_tasks_api_create_task_fields():
 
     request = CreateTaskRequest(
         task_type="init_sectors",
-        params={"sector_type": "industry", "confirm_truncate_executed": True},
+        params={"sector_type": "industry"},
     )
     fake_task = SimpleNamespace(
         task_id="task_123",
@@ -328,7 +353,6 @@ async def test_admin_tasks_api_create_task_fields():
     assert response.data["status"] == "pending"
     create_call = mock_manager.create_task.call_args.kwargs
     assert create_call["params"]["sector_type"] == "industry"
-    assert create_call["params"]["confirm_truncate_executed"] is True
 
 
 @pytest.mark.asyncio
@@ -338,7 +362,7 @@ async def test_admin_tasks_api_rejects_invalid_sector_type():
 
     request = CreateTaskRequest(
         task_type="init_sectors",
-        params={"sector_type": "invalid", "confirm_truncate_executed": True},
+        params={"sector_type": "invalid"},
     )
 
     with patch("src.api.admin.tasks.TaskRegistry.list_registered_tasks", return_value=["init_sectors"]):
@@ -359,7 +383,7 @@ async def test_admin_tasks_api_rejects_invalid_init_sector_historical_data_days(
 
     request = CreateTaskRequest(
         task_type="init_sector_historical_data",
-        params={"days": 0, "confirm_truncate_executed": True},
+        params={"days": 0},
     )
 
     with patch(
@@ -386,7 +410,6 @@ async def test_admin_tasks_api_rejects_invalid_init_sector_historical_data_date_
         params={
             "start_date": "2026-01-10",
             "end_date": "2026-01-01",
-            "confirm_truncate_executed": True,
         },
     )
 
