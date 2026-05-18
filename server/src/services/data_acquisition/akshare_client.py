@@ -525,7 +525,7 @@ class AkShareDataSource(BaseDataSource):
 
     def get_sector_daily_data(
         self,
-        sector_code: str,
+        sector_name: str,
         sector_type: str,
         start_date: date,
         end_date: date,
@@ -536,7 +536,7 @@ class AkShareDataSource(BaseDataSource):
         使用 AkShare 的同花顺板块日线接口获取历史数据。
 
         Args:
-            sector_code: 板块代码
+            sector_name: 板块名称（同花顺接口 symbol 参数要求板块名称）
             sector_type: 板块类型 (industry/concept)
             start_date: 开始日期
             end_date: 结束日期
@@ -549,8 +549,8 @@ class AkShareDataSource(BaseDataSource):
             RetryExhaustedError: 重试次数耗尽
             ValueError: 参数校验失败（空代码或无效日期范围）
         """
-        if not sector_code:
-            raise ValueError("板块代码不能为空")
+        if not sector_name:
+            raise ValueError("板块名称不能为空")
 
         if sector_type is None:
             raise ValueError("板块类型不能为空")
@@ -571,9 +571,9 @@ class AkShareDataSource(BaseDataSource):
 
         def _fetch() -> pd.DataFrame:
             logger.info(
-                f"正在获取板块 {sector_code} ({normalized_sector_type}) 的历史数据 ({start_date} 至 {end_date})...",
+                f"正在获取板块 {sector_name} ({normalized_sector_type}) 的历史数据 ({start_date} 至 {end_date})...",
                 extra={
-                    "sector_code": sector_code,
+                    "sector_name": sector_name,
                     "sector_type": normalized_sector_type,
                     "start_date": str(start_date),
                     "end_date": str(end_date),
@@ -582,13 +582,13 @@ class AkShareDataSource(BaseDataSource):
             )
             if normalized_sector_type == "industry":
                 return ak.stock_board_industry_index_ths(
-                    symbol=sector_code,
+                    symbol=sector_name,
                     start_date=start_date.strftime("%Y%m%d"),
                     end_date=end_date.strftime("%Y%m%d"),
                 )
 
             return ak.stock_board_concept_index_ths(
-                symbol=sector_code,
+                symbol=sector_name,
                 start_date=start_date.strftime("%Y%m%d"),
                 end_date=end_date.strftime("%Y%m%d"),
             )
@@ -598,8 +598,8 @@ class AkShareDataSource(BaseDataSource):
 
             if df.empty:
                 logger.warning(
-                    f"板块 {sector_code} 在指定日期范围内无数据",
-                    extra={"sector_code": sector_code, "start_date": str(start_date), "end_date": str(end_date)},
+                    f"板块 {sector_name} 在指定日期范围内无数据",
+                    extra={"sector_name": sector_name, "start_date": str(start_date), "end_date": str(end_date)},
                 )
                 return []
 
@@ -629,7 +629,7 @@ class AkShareDataSource(BaseDataSource):
                     turnover_value = row.get("换手率")
 
                     quote = DailyQuote(
-                        symbol=sector_code,
+                        symbol=sector_name,
                         trade_date=trade_date,
                         open=safe_float(open_value),
                         high=safe_float(high_value),
@@ -648,9 +648,9 @@ class AkShareDataSource(BaseDataSource):
                 except (ValidationError, ValueError) as e:
                     errors += 1
                     logger.debug(
-                        f"板块日线数据验证失败 {sector_code} {row.get('日期')}: {e}",
+                        f"板块日线数据验证失败 {sector_name} {row.get('日期')}: {e}",
                         extra={
-                            "sector_code": sector_code,
+                            "sector_name": sector_name,
                             "date": str(row.get("日期", "")),
                             "error": str(e),
                         },
@@ -658,7 +658,7 @@ class AkShareDataSource(BaseDataSource):
 
             logger.info(
                 f"成功转换 {len(quotes)} 条板块日线数据，忽略 {errors} 条异常数据",
-                extra={"sector_code": sector_code, "success_count": len(quotes), "error_count": errors},
+                extra={"sector_name": sector_name, "success_count": len(quotes), "error_count": errors},
             )
             return quotes
 
@@ -668,7 +668,7 @@ class AkShareDataSource(BaseDataSource):
             raise
         except Exception as e:
             raise DataFetchError(
-                f"获取板块 {sector_code} 日线数据失败: {str(e)}",
+                f"获取板块 {sector_name} 日线数据失败: {str(e)}",
                 source=self.source_name,
                 endpoint=endpoint,
                 original_error=e,

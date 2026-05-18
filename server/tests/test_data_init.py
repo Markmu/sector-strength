@@ -206,7 +206,7 @@ class TestDataInitService:
         assert result["success"] is True
         assert mock_ak_share.get_sector_daily_data.call_count == 1
         call = mock_ak_share.get_sector_daily_data.call_args
-        assert call.args[0] == "885001"
+        assert call.args[0] == "测试行业"
         assert call.args[1] == "industry"
 
     async def test_progress_callback(self, mock_session, mock_ak_share):

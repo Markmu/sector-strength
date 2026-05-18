@@ -36,13 +36,14 @@ async def _safe_nested_tx(session: AsyncSession):
         tx = begin_nested()
         if inspect.isawaitable(tx):
             tx = await tx
-        if hasattr(tx, "__aenter__") and hasattr(tx, "__aexit__"):
-            async with tx:
-                yield
-            return
     except Exception:
-        pass
-    yield
+        yield
+        return
+    if hasattr(tx, "__aenter__") and hasattr(tx, "__aexit__"):
+        async with tx:
+            yield
+    else:
+        yield
 
 
 class DataInitService:
@@ -602,7 +603,7 @@ class DataInitService:
                     async with _safe_nested_tx(self.session):
                         # 从 AkShare 直接获取板块历史数据
                         quotes = self.ak_source.get_sector_daily_data(
-                            sector.code,
+                            sector.name,
                             sector.type,
                             start_date,
                             end_date,

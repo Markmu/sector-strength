@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -15,11 +15,6 @@ from src.core.exceptions import AuthenticationError, RateLimitExceeded, AccountL
 
 class AuthService:
     """认证服务"""
-    _pwd_context = CryptContext(
-        schemes=["sha256_crypt"],
-        sha256_crypt__default_rounds=5000,
-        deprecated="auto",
-    )
     _failed_login_records: dict[str, list[datetime]] = {}
     _locked_users: dict[str, datetime] = {}
 
@@ -38,12 +33,12 @@ class AuthService:
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """验证密码"""
-        return AuthService._pwd_context.verify(plain_password, hashed_password)
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
     @staticmethod
     def get_password_hash(password: str) -> str:
         """生成密码哈希"""
-        return AuthService._pwd_context.hash(password)
+        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=12)).decode('utf-8')
 
     # Legacy static API compatibility used by older tests.
     @staticmethod

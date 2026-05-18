@@ -4,12 +4,8 @@ from datetime import datetime, timedelta
 from typing import Any, Union, Optional
 import bcrypt
 from jose import jwt, JWTError
-from passlib.context import CryptContext
 from fastapi import HTTPException, status
 from src.core.settings import settings
-
-# 密码加密上下文（用于兼容历史哈希）
-pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 
 
 def create_access_token(
@@ -87,6 +83,4 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码"""
     if not plain_password or not hashed_password:
         return False
-    if hashed_password.startswith("$2a$") or hashed_password.startswith("$2b$") or hashed_password.startswith("$2y$"):
-        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))

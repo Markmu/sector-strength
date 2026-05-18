@@ -90,8 +90,8 @@ async def register_user(
         password_hash=hashed_password,
         username=cleaned_data.get('username')
     )
-    user.is_active = False
-    user.is_verified = False
+    user.is_active = True
+    user.is_verified = True
 
     db.add(user)
     await db.flush()

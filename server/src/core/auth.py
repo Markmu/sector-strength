@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -17,7 +17,6 @@ class AuthService:
     """认证服务"""
 
     def __init__(self):
-        self.pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
         self.access_token_expire_minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES
         self.refresh_token_expire_days = settings.REFRESH_TOKEN_EXPIRE_DAYS
         self.algorithm = settings.JWT_ALGORITHM
@@ -31,11 +30,11 @@ class AuthService:
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """验证密码"""
-        return self.pwd_context.verify(plain_password, hashed_password)
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
     def get_password_hash(self, password: str) -> str:
         """生成密码哈希"""
-        return self.pwd_context.hash(password)
+        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
     def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
         """创建访问令牌"""

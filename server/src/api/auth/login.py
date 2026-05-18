@@ -80,17 +80,9 @@ async def login(
                 db, login_identity, client_ip, user_agent,
                 success=False, failure_reason="account_inactive"
             )
-            # Legacy compatibility:
-            # - verified but deactivated account -> 401 disabled
-            # - unverified/inactive account -> 403 locked
-            if user.is_verified:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="账户已被禁用"
-                )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="账户已被锁定，请联系管理员"
+                detail="账户已被禁用，请联系管理员"
             )
 
         # 验证密码

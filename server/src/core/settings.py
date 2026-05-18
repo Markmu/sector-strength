@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # CORS配置
-    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:3000", "http://127.0.0.1:8000"]
+    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3100", "http://localhost:8000", "http://127.0.0.1:3100", "http://127.0.0.1:8000"]
 
     # 日志配置
     LOG_LEVEL: str = "DEBUG"

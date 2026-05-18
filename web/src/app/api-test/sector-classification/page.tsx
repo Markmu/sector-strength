@@ -55,7 +55,7 @@ export default function SectorClassificationAPITestPage() {
 
     setLoading(true)
     try {
-      const result = await sectorClassificationApi.getClassificationByIdWithTiming(sectorIdNum)
+      const result = await sectorClassificationApi.getClassificationByIdWithTiming(String(sectorIdNum))
       setSingleResult(result)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误'
@@ -112,9 +112,9 @@ export default function SectorClassificationAPITestPage() {
         />
       )}
 
-      {result.data && (
+      {result.data !== null && (
         <pre className="bg-gray-900 text-green-400 p-4 rounded overflow-x-auto text-sm">
-          {JSON.stringify(result.data, null, 2)}
+          {JSON.stringify(result.data as object, null, 2)}
         </pre>
       )}
     </div>

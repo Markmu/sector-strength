@@ -55,7 +55,7 @@ def test_get_sector_daily_data_routes_industry_to_ths_industry_api():
 
     with patch.object(source, "_get_akshare", return_value=ak):
         quotes = source.get_sector_daily_data(
-            sector_code="881121",
+            sector_name="电子元器件",
             sector_type="industry",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 1, 10),
@@ -85,7 +85,7 @@ def test_get_sector_daily_data_routes_concept_to_ths_concept_api():
 
     with patch.object(source, "_get_akshare", return_value=ak):
         quotes = source.get_sector_daily_data(
-            sector_code="885976",
+            sector_name="人工智能",
             sector_type="concept",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 1, 10),
@@ -101,7 +101,7 @@ def test_get_sector_daily_data_rejects_invalid_sector_type():
 
     with pytest.raises(ValueError, match="无效的板块类型"):
         source.get_sector_daily_data(
-            sector_code="x",
+            sector_name="x",
             sector_type="invalid",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 1, 2),
@@ -115,7 +115,7 @@ def test_get_sector_daily_data_returns_empty_list_on_empty_dataframe():
 
     with patch.object(source, "_get_akshare", return_value=ak):
         quotes = source.get_sector_daily_data(
-            sector_code="881121",
+            sector_name="电子元器件",
             sector_type="industry",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 1, 10),
@@ -146,7 +146,7 @@ def test_get_sector_daily_data_rejects_none_sector_type():
 
     with pytest.raises(ValueError, match="板块类型不能为空"):
         source.get_sector_daily_data(
-            sector_code="x",
+            sector_name="x",
             sector_type=None,  # type: ignore[arg-type]
             start_date=date(2026, 1, 1),
             end_date=date(2026, 1, 2),
@@ -162,7 +162,7 @@ def test_get_sector_daily_data_propagates_retry_exhausted():
     with patch.object(source, "_get_akshare", return_value=MagicMock()):
         with pytest.raises(RetryExhaustedError):
             source.get_sector_daily_data(
-                sector_code="881121",
+                sector_name="电子元器件",
                 sector_type="industry",
                 start_date=date(2026, 1, 1),
                 end_date=date(2026, 1, 10),
