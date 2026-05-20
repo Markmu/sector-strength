@@ -158,42 +158,42 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
             </div>
             <div className="flex items-center justify-center mt-2">
               {index.change > 0 ? (
-                <span className="text-green-600 text-sm flex items-center">
+                <span className="text-rise text-sm flex items-center">
                   ↑ +{index.change.toFixed(2)} (+{changePercent}%)
                 </span>
               ) : index.change < 0 ? (
-                <span className="text-red-600 text-sm flex items-center">
+                <span className="text-fall text-sm flex items-center">
                   ↓ {index.change.toFixed(2)} ({changePercent}%)
                 </span>
               ) : (
-                <span className="text-gray-500 text-sm">
+                <span className="text-muted-foreground text-sm">
                   → 0.00 (0.0%)
                 </span>
               )}
-              <span className="text-gray-500 text-sm ml-2">vs 上次刷新</span>
+              <span className="text-muted-foreground text-sm ml-2">vs 上次刷新</span>
             </div>
           </div>
 
           {/* 板块统计 */}
           <div className="grid grid-cols-3 gap-2 text-center text-sm">
-            <div className="bg-green-50 rounded-lg p-2">
-              <div className="text-green-700 font-bold text-lg">{stats.upSectors}</div>
-              <div className="text-green-600">上涨</div>
-              <div className="text-gray-500 text-xs">{upPercent}%</div>
+            <div className="bg-rise/10 rounded-lg p-2">
+              <div className="text-rise font-bold text-lg">{stats.upSectors}</div>
+              <div className="text-rise">上涨</div>
+              <div className="text-muted-foreground text-xs">{upPercent}%</div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-2">
-              <div className="text-gray-700 font-bold text-lg">{stats.neutralSectors}</div>
-              <div className="text-gray-600">平盘</div>
-              <div className="text-gray-500 text-xs">{neutralPercent}%</div>
+            <div className="bg-background rounded-lg p-2">
+              <div className="text-foreground font-bold text-lg">{stats.neutralSectors}</div>
+              <div className="text-muted-foreground">平盘</div>
+              <div className="text-muted-foreground text-xs">{neutralPercent}%</div>
             </div>
-            <div className="bg-red-50 rounded-lg p-2">
-              <div className="text-red-700 font-bold text-lg">{stats.downSectors}</div>
-              <div className="text-red-600">下跌</div>
-              <div className="text-gray-500 text-xs">{downPercent}%</div>
+            <div className="bg-fall/10 rounded-lg p-2">
+              <div className="text-fall font-bold text-lg">{stats.downSectors}</div>
+              <div className="text-fall">下跌</div>
+              <div className="text-muted-foreground text-xs">{downPercent}%</div>
             </div>
           </div>
 
-          <div className="text-center text-xs text-gray-500">
+          <div className="text-center text-xs text-muted-foreground">
             总板块数: {stats.totalSectors}
           </div>
         </div>
@@ -202,7 +202,7 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
       {/* 趋势图 */}
       {trend.length > 0 && (
         <div className="border-t pt-4">
-          <div className="text-sm text-gray-600 mb-2">24小时趋势</div>
+          <div className="text-sm text-muted-foreground mb-2">24小时趋势</div>
           <ReactECharts
             option={trendOption}
             style={{ height: '80px', width: '100%' }}
@@ -215,7 +215,7 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
       <div className="text-center">
         <button
           onClick={() => setShowDetail(true)}
-          className="text-sm text-blue-600 hover:text-blue-700 underline"
+          className="text-sm text-primary hover:text-primary/80 underline"
         >
           查看计算方法和详情
         </button>
@@ -228,11 +228,11 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
           onClick={() => setShowDetail(false)}
         >
           <div
-            className="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto"
+            className="bg-card rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-bold mb-4">市场强度指数计算方法</h3>
-            <div className="text-sm text-gray-700 space-y-3">
+            <div className="text-sm text-foreground space-y-3">
               <p>
                 <strong>指数定义：</strong>
                 市场强度指数反映所有板块的整体强弱状态，范围为 0-100。
@@ -242,26 +242,26 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
                 <br />
                 指数 = Σ(各板块强度得分) / 板块总数
                 <br />
-                <span className="text-xs text-gray-500">（简化版本，所有板块权重相同）</span>
+                <span className="text-xs text-muted-foreground">（简化版本，所有板块权重相同）</span>
               </p>
               <p>
                 <strong>指数解读：</strong>
                 <br />
-                <span className="text-green-600">●</span> 70-100：市场强势<br />
+                <span className="text-rise">●</span> 70-100：市场强势<br />
                 <span className="text-yellow-600">●</span> 40-70：市场中性<br />
-                <span className="text-red-600">●</span> 0-40：市场弱势
+                <span className="text-fall">●</span> 0-40：市场弱势
               </p>
               <p>
                 <strong>板块统计：</strong>
                 根据各板块的趋势方向统计上涨、下跌、平盘板块数量。
               </p>
-              <div className="text-xs text-gray-500 pt-2 border-t">
+              <div className="text-xs text-muted-foreground pt-2 border-t">
                 更新时间: {new Date(index.timestamp).toLocaleString('zh-CN')}
               </div>
             </div>
             <button
               onClick={() => setShowDetail(false)}
-              className="mt-4 w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+              className="mt-4 w-full bg-primary text-white py-2 rounded hover:bg-primary/90"
             >
               关闭
             </button>

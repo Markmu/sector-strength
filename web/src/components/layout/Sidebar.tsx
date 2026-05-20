@@ -59,8 +59,8 @@ const Sidebar = ({ items, className, collapsed = false, onCollapse }: SidebarPro
             className={cn(
               'group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200',
               active
-                ? 'bg-gradient-to-r from-cyan-400 to-cyan-500 text-white shadow-sm'
-                : 'text-[#6c757d] hover:text-[#1a1a2e] hover:bg-[#f8f9fb]',
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-background',
               level > 0 && 'pl-6',
               collapsed && level === 0 && 'justify-center'
             )}
@@ -69,7 +69,7 @@ const Sidebar = ({ items, className, collapsed = false, onCollapse }: SidebarPro
               <span className={cn(
                 'flex-shrink-0',
                 collapsed ? 'mx-auto' : 'mr-3',
-                active && 'text-white'
+                active && 'text-primary-foreground'
               )}>
                 {item.icon}
               </span>
@@ -82,8 +82,8 @@ const Sidebar = ({ items, className, collapsed = false, onCollapse }: SidebarPro
                   <span className={cn(
                     'ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold',
                     active
-                      ? 'bg-white/20 text-white'
-                      : 'bg-[#f1f3f5] text-[#6c757d]'
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-secondary text-muted-foreground'
                   )}>
                     {item.badge}
                   </span>
@@ -94,7 +94,7 @@ const Sidebar = ({ items, className, collapsed = false, onCollapse }: SidebarPro
         ) : (
           <div
             className={cn(
-              'flex items-center px-3 py-2 text-sm font-medium text-[#adb5bd] cursor-default rounded-lg',
+              'flex items-center px-3 py-2 text-sm font-medium text-faint cursor-default rounded-lg',
               level > 0 && 'pl-6',
               collapsed && level === 0 && 'justify-center'
             )}
@@ -122,17 +122,17 @@ const Sidebar = ({ items, className, collapsed = false, onCollapse }: SidebarPro
   }
 
   return (
-    <div className={cn('flex flex-col h-full bg-white border-r border-[#e9ecef]', className)}>
+    <div className={cn('flex flex-col h-full bg-card border-r border-border', className)}>
       {/* Logo Section */}
-      <div className="flex items-center justify-between h-12 px-3 border-b border-[#e9ecef] flex-shrink-0">
+      <div className="flex items-center justify-between h-12 px-3 border-b border-border flex-shrink-0">
         {!collapsed && (
-          <h2 className="text-base font-semibold text-[#1a1a2e]">
+          <h2 className="text-base font-semibold text-foreground">
             板块强度
           </h2>
         )}
         <button
           onClick={() => onCollapse?.(!collapsed)}
-          className="p-1.5 rounded-lg text-[#6c757d] hover:text-[#1a1a2e] hover:bg-[#f1f3f5] transition-colors"
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <svg
             className={cn(
@@ -160,15 +160,15 @@ const Sidebar = ({ items, className, collapsed = false, onCollapse }: SidebarPro
 
       {/* User Section */}
       {isAuthenticated && (
-        <div className="border-t border-[#e9ecef] p-3 flex-shrink-0">
+        <div className="border-t border-border p-3 flex-shrink-0">
           {collapsed ? (
             <div className="flex flex-col items-center space-y-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-cyan-500 rounded-lg flex items-center justify-center text-white text-sm font-semibold shadow-sm">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground text-sm font-semibold shadow-sm">
                 {user?.email?.charAt(0).toUpperCase() || 'U'}
               </div>
               <button
                 onClick={handleLogout}
-                className="p-1.5 rounded-lg text-[#6c757d] hover:text-red-500 hover:bg-red-50 transition-colors"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
                 title="退出登录"
               >
                 <LogOut className="w-4 h-4" />
@@ -177,18 +177,18 @@ const Sidebar = ({ items, className, collapsed = false, onCollapse }: SidebarPro
           ) : (
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-cyan-500 rounded-lg flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 shadow-sm">
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground text-sm font-semibold flex-shrink-0 shadow-sm">
                   {user?.email?.charAt(0).toUpperCase() || 'U'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-[#1a1a2e] truncate">
+                  <p className="text-xs font-medium text-foreground truncate">
                     {user?.username || user?.email || '用户'}
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center justify-center space-x-1.5 px-2.5 py-2 text-xs text-[#6c757d] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all duration-200 font-medium"
+                className="w-full flex items-center justify-center space-x-1.5 px-2.5 py-2 text-xs text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-lg transition-all duration-200 font-medium"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>退出登录</span>

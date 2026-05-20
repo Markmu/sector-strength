@@ -25,10 +25,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
   }, ref) => {
     const inputId = id || `input-${React.useId()}`
 
-    const baseStyles = 'block w-full px-4 py-2.5 text-sm border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed'
+    const baseStyles = 'block w-full px-4 py-2.5 text-sm border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-light disabled:opacity-50 disabled:cursor-not-allowed'
 
     const variants = {
-      default: 'border-[#dee2e6] bg-white text-[#1a1a2e] placeholder-[#adb5bd] focus:border-cyan-400 focus:ring-cyan-100',
+      default: 'border-border bg-card text-foreground placeholder-faint focus:border-primary focus:ring-primary-light',
       error: 'border-red-300 bg-red-50 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-100',
     }
 
@@ -37,7 +37,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium text-[#1a1a2e] mb-1.5"
+            className="block text-sm font-medium text-foreground mb-1.5"
           >
             {label}
           </label>
@@ -46,7 +46,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         <div className="relative">
           {startIcon && (
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="text-[#adb5bd]">{startIcon}</span>
+              <span className="text-faint">{startIcon}</span>
             </div>
           )}
 
@@ -66,7 +66,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
           {endIcon && (
             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-              <span className="text-[#adb5bd]">{endIcon}</span>
+              <span className="text-faint">{endIcon}</span>
             </div>
           )}
         </div>
@@ -78,7 +78,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         )}
 
         {helperText && !error && (
-          <p className="mt-1.5 text-sm text-[#6c757d]">
+          <p className="mt-1.5 text-sm text-muted-foreground">
             {helperText}
           </p>
         )}

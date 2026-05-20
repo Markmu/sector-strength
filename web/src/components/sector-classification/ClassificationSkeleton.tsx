@@ -19,7 +19,7 @@ function SkeletonCell({ className }: SkeletonCellProps) {
   return (
     <div
       className={cn(
-        'h-4 bg-gray-200 rounded animate-pulse',
+        'h-4 bg-border rounded animate-pulse',
         className
       )}
       aria-hidden="true"
@@ -38,7 +38,7 @@ function SkeletonRow({ cells }: SkeletonRowProps) {
   return (
     <tr aria-hidden="true">
       {cells.map((width, index) => (
-        <td key={index} className="px-4 py-3 border-b border-gray-100">
+        <td key={index} className="px-4 py-3 border-b border-border">
           <SkeletonCell className={width} />
         </td>
       ))}
@@ -66,14 +66,14 @@ export function ClassificationSkeleton() {
 
   return (
     <div
-      className="bg-white rounded-xl border border-[#e9ecef] shadow-sm overflow-hidden"
+      className="bg-card rounded-xl border border-border shadow-sm overflow-hidden"
       role="status"
     >
       {/* 骨架屏表格 */}
       <div className="overflow-x-auto">
         <table className="w-full">
           {/* 表头 */}
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-background border-b border-border">
             <tr>
               <th className="px-4 py-3 text-left">
                 <SkeletonCell className="w-20" />

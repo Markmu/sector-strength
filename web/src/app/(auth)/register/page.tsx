@@ -137,10 +137,10 @@ export default function RegisterPage() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-full max-w-md p-8 text-center">
-          <h2 className="text-2xl font-bold text-green-600 mb-4">注册成功！</h2>
-          <p className="text-gray-600 mb-6">
+          <h2 className="text-2xl font-bold text-rise mb-4">注册成功！</h2>
+          <p className="text-muted-foreground mb-6">
             验证邮件已发送到您的邮箱，请查收并点击验证链接激活账户。
           </p>
           <Loading text="正在跳转到登录页面..." />
@@ -150,22 +150,22 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">注册账户</h1>
-          <p className="text-gray-600">创建 Sector Strength 账户开始使用</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">注册账户</h1>
+          <p className="text-muted-foreground">创建 Sector Strength 账户开始使用</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {errors.general && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm">
+            <div className="p-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-md text-sm">
               {errors.general}
             </div>
           )}
 
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="username" className="block text-sm font-medium text-foreground mb-1">
               用户名（可选）
             </label>
             <Input
@@ -175,15 +175,15 @@ export default function RegisterPage() {
               value={formData.username}
               onChange={handleInputChange}
               placeholder="输入用户名"
-              className={errors.username ? 'border-red-500' : ''}
+              className={errors.username ? 'border-destructive' : ''}
             />
             {errors.username && (
-              <p className="mt-1 text-sm text-red-600">{errors.username}</p>
+              <p className="mt-1 text-sm text-destructive">{errors.username}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1">
               邮箱地址 <span className="text-red-500">*</span>
             </label>
             <Input
@@ -193,16 +193,16 @@ export default function RegisterPage() {
               value={formData.email}
               onChange={handleInputChange}
               placeholder="your@email.com"
-              className={errors.email ? 'border-red-500' : ''}
+              className={errors.email ? 'border-destructive' : ''}
               required
             />
             {errors.email && (
-              <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              <p className="mt-1 text-sm text-destructive">{errors.email}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1">
               密码 <span className="text-red-500">*</span>
             </label>
             <Input
@@ -212,16 +212,16 @@ export default function RegisterPage() {
               value={formData.password}
               onChange={handleInputChange}
               placeholder="••••••••"
-              className={errors.password ? 'border-red-500' : ''}
+              className={errors.password ? 'border-destructive' : ''}
               required
             />
             {errors.password && (
-              <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+              <p className="mt-1 text-sm text-destructive">{errors.password}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-foreground mb-1">
               确认密码 <span className="text-red-500">*</span>
             </label>
             <Input
@@ -231,11 +231,11 @@ export default function RegisterPage() {
               value={formData.confirmPassword}
               onChange={handleInputChange}
               placeholder="••••••••"
-              className={errors.confirmPassword ? 'border-red-500' : ''}
+              className={errors.confirmPassword ? 'border-destructive' : ''}
               required
             />
             {errors.confirmPassword && (
-              <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>
+              <p className="mt-1 text-sm text-destructive">{errors.confirmPassword}</p>
             )}
           </div>
 
@@ -243,7 +243,7 @@ export default function RegisterPage() {
             type="submit"
             disabled={isLoading}
             variant="secondary"
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3"
+            className="w-full bg-primary hover:bg-primary-hover text-primary-foreground font-semibold py-3"
           >
             {isLoading ? (
               <>
@@ -257,7 +257,7 @@ export default function RegisterPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             已有账户？{' '}
             <Link href="/login" className="font-medium text-primary-600 hover:text-primary-500">
               立即登录

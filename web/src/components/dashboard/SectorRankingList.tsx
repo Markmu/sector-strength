@@ -47,26 +47,26 @@ export const SectorRankingList: React.FC<SectorRankingListProps> = React.memo(({
 
   return (
     <Card className="overflow-hidden">
-      <div className="p-4 border-b border-[#e9ecef] bg-[#f8f9fb]">
+      <div className="p-4 border-b border-border bg-background">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-[#1a1a2e]">
+          <h2 className="text-lg font-semibold text-foreground">
             板块强度排名 TOP {topN}
           </h2>
           {onSortChange && (
             <button
               onClick={() => onSortChange(order === 'desc' ? 'asc' : 'desc')}
-              className="text-sm text-[#6c757d] hover:text-[#1a1a2e] flex items-center gap-1"
+              className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
             >
               排序 {order === 'desc' ? '↓' : '↑'}
             </button>
           )}
         </div>
-        <p className="text-xs text-[#6c757d] mt-1">共 {total} 个板块</p>
+        <p className="text-xs text-muted-foreground mt-1">共 {total} 个板块</p>
       </div>
 
-      <div className="divide-y divide-[#f1f3f5]">
+      <div className="divide-y divide-border">
         {sectors.length === 0 ? (
-          <div className="p-8 text-center text-[#6c757d]">
+          <div className="p-8 text-center text-muted-foreground">
             暂无数据
           </div>
         ) : (

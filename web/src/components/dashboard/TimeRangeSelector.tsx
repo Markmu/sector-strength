@@ -103,7 +103,7 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
   const getDaysDisplay = () => {
     try {
       const days = calculateDays(tempStartDate, tempEndDate)
-      return <span className="text-sm text-gray-500">（共 {days} 天）</span>
+      return <span className="text-sm text-muted-foreground">（共 {days} 天）</span>
     } catch {
       return null
     }
@@ -114,7 +114,7 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm text-gray-600 mr-2">时间范围:</span>
+        <span className="text-sm text-muted-foreground mr-2">时间范围:</span>
         {TIME_RANGES.map((range) => (
           <button
             key={range.value}
@@ -123,8 +123,8 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
               px-3 py-1 text-sm rounded border transition-colors
               ${
                 value === range.value
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-card text-foreground border-border hover:bg-background'
               }
             `}
           >
@@ -135,11 +135,11 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
 
       {/* 自定义日期范围输入 */}
       {showCustomInputs && value === 'custom' && (
-        <div className="pl-20 mt-2 p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
+        <div className="pl-20 mt-2 p-4 bg-primary/5 rounded-lg border border-primary/20 space-y-3">
           {/* 日期输入区域 */}
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
-              <label htmlFor="start-date" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+              <label htmlFor="start-date" className="text-sm font-medium text-foreground whitespace-nowrap">
                 开始日期:
               </label>
               <input
@@ -148,12 +148,12 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
                 value={tempStartDate}
                 onChange={handleStartDateInputChange}
                 max={today}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 py-1.5 text-sm border border-border rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <label htmlFor="end-date" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+              <label htmlFor="end-date" className="text-sm font-medium text-foreground whitespace-nowrap">
                 结束日期:
               </label>
               <input
@@ -162,7 +162,7 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
                 value={tempEndDate}
                 onChange={handleEndDateInputChange}
                 max={today}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 py-1.5 text-sm border border-border rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
 
@@ -174,8 +174,8 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
                 px-4 py-1.5 text-sm font-medium rounded transition-colors
                 ${
                   isApplying
-                    ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow'
+                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                    : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow'
                 }
               `}
             >
@@ -189,7 +189,7 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
           {/* 提示信息 */}
           <div className="flex items-center gap-2 text-sm">
             {dateError && (
-              <div className="flex items-center gap-2 text-red-600">
+              <div className="flex items-center gap-2 text-destructive">
                 <svg
                   className="h-4 w-4"
                   xmlns="http://www.w3.org/2000/svg"
@@ -209,7 +209,7 @@ export const TimeRangeSelector = memo(function TimeRangeSelector({
             )}
 
             {!isApplying && !dateError && (
-              <div className="text-xs text-gray-500 flex items-center gap-1">
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
                 <svg
                   className="h-3 w-3"
                   xmlns="http://www.w3.org/2000/svg"

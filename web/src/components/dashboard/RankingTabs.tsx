@@ -23,13 +23,13 @@ export const RankingTabs: React.FC = React.memo(() => {
   return (
     <div className="space-y-4">
       {/* Tab 切换 */}
-      <div className="flex border-b border-[#e9ecef]">
+      <div className="flex border-b border-border">
         <button
           onClick={() => setActiveTab('sectors')}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             activeTab === 'sectors'
               ? 'text-cyan-500 border-b-2 border-cyan-500'
-              : 'text-[#6c757d] hover:text-[#1a1a2e]'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           板块排名
@@ -39,7 +39,7 @@ export const RankingTabs: React.FC = React.memo(() => {
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             activeTab === 'stocks'
               ? 'text-cyan-500 border-b-2 border-cyan-500'
-              : 'text-[#6c757d] hover:text-[#1a1a2e]'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           个股排名

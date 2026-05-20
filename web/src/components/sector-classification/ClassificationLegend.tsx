@@ -56,15 +56,15 @@ interface LegendItem {
  * - 第 1 类：深红色（最弱）
  */
 const LEGEND_ITEMS: LegendItem[] = [
-  { level: 9, label: '第 9 类', colorClass: 'bg-emerald-600 text-white hover:bg-emerald-700', description: '最强' },
-  { level: 8, label: '第 8 类', colorClass: 'bg-emerald-500 text-white hover:bg-emerald-600', description: '攻克 240 日线' },
-  { level: 7, label: '第 7 类', colorClass: 'bg-green-500 text-white hover:bg-green-600', description: '攻克 120 日线' },
-  { level: 6, label: '第 6 类', colorClass: 'bg-lime-500 text-white hover:bg-lime-600', description: '攻克 90 日线' },
+  { level: 9, label: '第 9 类', colorClass: 'bg-red-700 text-white hover:bg-red-800', description: '最强' },
+  { level: 8, label: '第 8 类', colorClass: 'bg-red-500 text-white hover:bg-red-600', description: '攻克 240 日线' },
+  { level: 7, label: '第 7 类', colorClass: 'bg-orange-500 text-white hover:bg-orange-600', description: '攻克 120 日线' },
+  { level: 6, label: '第 6 类', colorClass: 'bg-amber-500 text-white hover:bg-amber-600', description: '攻克 90 日线' },
   { level: 5, label: '第 5 类', colorClass: 'bg-yellow-500 text-black hover:bg-yellow-600', description: '攻克 60 日线' },
-  { level: 4, label: '第 4 类', colorClass: 'bg-amber-500 text-white hover:bg-amber-600', description: '攻克 30 日线' },
-  { level: 3, label: '第 3 类', colorClass: 'bg-orange-500 text-white hover:bg-orange-600', description: '攻克 20 日线' },
-  { level: 2, label: '第 2 类', colorClass: 'bg-red-400 text-white hover:bg-red-500', description: '攻克 10 日线' },
-  { level: 1, label: '第 1 类', colorClass: 'bg-red-600 text-white hover:bg-red-700', description: '最弱' },
+  { level: 4, label: '第 4 类', colorClass: 'bg-lime-500 text-black hover:bg-lime-600', description: '攻克 30 日线' },
+  { level: 3, label: '第 3 类', colorClass: 'bg-green-500 text-white hover:bg-green-600', description: '攻克 20 日线' },
+  { level: 2, label: '第 2 类', colorClass: 'bg-emerald-500 text-white hover:bg-emerald-600', description: '攻克 10 日线' },
+  { level: 1, label: '第 1 类', colorClass: 'bg-emerald-700 text-white hover:bg-emerald-800', description: '最弱' },
 ] as const
 
 /**
@@ -101,7 +101,7 @@ export function ClassificationLegend({
   return (
     <div className={`space-y-2 ${className}`}>
       {showTitle && (
-        <h3 className="text-sm font-semibold text-gray-700">分类级别说明</h3>
+        <h3 className="text-sm font-semibold text-foreground">分类级别说明</h3>
       )}
 
       <div className={`flex ${isHorizontal ? 'flex-wrap gap-2' : 'flex-col gap-2'}`}>

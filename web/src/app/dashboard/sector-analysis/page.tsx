@@ -194,16 +194,16 @@ export default function SectorAnalysisListPage() {
   // 获取板块类型颜色
   const getTypeColor = (type: string) => {
     return type === 'industry'
-      ? 'bg-blue-100 text-blue-800 border-blue-200'
-      : 'bg-purple-100 text-purple-800 border-purple-200'
+      ? 'bg-primary-light text-primary border-primary/30'
+      : 'bg-secondary text-muted-foreground border-border'
   }
 
   // 获取趋势图标
   const getTrendIcon = (trendDirection: number) => {
     if (trendDirection > 0) {
-      return <TrendingUpIcon className="w-4 h-4 text-red-500" />
+      return <TrendingUpIcon className="w-4 h-4 text-fall" />
     } else if (trendDirection < 0) {
-      return <TrendingDownIcon className="w-4 h-4 text-green-500" />
+      return <TrendingDownIcon className="w-4 h-4 text-rise" />
     }
     return null
   }
@@ -214,8 +214,8 @@ export default function SectorAnalysisListPage() {
         <DashboardHeader title="板块分析" subtitle="加载中..." />
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">加载板块列表...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">加载板块列表...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -227,7 +227,7 @@ export default function SectorAnalysisListPage() {
       <DashboardLayout>
         <DashboardHeader title="板块分析" subtitle="加载失败" />
         <div className="flex items-center justify-center h-96">
-          <div className="text-center text-red-600">
+          <div className="text-center text-destructive">
             <p>{error}</p>
           </div>
         </div>
@@ -244,12 +244,12 @@ export default function SectorAnalysisListPage() {
 
       <div className="space-y-6">
         {/* 说明信息 */}
-        <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
+        <div className="bg-primary-light rounded-lg border border-primary/30 p-4">
           <div className="flex items-start gap-3">
-            <LineChartIcon className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" />
+            <LineChartIcon className="w-6 h-6 text-primary flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-blue-900 mb-1">板块分析功能</h3>
-              <p className="text-sm text-blue-800">
+              <h3 className="font-semibold text-foreground mb-1">板块分析功能</h3>
+              <p className="text-sm text-muted-foreground">
                 点击任意板块查看其强度历史趋势和均线分析。图表支持时间范围调整、均线显示控制和交互式缩放。
               </p>
             </div>
@@ -257,16 +257,16 @@ export default function SectorAnalysisListPage() {
         </div>
 
         {/* 筛选控制面板 */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <div className="bg-card rounded-xl border border-border shadow-sm p-6">
           <div className="flex items-center gap-2 mb-4">
-            <FunnelIcon className="w-5 h-5 text-gray-600" />
-            <h3 className="text-lg font-semibold text-gray-900">筛选条件</h3>
+            <FunnelIcon className="w-5 h-5 text-muted-foreground" />
+            <h3 className="text-lg font-semibold text-foreground">筛选条件</h3>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* 板块类型筛选 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 板块类型
               </label>
               <div className="inline-flex rounded-md shadow-sm" role="group">
@@ -275,8 +275,8 @@ export default function SectorAnalysisListPage() {
                   onClick={() => handleTypeFilterChange('all')}
                   className={`px-4 py-2 text-sm font-medium rounded-l-lg border border-r-0 ${
                     sectorTypeFilter === 'all'
-                      ? 'bg-blue-600 text-white border-blue-600 z-10'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 relative'
+                      ? 'bg-primary text-primary-foreground border-primary z-10'
+                      : 'bg-card text-foreground border-border hover:bg-secondary relative'
                   }`}
                 >
                   全部
@@ -286,8 +286,8 @@ export default function SectorAnalysisListPage() {
                   onClick={() => handleTypeFilterChange('industry')}
                   className={`px-4 py-2 text-sm font-medium border border-r-0 ${
                     sectorTypeFilter === 'industry'
-                      ? 'bg-blue-600 text-white border-blue-600 z-10'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 relative'
+                      ? 'bg-primary text-primary-foreground border-primary z-10'
+                      : 'bg-card text-foreground border-border hover:bg-secondary relative'
                   }`}
                 >
                   行业
@@ -297,8 +297,8 @@ export default function SectorAnalysisListPage() {
                   onClick={() => handleTypeFilterChange('concept')}
                   className={`px-4 py-2 text-sm font-medium rounded-r-lg border ${
                     sectorTypeFilter === 'concept'
-                      ? 'bg-blue-600 text-white border-blue-600 z-10'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 relative'
+                      ? 'bg-primary text-primary-foreground border-primary z-10'
+                      : 'bg-card text-foreground border-border hover:bg-secondary relative'
                   }`}
                 >
                   概念
@@ -308,7 +308,7 @@ export default function SectorAnalysisListPage() {
 
             {/* 分数区间筛选 */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 强度分数区间: {minScore} - {maxScore}
               </label>
 
@@ -327,8 +327,8 @@ export default function SectorAnalysisListPage() {
                       disabled={isCustomButton}
                       className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${
                         showAsActive
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                          : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                          : 'bg-card text-muted-foreground border-border hover:bg-secondary hover:border-border'
                       } ${isCustomButton ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                     >
                       {range.label}
@@ -339,14 +339,14 @@ export default function SectorAnalysisListPage() {
               </div>
 
               {/* 滑块区域 */}
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="bg-background rounded-lg p-4 border border-border">
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs font-medium text-gray-700">
+                      <label className="text-xs font-medium text-foreground">
                         最小值
                       </label>
-                      <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                      <span className="text-xs font-bold text-primary bg-primary-light px-2 py-0.5 rounded">
                         {tempMinScore}
                       </span>
                     </div>
@@ -365,15 +365,15 @@ export default function SectorAnalysisListPage() {
                   </div>
 
                   <div className="flex items-center justify-center">
-                    <span className="text-gray-400 font-light">至</span>
+                    <span className="text-faint font-light">至</span>
                   </div>
 
                   <div className="flex-1">
                     <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs font-medium text-gray-700">
+                      <label className="text-xs font-medium text-foreground">
                         最大值
                       </label>
-                      <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                      <span className="text-xs font-bold text-primary bg-primary-light px-2 py-0.5 rounded">
                         {tempMaxScore}
                       </span>
                     </div>
@@ -395,7 +395,7 @@ export default function SectorAnalysisListPage() {
                 {/* 视觉化范围条 */}
                 <div className="mt-3 h-2 bg-gray-200 rounded-full relative overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all duration-200"
+                    className="h-full bg-primary rounded-full transition-all duration-200"
                     style={{
                       left: `${(minScore / 100) * 100}%`,
                       width: `${((maxScore - minScore) / 100) * 100}%`,
@@ -413,7 +413,7 @@ export default function SectorAnalysisListPage() {
                     调整后松开滑块生效（当前: {tempMinScore}-{tempMaxScore}）
                   </p>
                 ) : (
-                  <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                  <p className="text-xs text-rise mt-2 flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
@@ -425,20 +425,20 @@ export default function SectorAnalysisListPage() {
           </div>
 
           {/* 筛选结果统计 */}
-          <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="mt-4 pt-4 border-t border-border">
             <p className="text-sm text-gray-600">
-              当前页: <span className="font-semibold text-gray-900">{sectors.length}</span> 个板块 | 总计: {totalCount} 个
+              当前页: <span className="font-semibold text-foreground">{sectors.length}</span> 个板块 | 总计: {totalCount} 个
             </p>
           </div>
         </div>
 
         {/* 板块列表 */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
+        <div className="bg-card rounded-xl border border-border shadow-sm">
+          <div className="px-6 py-4 border-b border-border">
+            <h2 className="text-lg font-semibold text-foreground">
               板块列表
               {sectors.length > 0 && (
-                <span className="ml-2 text-sm font-normal text-gray-500">
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
                   (第 {currentPage} / {totalPages} 页)
                 </span>
               )}
@@ -447,28 +447,28 @@ export default function SectorAnalysisListPage() {
 
           {sectors.length > 0 ? (
             <>
-              <div className="divide-y divide-gray-200">
+              <div className="divide-y divide-border">
                 {sectors.map((sector) => (
                   <button
                     key={sector.id}
                     onClick={() => handleSectorClick(sector.id)}
-                    className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                    className="w-full px-6 py-4 flex items-center justify-between hover:bg-secondary transition-colors"
                   >
                     <div className="flex items-center gap-4 flex-1">
                       {/* 板块图标 */}
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                      <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-semibold flex-shrink-0">
                         {sector.name.charAt(0)}
                       </div>
 
                       {/* 板块信息 */}
                       <div className="text-left flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <div className="font-semibold text-gray-900">{sector.name}</div>
+                          <div className="font-semibold text-foreground">{sector.name}</div>
                           <span className={`px-2 py-0.5 text-xs font-medium rounded border ${getTypeColor(sector.type)}`}>
                             {getTypeDisplayName(sector.type)}
                           </span>
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           代码: {sector.code}
                         </div>
                       </div>
@@ -476,14 +476,14 @@ export default function SectorAnalysisListPage() {
                       {/* 强度分数和趋势 */}
                       <div className="flex items-center gap-4 flex-shrink-0">
                         <div className="text-right">
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-medium text-foreground">
                             强度: {(sector.strength_score ?? 0).toFixed(1)}
                           </div>
                           <div className="flex items-center justify-end gap-1">
                             {getTrendIcon(sector.trend_direction ?? 0)}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 text-gray-400">
+                        <div className="flex items-center gap-2 text-faint">
                           <span className="text-sm">查看分析</span>
                           <TrendingUpIcon className="w-4 h-4" />
                         </div>
@@ -495,7 +495,7 @@ export default function SectorAnalysisListPage() {
 
               {/* 分页控制 */}
               {totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                <div className="px-6 py-4 border-t border-border flex items-center justify-between">
                   <div className="text-sm text-gray-600">
                     第 {currentPage} / {totalPages} 页，共 {totalCount} 条
                   </div>
@@ -504,7 +504,7 @@ export default function SectorAnalysisListPage() {
                     <button
                       onClick={() => handlePageChange(currentPage - 1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                      className="px-3 py-2 text-sm font-medium rounded-lg border border-border hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                     >
                       <ChevronLeftIcon className="w-4 h-4" />
                       上一页
@@ -529,7 +529,7 @@ export default function SectorAnalysisListPage() {
                             onClick={() => handlePageChange(pageNum)}
                             className={`min-w-[40px] px-3 py-2 text-sm font-medium rounded-lg border ${
                               currentPage === pageNum
-                                ? 'bg-blue-600 text-white border-blue-600'
+                                ? 'bg-primary text-primary-foreground border-primary'
                                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                             }`}
                           >
@@ -542,7 +542,7 @@ export default function SectorAnalysisListPage() {
                     <button
                       onClick={() => handlePageChange(currentPage + 1)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                      className="px-3 py-2 text-sm font-medium rounded-lg border border-border hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                     >
                       下一页
                       <ChevronRightIcon className="w-4 h-4" />
@@ -552,8 +552,8 @@ export default function SectorAnalysisListPage() {
               )}
             </>
           ) : (
-            <div className="px-6 py-12 text-center text-gray-500">
-              <LineChartIcon className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+            <div className="px-6 py-12 text-center text-muted-foreground">
+              <LineChartIcon className="w-12 h-12 mx-auto mb-3 text-faint" />
               <p className="text-lg font-medium mb-2">未找到符合条件的板块</p>
               <p className="text-sm">请尝试调整筛选条件</p>
             </div>

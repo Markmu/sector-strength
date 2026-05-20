@@ -63,11 +63,11 @@ function AnalysisControlsComponent({
   className = '',
 }: AnalysisControlsProps) {
   return (
-    <div className={`bg-white rounded-xl border border-[#e9ecef] shadow-sm p-4 ${className}`}>
+    <div className={`bg-card rounded-xl border border-border shadow-sm p-4 ${className}`}>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 板块类型筛选 */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-[#1a1a2e]">
+          <label className="block text-sm font-medium text-foreground">
             板块类型
           </label>
           <div className="flex flex-wrap gap-2">
@@ -78,8 +78,8 @@ function AnalysisControlsComponent({
                 className={`
                   inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
                   ${sectorType === option.value
-                    ? 'bg-cyan-500 text-white shadow-sm'
-                    : 'bg-[#f1f3f5] text-[#1a1a2e] hover:bg-[#dee2e6]'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-secondary text-foreground hover:bg-border'
                   }
                 `}
               >
@@ -92,14 +92,14 @@ function AnalysisControlsComponent({
 
         {/* X轴维度 */}
         <div className="space-y-2">
-          <label htmlFor="x-axis-select" className="block text-sm font-medium text-[#1a1a2e]">
+          <label htmlFor="x-axis-select" className="block text-sm font-medium text-foreground">
             X轴维度
           </label>
           <select
             id="x-axis-select"
             value={xAxis}
             onChange={(e) => onXAxisChange(e.target.value as AxisType)}
-            className="w-full px-3 py-2 border border-[#dee2e6] rounded-lg text-sm bg-white text-[#1a1a2e] focus:ring-2 focus:ring-cyan-100 focus:border-cyan-400"
+            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary"
           >
             {AXIS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -111,14 +111,14 @@ function AnalysisControlsComponent({
 
         {/* Y轴维度 */}
         <div className="space-y-2">
-          <label htmlFor="y-axis-select" className="block text-sm font-medium text-[#1a1a2e]">
+          <label htmlFor="y-axis-select" className="block text-sm font-medium text-foreground">
             Y轴维度
           </label>
           <select
             id="y-axis-select"
             value={yAxis}
             onChange={(e) => onYAxisChange(e.target.value as AxisType)}
-            className="w-full px-3 py-2 border border-[#dee2e6] rounded-lg text-sm bg-white text-[#1a1a2e] focus:ring-2 focus:ring-cyan-100 focus:border-cyan-400"
+            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary"
           >
             {AXIS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -131,7 +131,7 @@ function AnalysisControlsComponent({
         {/* 强度等级筛选 */}
         <div className="space-y-2">
           <fieldset className="space-y-2">
-            <legend className="block text-sm font-medium text-[#1a1a2e] px-1">
+            <legend className="block text-sm font-medium text-foreground px-1">
               强度等级
             </legend>
             <div className="flex items-center gap-2">
@@ -142,7 +142,7 @@ function AnalysisControlsComponent({
                   e.target.value || null,
                   maxGrade ?? null
                 )}
-                className="flex-1 px-2 py-1.5 border border-[#dee2e6] rounded-lg text-sm bg-white text-[#1a1a2e] focus:ring-2 focus:ring-cyan-100 focus:border-cyan-400"
+                className="flex-1 px-2 py-1.5 border border-border rounded-lg text-sm bg-card text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="">最低</option>
                 {GRADE_OPTIONS.map((option) => (
@@ -151,7 +151,7 @@ function AnalysisControlsComponent({
                   </option>
                 ))}
               </select>
-              <span className="text-[#6c757d]">至</span>
+              <span className="text-muted-foreground">至</span>
               <select
                 id="max-grade-select"
                 value={maxGrade ?? ''}
@@ -159,7 +159,7 @@ function AnalysisControlsComponent({
                   minGrade ?? null,
                   e.target.value || null
                 )}
-                className="flex-1 px-2 py-1.5 border border-[#dee2e6] rounded-lg text-sm bg-white text-[#1a1a2e] focus:ring-2 focus:ring-cyan-100 focus:border-cyan-400"
+                className="flex-1 px-2 py-1.5 border border-border rounded-lg text-sm bg-card text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="">最高</option>
                 {GRADE_OPTIONS.map((option) => (
@@ -174,24 +174,24 @@ function AnalysisControlsComponent({
       </div>
 
       {/* 当前筛选状态提示 */}
-      <div className="mt-4 pt-4 border-t border-[#e9ecef]">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-[#6c757d]">
+      <div className="mt-4 pt-4 border-t border-border">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="font-medium">当前筛选:</span>
-          <span className="px-2 py-1 bg-[#f1f3f5] rounded">
+          <span className="px-2 py-1 bg-secondary rounded">
             {SECTOR_TYPE_OPTIONS.find(o => o.value === sectorType)?.label}
           </span>
           <span>→</span>
-          <span className="px-2 py-1 bg-[#f1f3f5] rounded">
+          <span className="px-2 py-1 bg-secondary rounded">
             X: {AXIS_CONFIG[xAxis].label}
           </span>
           <span>vs</span>
-          <span className="px-2 py-1 bg-[#f1f3f5] rounded">
+          <span className="px-2 py-1 bg-secondary rounded">
             Y: {AXIS_CONFIG[yAxis].label}
           </span>
           {(minGrade || maxGrade) && (
             <>
               <span>→</span>
-              <span className="px-2 py-1 bg-cyan-50 text-cyan-700 rounded">
+              <span className="px-2 py-1 bg-primary/10 text-primary rounded">
                 等级: {minGrade || '?'} - {maxGrade || '?'}
               </span>
             </>

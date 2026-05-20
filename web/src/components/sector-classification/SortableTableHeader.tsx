@@ -63,10 +63,10 @@ export const SortableTableHeader = memo(function SortableTableHeader({
         cursor-pointer select-none
         px-4 py-3
         font-semibold text-xs
-        text-[#1a1a2e]
+        text-foreground
         transition-colors duration-150
-        hover:bg-gray-100
-        ${isActive ? 'bg-gray-50' : ''}
+        hover:bg-secondary
+        ${isActive ? 'bg-background' : ''}
         ${alignClass}
         ${className}
       `}
@@ -82,9 +82,9 @@ export const SortableTableHeader = memo(function SortableTableHeader({
         {isActive && (
           <span className="inline-flex items-center" aria-label={`排序：${isAscending ? '升序' : '降序'}`}>
             {isAscending ? (
-              <ChevronUp className="w-4 h-4 text-gray-600" aria-hidden="true" />
+              <ChevronUp className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
             ) : (
-              <ChevronDown className="w-4 h-4 text-gray-600" aria-hidden="true" />
+              <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
             )}
           </span>
         )}

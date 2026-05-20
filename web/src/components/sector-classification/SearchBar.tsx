@@ -51,7 +51,7 @@ export const SearchBar = memo(function SearchBar({
     <div className={cn('relative', className)}>
       {/* 左侧搜索图标 - 绝对定位 */}
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-        <Search className="w-4 h-4 text-gray-400" aria-hidden="true" />
+        <Search className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
       </div>
 
       {/* 输入框 - 左侧留出图标空间，右侧留出清除按钮空间 */}
@@ -72,11 +72,11 @@ export const SearchBar = memo(function SearchBar({
           <button
             type="button"
             onClick={handleClear}
-            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-1 hover:bg-secondary rounded-full transition-colors"
             aria-label="清除搜索"
             tabIndex={0}
           >
-            <X className="w-4 h-4 text-gray-400 hover:text-gray-600" aria-hidden="true" />
+            <X className="w-4 h-4 text-muted-foreground hover:text-foreground" aria-hidden="true" />
           </button>
         </div>
       )}

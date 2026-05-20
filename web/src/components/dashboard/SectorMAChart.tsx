@@ -187,12 +187,12 @@ export const SectorMAChart = memo(function SectorMAChart({
   if (!data || data.length === 0 || !option) {
     return (
       <div
-        className="flex items-center justify-center border rounded-lg bg-gray-50"
+        className="flex items-center justify-center border rounded-lg bg-background"
         style={{ height }}
         role="img"
         aria-label={`${sectorName}均线分析图表 - 暂无数据`}
       >
-        <div className="text-gray-500 text-center">
+        <div className="text-muted-foreground text-center">
           <div className="text-4xl mb-2">📈</div>
           <div>暂无均线历史数据</div>
         </div>
@@ -204,7 +204,7 @@ export const SectorMAChart = memo(function SectorMAChart({
   const visibleMACount = Object.values(visibleMAs).filter(Boolean).length
 
   return (
-    <div className="border rounded-lg bg-white p-4">
+    <div className="border rounded-lg bg-card p-4">
       <ReactECharts
         option={option}
         style={{ height, width: '100%' }}

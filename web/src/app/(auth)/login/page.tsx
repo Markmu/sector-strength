@@ -91,22 +91,22 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">登录账户</h1>
-          <p className="text-gray-600">欢迎回到 Sector Strength</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">登录账户</h1>
+          <p className="text-muted-foreground">欢迎回到 Sector Strength</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {errors.general && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm">
+            <div className="p-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-md text-sm">
               {errors.general}
             </div>
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1">
               邮箱地址 <span className="text-red-500">*</span>
             </label>
             <Input
@@ -116,16 +116,16 @@ export default function LoginPage() {
               value={formData.email}
               onChange={handleInputChange}
               placeholder="your@email.com"
-              className={errors.email ? 'border-red-500' : ''}
+              className={errors.email ? 'border-destructive' : ''}
               required
             />
             {errors.email && (
-              <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              <p className="mt-1 text-sm text-destructive">{errors.email}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1">
               密码 <span className="text-red-500">*</span>
             </label>
             <Input
@@ -135,11 +135,11 @@ export default function LoginPage() {
               value={formData.password}
               onChange={handleInputChange}
               placeholder="••••••••"
-              className={errors.password ? 'border-red-500' : ''}
+              className={errors.password ? 'border-destructive' : ''}
               required
             />
             {errors.password && (
-              <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+              <p className="mt-1 text-sm text-destructive">{errors.password}</p>
             )}
           </div>
 
@@ -151,9 +151,9 @@ export default function LoginPage() {
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-border rounded"
               />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
+              <label htmlFor="remember-me" className="ml-2 block text-sm text-foreground">
                 记住我
               </label>
             </div>
@@ -169,7 +169,7 @@ export default function LoginPage() {
             type="submit"
             disabled={isLoading}
             variant="secondary"
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3"
+            className="w-full bg-primary hover:bg-primary-hover text-primary-foreground font-semibold py-3"
           >
             {isLoading ? (
               <>
@@ -183,7 +183,7 @@ export default function LoginPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             还没有账户？{' '}
             <Link href="/register" className="font-medium text-primary-600 hover:text-primary-500">
               立即注册

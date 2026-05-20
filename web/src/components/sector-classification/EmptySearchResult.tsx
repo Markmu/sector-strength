@@ -42,16 +42,16 @@ export const EmptySearchResult = memo(function EmptySearchResult({
     )}>
       {/* 图标 */}
       <div className="mb-4">
-        <SearchX className="w-12 h-12 text-gray-400" aria-hidden="true" />
+        <SearchX className="w-12 h-12 text-muted-foreground" aria-hidden="true" />
       </div>
 
       {/* 标题 */}
-      <h3 className="text-lg font-medium text-gray-900 mb-2">
+      <h3 className="text-lg font-medium text-foreground mb-2">
         未找到匹配的板块
       </h3>
 
       {/* 描述 */}
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-muted-foreground mb-4">
         没有找到包含 &quot;{searchQuery}&quot; 的板块
       </p>
 
@@ -59,7 +59,7 @@ export const EmptySearchResult = memo(function EmptySearchResult({
       <button
         type="button"
         onClick={handleClear}
-        className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+        className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
         aria-label="清除搜索并显示所有板块"
       >
         清除搜索

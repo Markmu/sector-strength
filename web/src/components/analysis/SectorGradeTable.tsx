@@ -117,10 +117,10 @@ export function SectorGradeTable({
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
           <div className="relative w-10 h-10 mx-auto mb-4">
-            <div className="absolute inset-0 rounded-full border-2 border-[#e9ecef]" />
-            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-500 animate-spin" />
+            <div className="absolute inset-0 rounded-full border-2 border-border" />
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
           </div>
-          <p className="text-[#6c757d] text-sm font-medium">加载数据中...</p>
+          <p className="text-muted-foreground text-sm font-medium">加载数据中...</p>
         </div>
       </div>
     )
@@ -129,10 +129,10 @@ export function SectorGradeTable({
   if (!data.length) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="text-center bg-white rounded-xl border border-[#e9ecef] p-12">
+        <div className="text-center bg-card rounded-xl border border-border p-12">
           <div className="text-6xl mb-4 opacity-50">📊</div>
-          <p className="text-[#1a1a2e] text-xl font-semibold mb-2">暂无数据</p>
-          <p className="text-[#6c757d]">请尝试调整筛选条件</p>
+          <p className="text-foreground text-xl font-semibold mb-2">暂无数据</p>
+          <p className="text-muted-foreground">请尝试调整筛选条件</p>
         </div>
       </div>
     )
@@ -142,17 +142,17 @@ export function SectorGradeTable({
     <div className="space-y-4">
       {/* 控制按钮 */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-[#1a1a2e]">板块等级分布</h2>
+        <h2 className="text-2xl font-bold text-foreground">板块等级分布</h2>
         <div className="flex gap-3">
           <button
             onClick={expandAll}
-            className="px-5 py-2.5 bg-white hover:bg-[#f8f9fb] text-[#1a1a2e] text-sm font-semibold rounded-lg border border-[#dee2e6] transition-all duration-200"
+            className="px-5 py-2.5 bg-card hover:bg-background text-foreground text-sm font-semibold rounded-lg border border-border transition-all duration-200"
           >
             展开全部
           </button>
           <button
             onClick={collapseAll}
-            className="px-5 py-2.5 bg-white hover:bg-[#f8f9fb] text-[#1a1a2e] text-sm font-semibold rounded-lg border border-[#dee2e6] transition-all duration-200"
+            className="px-5 py-2.5 bg-card hover:bg-background text-foreground text-sm font-semibold rounded-lg border border-border transition-all duration-200"
           >
             折叠全部
           </button>
@@ -168,35 +168,35 @@ export function SectorGradeTable({
           return (
             <div
               key={gradeStat.grade}
-              className={`bg-white rounded-xl border overflow-hidden transition-all duration-200 shadow-sm ${
-                isExpanded ? 'border-[#dee2e6] shadow-md' : 'border-[#e9ecef] hover:border-[#dee2e6]'
+              className={`bg-card rounded-xl border overflow-hidden transition-all duration-200 shadow-sm ${
+                isExpanded ? 'border-border shadow-md' : 'border-border hover:border-border'
               }`}
             >
               {/* 等级头部 */}
               <button
                 onClick={() => toggleGrade(gradeStat.grade)}
                 className={`w-full px-6 py-4 flex items-center justify-between transition-colors duration-200 ${
-                  isExpanded ? 'bg-[#f8f9fb]' : 'hover:bg-[#f8f9fb]'
+                  isExpanded ? 'bg-background' : 'hover:bg-background'
                 }`}
               >
                 <div className="flex items-center gap-4">
                   {/* 展开/折叠图标 */}
                   <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>
                     {isExpanded ? (
-                      <ChevronDownIcon className="w-5 h-5 text-[#6c757d]" />
+                      <ChevronDownIcon className="w-5 h-5 text-muted-foreground" />
                     ) : (
-                      <ChevronRightIcon className="w-5 h-5 text-[#6c757d]" />
+                      <ChevronRightIcon className="w-5 h-5 text-muted-foreground" />
                     )}
                   </div>
 
                   {/* 等级标签 */}
                   <div className="flex items-center gap-3">
-                    <config.icon className="w-6 h-6 text-[#1a1a2e]" />
+                    <config.icon className="w-6 h-6 text-foreground" />
                     <div className="flex flex-col items-start">
-                      <span className="text-xl font-bold text-[#1a1a2e]">
+                      <span className="text-xl font-bold text-foreground">
                         {config.label}
                       </span>
-                      <span className="text-xs text-[#6c757d]">{config.description}</span>
+                      <span className="text-xs text-muted-foreground">{config.description}</span>
                     </div>
                   </div>
                 </div>
@@ -204,15 +204,15 @@ export function SectorGradeTable({
                 {/* 统计数字 */}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3 text-sm">
-                    <div className="px-3 py-1.5 bg-[#f1f3f5] rounded-lg border border-[#e9ecef]">
-                      <BuildingOfficeIcon className="w-4 h-4 text-[#6c757d] mr-1 inline" />
-                      <span className="font-semibold text-[#1a1a2e]">{gradeStat.industry_count}</span>
+                    <div className="px-3 py-1.5 bg-secondary rounded-lg border border-border">
+                      <BuildingOfficeIcon className="w-4 h-4 text-muted-foreground mr-1 inline" />
+                      <span className="font-semibold text-foreground">{gradeStat.industry_count}</span>
                     </div>
-                    <div className="px-3 py-1.5 bg-[#f1f3f5] rounded-lg border border-[#e9ecef]">
-                      <LightBulbIcon className="w-4 h-4 text-[#6c757d] mr-1 inline" />
-                      <span className="font-semibold text-[#1a1a2e]">{gradeStat.concept_count}</span>
+                    <div className="px-3 py-1.5 bg-secondary rounded-lg border border-border">
+                      <LightBulbIcon className="w-4 h-4 text-muted-foreground mr-1 inline" />
+                      <span className="font-semibold text-foreground">{gradeStat.concept_count}</span>
                     </div>
-                    <div className="px-4 py-1.5 bg-[#1a1a2e] rounded-lg font-bold text-white shadow-sm">
+                    <div className="px-4 py-1.5 bg-secondary rounded-lg border border-border font-bold text-foreground">
                       总计: {gradeStat.total_count}
                     </div>
                   </div>
@@ -221,43 +221,43 @@ export function SectorGradeTable({
 
               {/* 板块列表 */}
               {isExpanded && gradeStat.sectors.length > 0 && (
-                <div className="border-t border-[#e9ecef]">
+                <div className="border-t border-border">
                   <div className="overflow-x-auto">
                     <table className="w-full">
-                      <thead className="bg-[#f8f9fb]">
+                      <thead className="bg-background">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#6c757d] uppercase tracking-wider">排名</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#6c757d] uppercase tracking-wider">代码</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#6c757d] uppercase tracking-wider">名称</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#6c757d] uppercase tracking-wider">类型</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-[#6c757d] uppercase tracking-wider">综合得分</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-[#6c757d] uppercase tracking-wider">短期</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-[#6c757d] uppercase tracking-wider">中期</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-[#6c757d] uppercase tracking-wider">长期</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-[#6c757d] uppercase tracking-wider">强势股占比</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">排名</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">代码</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">名称</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">类型</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">综合得分</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">短期</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">中期</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">长期</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">强势股占比</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#f1f3f5]">
+                      <tbody className="divide-y divide-border">
                         {gradeStat.sectors.map((sector) => (
                           <tr
                             key={sector.id}
                             onClick={() => handleSectorClick(sector)}
-                            className="hover:bg-[#f8f9fb]/80 cursor-pointer transition-colors duration-150"
+                            className="hover:bg-background/80 cursor-pointer transition-colors duration-150"
                           >
-                            <td className="px-4 py-3 text-sm text-[#adb5bd]">
+                            <td className="px-4 py-3 text-sm text-faint">
                               {sector.rank ?? '-'}
                             </td>
-                            <td className="px-4 py-3 text-sm font-mono font-semibold text-cyan-600">
+                            <td className="px-4 py-3 text-sm font-mono font-semibold text-primary">
                               {sector.code}
                             </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-[#1a1a2e]">
+                            <td className="px-4 py-3 text-sm font-semibold text-foreground">
                               {sector.name}
                             </td>
                             <td className="px-4 py-3">
                               <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${
                                 sector.sector_type === 'industry'
-                                  ? 'bg-[#f1f3f5] text-[#1a1a2e] border border-[#dee2e6]'
-                                  : 'bg-[#f1f3f5] text-[#1a1a2e] border border-[#dee2e6]'
+                                  ? 'bg-secondary text-foreground border border-border'
+                                  : 'bg-secondary text-foreground border border-border'
                               }`}>
                                 {sector.sector_type === 'industry' ? (
                                   <>
@@ -272,23 +272,23 @@ export function SectorGradeTable({
                                 )}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right text-sm font-bold text-[#1a1a2e]">
+                            <td className="px-4 py-3 text-right text-sm font-bold text-foreground">
                               {sector.score !== null ? sector.score.toFixed(1) : '-'}
                             </td>
-                            <td className="px-4 py-3 text-right text-sm text-[#6c757d]">
+                            <td className="px-4 py-3 text-right text-sm text-muted-foreground">
                               {sector.short_term_score?.toFixed(1) ?? '-'}
                             </td>
-                            <td className="px-4 py-3 text-right text-sm text-[#6c757d]">
+                            <td className="px-4 py-3 text-right text-sm text-muted-foreground">
                               {sector.medium_term_score?.toFixed(1) ?? '-'}
                             </td>
-                            <td className="px-4 py-3 text-right text-sm text-[#6c757d]">
+                            <td className="px-4 py-3 text-right text-sm text-muted-foreground">
                               {sector.long_term_score?.toFixed(1) ?? '-'}
                             </td>
                             <td className="px-4 py-3 text-right text-sm">
                               <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${
                                 (sector.strong_stock_ratio ?? 0) > 0.5
-                                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                                  : 'bg-[#f1f3f5] text-[#6c757d] border border-[#e9ecef]'
+                                  ? 'bg-rise/10 text-rise border border-rise/20'
+                                  : 'bg-secondary text-muted-foreground border border-border'
                               }`}>
                                 {sector.strong_stock_ratio !== null
                                   ? `${(sector.strong_stock_ratio * 100).toFixed(1)}%`
@@ -304,9 +304,9 @@ export function SectorGradeTable({
               )}
 
               {isExpanded && gradeStat.sectors.length === 0 && (
-                <div className="border-t border-[#e9ecef] px-6 py-12 text-center">
+                <div className="border-t border-border px-6 py-12 text-center">
                   <div className="text-4xl mb-2 opacity-50">📭</div>
-                  <p className="text-[#6c757d]">该等级暂无板块数据</p>
+                  <p className="text-muted-foreground">该等级暂无板块数据</p>
                 </div>
               )}
             </div>

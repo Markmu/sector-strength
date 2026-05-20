@@ -40,8 +40,8 @@ export default function AdminCard({
 }: AdminCardProps) {
   return (
     <div
-      className={`rounded-xl bg-white p-6 shadow-sm ${
-        bordered ? 'border border-[#e9ecef]' : ''
+      className={`rounded-xl bg-card p-6 shadow-sm ${
+        bordered ? 'border border-border' : ''
       } ${className}`}
     >
       {/* 标题栏 */}
@@ -49,10 +49,10 @@ export default function AdminCard({
         <div className="mb-4 flex items-center justify-between">
           <div>
             {title && (
-              <h3 className="text-lg font-semibold text-[#1a1a2e]">{title}</h3>
+              <h3 className="text-lg font-semibold text-foreground">{title}</h3>
             )}
             {subtitle && (
-              <p className="mt-1 text-sm text-[#6c757d]">{subtitle}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
             )}
           </div>
           {actions && <div className="flex items-center gap-2">{actions}</div>}
@@ -60,7 +60,7 @@ export default function AdminCard({
       )}
 
       {/* 内容 */}
-      <div className="text-[#1a1a2e]">{children}</div>
+      <div className="text-foreground">{children}</div>
     </div>
   );
 }

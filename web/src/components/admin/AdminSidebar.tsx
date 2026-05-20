@@ -72,31 +72,31 @@ export default function AdminSidebar({ className = '' }: AdminSidebarProps) {
   return (
     <aside
       className={`
-        flex flex-col bg-white border-r border-gray-200
+        flex flex-col bg-card border-r border-border
         transition-all duration-300
         ${collapsed ? 'w-16' : 'w-64'}
         ${className}
       `}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
+      <div className="flex items-center justify-between h-16 px-4 border-b border-border">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <Activity className="w-5 h-5 text-white" />
             </div>
-            <span className="font-semibold text-gray-900">管理控制台</span>
+            <span className="font-semibold text-foreground">管理控制台</span>
           </div>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-secondary rounded-lg transition-colors"
           title={collapsed ? '展开' : '收起'}
         >
           {collapsed ? (
-            <ChevronRight className="w-5 h-5 text-gray-500" />
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
           ) : (
-            <ChevronLeft className="w-5 h-5 text-gray-500" />
+            <ChevronLeft className="w-5 h-5 text-muted-foreground" />
           )}
         </button>
       </div>
@@ -116,19 +116,19 @@ export default function AdminSidebar({ className = '' }: AdminSidebarProps) {
               className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
                 ${isActive
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'bg-primary-light text-primary'
+                  : 'text-foreground hover:bg-secondary'
                 }
                 ${collapsed ? 'justify-center' : ''}
               `}
               title={collapsed ? item.label : item.description}
             >
-              <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-600' : 'text-gray-500'}`} />
+              <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
               {!collapsed && (
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{item.label}</div>
                   {!collapsed && item.description && (
-                    <div className="text-xs text-gray-500 truncate">{item.description}</div>
+                    <div className="text-xs text-muted-foreground truncate">{item.description}</div>
                   )}
                 </div>
               )}
@@ -138,13 +138,13 @@ export default function AdminSidebar({ className = '' }: AdminSidebarProps) {
       </nav>
 
       {/* 底部退出登录 */}
-      <div className="p-2 border-t border-gray-200">
+      <div className="p-2 border-t border-border">
         <button
           onClick={logout}
           className={`
             w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
             ${collapsed ? 'justify-center' : ''}
-            text-red-600 hover:bg-red-50
+            text-destructive hover:bg-destructive/10
           `}
           title={collapsed ? '退出登录' : '退出登录'}
         >

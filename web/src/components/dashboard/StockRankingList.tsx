@@ -65,25 +65,25 @@ export const StockRankingList: React.FC<StockRankingListProps> = React.memo(({
 
   return (
     <Card className="overflow-hidden flex flex-col h-full">
-      <div className="p-4 border-b border-[#e9ecef] bg-[#f8f9fb] flex-shrink-0">
+      <div className="p-4 border-b border-border bg-background flex-shrink-0">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-[#1a1a2e]">
+          <h2 className="text-lg font-semibold text-foreground">
             个股强度排名 TOP {topN}
           </h2>
           {onSortChange && (
             <button
               onClick={() => onSortChange(order === 'desc' ? 'asc' : 'desc')}
-              className="text-sm text-[#6c757d] hover:text-[#1a1a2e] flex items-center gap-1"
+              className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
             >
               排序 {order === 'desc' ? '↓' : '↑'}
             </button>
           )}
         </div>
-        <p className="text-xs text-[#6c757d] mt-1">共 {total} 只个股</p>
+        <p className="text-xs text-muted-foreground mt-1">共 {total} 只个股</p>
       </div>
 
       {stocks.length === 0 ? (
-        <div className="p-8 text-center text-[#6c757d] flex-1 flex items-center justify-center">
+        <div className="p-8 text-center text-muted-foreground flex-1 flex items-center justify-center">
           暂无数据
         </div>
       ) : (

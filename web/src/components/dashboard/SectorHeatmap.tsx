@@ -121,7 +121,7 @@ function SectorHeatmapComponent({ sectorType, className = '' }: SectorHeatmapPro
   // 空数据状态
   if (sectors.length === 0) {
     return (
-      <div className="flex items-center justify-center h-96 text-gray-500">
+      <div className="flex items-center justify-center h-96 text-muted-foreground">
         暂无热力图数据
       </div>
     )
@@ -142,7 +142,7 @@ function SectorHeatmapComponent({ sectorType, className = '' }: SectorHeatmapPro
         opts={{ renderer: 'canvas' }}
       />
       {timestamp && (
-        <div className="text-xs text-gray-500 text-center mt-2 px-2">
+        <div className="text-xs text-muted-foreground text-center mt-2 px-2">
           最后更新: {new Date(timestamp).toLocaleString('zh-CN')}
         </div>
       )}

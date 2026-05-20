@@ -157,24 +157,24 @@ export default function SectorSearchSelect({
           disabled={disabled}
           className={`
             w-full px-4 py-2 pr-20 border rounded-lg
-            focus:ring-2 focus:ring-blue-500 focus:border-transparent
+            focus:ring-2 focus:ring-primary focus:border-transparent
             disabled:opacity-50 disabled:cursor-not-allowed
-            ${isOpen ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-300'}
+            ${isOpen ? 'ring-2 ring-primary border-primary' : 'border-border'}
           `}
         />
 
         {/* 右侧图标 */}
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
           {loading && (
-            <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+            <Loader2 className="w-4 h-4 text-faint animate-spin" />
           )}
           {selectedSector && !disabled && (
             <button
               onClick={handleClear}
-              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-1 hover:bg-secondary rounded-full transition-colors"
               type="button"
             >
-              <X className="w-4 h-4 text-gray-400" />
+              <X className="w-4 h-4 text-faint" />
             </button>
           )}
           <button
@@ -184,19 +184,19 @@ export default function SectorSearchSelect({
                 inputRef.current?.focus();
               }
             }}
-            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-1 hover:bg-secondary rounded-full transition-colors"
             type="button"
           >
-            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 text-faint transition-transform ${isOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
       </div>
 
       {/* 下拉列表 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+        <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-60 overflow-auto">
           {loading && options.length === 0 ? (
-            <div className="px-4 py-8 text-center text-gray-500">
+            <div className="px-4 py-8 text-center text-muted-foreground">
               <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />
               <p className="text-sm">搜索中...</p>
             </div>
@@ -208,29 +208,29 @@ export default function SectorSearchSelect({
                   onClick={() => handleSelectSector(sector)}
                   className={`
                     px-4 py-2 cursor-pointer transition-colors
-                    hover:bg-blue-50
-                    ${selectedSector?.id === sector.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}
+                    hover:bg-primary-light
+                    ${selectedSector?.id === sector.id ? 'bg-primary-light text-primary' : 'text-foreground'}
                   `}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{sector.name}</span>
-                    <span className="text-sm text-gray-500 ml-2">({sector.code})</span>
+                    <span className="text-sm text-muted-foreground ml-2">({sector.code})</span>
                   </div>
-                  <div className="text-xs text-gray-400 mt-0.5">
+                  <div className="text-xs text-faint mt-0.5">
                     {sector.type === 'industry' ? '行业板块' : '概念板块'}
                   </div>
                 </li>
               ))}
             </ul>
           ) : searchText.length >= 1 ? (
-            <div className="px-4 py-8 text-center text-gray-500">
-              <Search className="w-6 h-6 mx-auto mb-2 text-gray-300" />
+            <div className="px-4 py-8 text-center text-muted-foreground">
+              <Search className="w-6 h-6 mx-auto mb-2 text-faint" />
               <p className="text-sm">未找到匹配的板块</p>
-              <p className="text-xs text-gray-400 mt-1">请尝试其他关键词</p>
+              <p className="text-xs text-faint mt-1">请尝试其他关键词</p>
             </div>
           ) : (
-            <div className="px-4 py-8 text-center text-gray-500">
-              <Search className="w-6 h-6 mx-auto mb-2 text-gray-300" />
+            <div className="px-4 py-8 text-center text-muted-foreground">
+              <Search className="w-6 h-6 mx-auto mb-2 text-faint" />
               <p className="text-sm">输入板块名称或代码搜索</p>
             </div>
           )}

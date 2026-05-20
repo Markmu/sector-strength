@@ -199,11 +199,11 @@ export default function AdminDashboard() {
 
   // 任务状态映射
   const statusConfig: Record<TaskStatus, { label: string; color: string; bg: string }> = {
-    pending: { label: '等待中', color: 'text-gray-700', bg: 'bg-gray-100' },
+    pending: { label: "等待中", color: "text-foreground", bg: "bg-secondary" },
     running: { label: '运行中', color: 'text-yellow-700', bg: 'bg-yellow-100' },
     completed: { label: '已完成', color: 'text-green-700', bg: 'bg-green-100' },
     failed: { label: '失败', color: 'text-red-700', bg: 'bg-red-100' },
-    cancelled: { label: '已取消', color: 'text-gray-700', bg: 'bg-gray-100' },
+    cancelled: { label: "已取消", color: "text-foreground", bg: "bg-secondary" },
   };
 
   // 任务类型映射
@@ -232,18 +232,18 @@ export default function AdminDashboard() {
       <div className="space-y-6">
         {/* 页面标题 */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">仪表板概览</h1>
-          <p className="mt-1 text-sm text-gray-600">系统状态和任务统计</p>
+          <h1 className="text-2xl font-bold text-foreground">仪表板概览</h1>
+          <p className="mt-1 text-sm text-muted-foreground">系统状态和任务统计</p>
         </div>
 
         {/* 初始加载状态 */}
         {isInitialLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-blue-600 mr-2" />
-            <span className="text-gray-600">加载中...</span>
+            <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
+            <span className="text-muted-foreground">加载中...</span>
           </div>
         ) : error && !stats ? (
-          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+          <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">
             {error}
           </div>
         ) : (
@@ -262,12 +262,12 @@ export default function AdminDashboard() {
             </div>
 
             {/* 最近任务 */}
-            <div className="rounded-lg bg-white p-6 shadow-sm">
+            <div className="rounded-lg bg-card p-6 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">最近任务</h2>
+                <h2 className="text-lg font-semibold text-foreground">最近任务</h2>
                 <button
                   onClick={() => router.push('/dashboard/admin/tasks')}
-                  className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                  className="flex items-center gap-1 text-sm text-primary hover:text-primary"
                 >
                   <Eye className="h-4 w-4" />
                   查看全部
@@ -275,34 +275,34 @@ export default function AdminDashboard() {
               </div>
 
               {!recentTasks || recentTasks.length === 0 ? (
-                <div className="py-8 text-center text-sm text-gray-500">
+                <div className="py-8 text-center text-sm text-muted-foreground">
                   暂无任务记录
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full">
                     <thead>
-                      <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase text-gray-500">
+                      <tr className="border-b border-border text-left text-xs font-medium uppercase text-muted-foreground">
                         <th className="pb-3 pl-2">任务类型</th>
                         <th className="pb-3">状态</th>
                         <th className="pb-3">进度</th>
                         <th className="pb-3 pr-2 text-right">创建时间</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-border">
                       {recentTasks.map((task) => {
                         const statusInfo = statusConfig[task.status];
                         return (
                           <tr
                             key={task.taskId}
-                            className="cursor-pointer hover:bg-gray-50"
+                            className="cursor-pointer hover:bg-secondary"
                             onClick={() => router.push(`/dashboard/admin/tasks?task=${task.taskId}`)}
                           >
                             <td className="py-3 pl-2">
-                              <div className="text-sm font-medium text-gray-900">
+                              <div className="text-sm font-medium text-foreground">
                                 {taskTypeLabels[task.taskType] || task.taskType}
                               </div>
-                              <div className="text-xs text-gray-500">{task.taskId}</div>
+                              <div className="text-xs text-muted-foreground">{task.taskId}</div>
                             </td>
                             <td className="py-3">
                               <span
@@ -313,20 +313,20 @@ export default function AdminDashboard() {
                             </td>
                             <td className="py-3">
                               <div className="flex items-center gap-2">
-                                <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
+                                <div className="h-2 w-24 overflow-hidden rounded-full bg-border">
                                   <div
-                                    className="h-full bg-blue-600 transition-all"
+                                    className="h-full bg-primary transition-all"
                                     style={{ width: `${task.percent}%` }}
                                   />
                                 </div>
-                                <span className="text-xs text-gray-600">{task.percent}%</span>
+                                <span className="text-xs text-muted-foreground">{task.percent}%</span>
                               </div>
-                              <div className="text-xs text-gray-500">
+                              <div className="text-xs text-muted-foreground">
                                 {task.progress} / {task.total}
                               </div>
                             </td>
                             <td className="py-3 pr-2 text-right">
-                              <div className="text-sm text-gray-600">
+                              <div className="text-sm text-muted-foreground">
                                 {formatTime(task.createdAt)}
                               </div>
                             </td>
@@ -340,48 +340,48 @@ export default function AdminDashboard() {
             </div>
 
             {/* 快捷操作 */}
-            <div className="rounded-lg bg-gradient-to-br from-blue-50 to-purple-50 p-6">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">快捷操作</h2>
+            <div className="rounded-lg bg-background p-6">
+              <h2 className="mb-4 text-lg font-semibold text-foreground">快捷操作</h2>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <button
                   onClick={() => router.push('/dashboard/admin/data')}
-                  className="rounded-lg bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md"
+                  className="rounded-lg bg-card p-4 text-left shadow-sm transition-shadow hover:shadow-md"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-blue-100 p-2">
-                      <Activity className="h-5 w-5 text-blue-600" />
+                    <div className="rounded-lg bg-primary-light p-2">
+                      <Activity className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-900">数据管理</div>
-                      <div className="text-sm text-gray-600">初始化和更新数据</div>
+                      <div className="font-medium text-foreground">数据管理</div>
+                      <div className="text-sm text-muted-foreground">初始化和更新数据</div>
                     </div>
                   </div>
                 </button>
                 <button
                   onClick={() => router.push('/dashboard/admin/tasks')}
-                  className="rounded-lg bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md"
+                  className="rounded-lg bg-card p-4 text-left shadow-sm transition-shadow hover:shadow-md"
                 >
                   <div className="flex items-center gap-3">
                     <div className="rounded-lg bg-yellow-100 p-2">
                       <Clock className="h-5 w-5 text-yellow-600" />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-900">任务监控</div>
-                      <div className="text-sm text-gray-600">查看任务状态和日志</div>
+                      <div className="font-medium text-foreground">任务监控</div>
+                      <div className="text-sm text-muted-foreground">查看任务状态和日志</div>
                     </div>
                   </div>
                 </button>
                 <button
                   onClick={() => router.push('/dashboard/admin/users')}
-                  className="rounded-lg bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md"
+                  className="rounded-lg bg-card p-4 text-left shadow-sm transition-shadow hover:shadow-md"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-green-100 p-2">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    <div className="rounded-lg bg-rise/10 p-2">
+                      <CheckCircle className="h-5 w-5 text-rise" />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-900">用户管理</div>
-                      <div className="text-sm text-gray-600">管理用户和权限</div>
+                      <div className="font-medium text-foreground">用户管理</div>
+                      <div className="text-sm text-muted-foreground">管理用户和权限</div>
                     </div>
                   </div>
                 </button>

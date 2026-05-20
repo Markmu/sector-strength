@@ -55,25 +55,25 @@ export default function SectorAnalysisPage() {
         {distributionData && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* 行业板块 */}
-            <div className="bg-white rounded-xl border border-[#e9ecef] shadow-sm p-5">
-              <div className="text-xs text-[#6c757d] font-medium uppercase tracking-wider mb-2">行业板块</div>
-              <div className="text-3xl font-bold text-[#1a1a2e] tabular-nums">
+            <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+              <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">行业板块</div>
+              <div className="text-3xl font-bold text-foreground tabular-nums">
                 {distributionData.industry_count}
               </div>
             </div>
 
             {/* 概念板块 */}
-            <div className="bg-white rounded-xl border border-[#e9ecef] shadow-sm p-5">
-              <div className="text-xs text-[#6c757d] font-medium uppercase tracking-wider mb-2">概念板块</div>
-              <div className="text-3xl font-bold text-[#1a1a2e] tabular-nums">
+            <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+              <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">概念板块</div>
+              <div className="text-3xl font-bold text-foreground tabular-nums">
                 {distributionData.concept_count}
               </div>
             </div>
 
             {/* 总计 */}
-            <div className="bg-white rounded-xl border border-[#e9ecef] shadow-sm p-5">
-              <div className="text-xs text-[#6c757d] font-medium uppercase tracking-wider mb-2">总计</div>
-              <div className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-cyan-600 bg-clip-text text-transparent tabular-nums">
+            <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+              <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">总计</div>
+              <div className="text-3xl font-bold text-foreground tabular-nums">
                 {distributionData.total_count}
               </div>
             </div>
@@ -81,11 +81,11 @@ export default function SectorAnalysisPage() {
         )}
 
         {/* 筛选控制 */}
-        <div className="bg-white rounded-xl border border-[#e9ecef] shadow-sm p-6">
+        <div className="bg-card rounded-xl border border-border shadow-sm p-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             {/* 板块类型筛选 */}
             <div className="flex flex-wrap items-center gap-4">
-              <span className="text-sm font-semibold text-[#6c757d] uppercase tracking-wide">
+              <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                 板块类型
               </span>
               <div className="flex gap-2">
@@ -93,8 +93,8 @@ export default function SectorAnalysisPage() {
                   onClick={() => setSectorType(null)}
                   className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${
                     sectorType === null
-                      ? 'bg-gradient-to-r from-cyan-400 to-cyan-500 text-white shadow-sm'
-                      : 'text-[#6c757d] hover:text-[#1a1a2e] hover:bg-[#f1f3f5] border border-[#dee2e6]'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary border border-border'
                   }`}
                 >
                   全部
@@ -103,8 +103,8 @@ export default function SectorAnalysisPage() {
                   onClick={() => setSectorType('industry')}
                   className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${
                     sectorType === 'industry'
-                      ? 'bg-cyan-500 text-white shadow-sm'
-                      : 'text-[#6c757d] hover:text-[#1a1a2e] hover:bg-[#f1f3f5] border border-[#dee2e6]'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary border border-border'
                   }`}
                 >
                   <span className="flex items-center gap-2">
@@ -116,8 +116,8 @@ export default function SectorAnalysisPage() {
                   onClick={() => setSectorType('concept')}
                   className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${
                     sectorType === 'concept'
-                      ? 'bg-cyan-500 text-white shadow-sm'
-                      : 'text-[#6c757d] hover:text-[#1a1a2e] hover:bg-[#f1f3f5] border border-[#dee2e6]'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary border border-border'
                   }`}
                 >
                   <span className="flex items-center gap-2">
@@ -131,8 +131,8 @@ export default function SectorAnalysisPage() {
             {/* 数据日期 */}
             {data && (
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#6c757d]">数据日期</span>
-                <span className="px-3 py-1.5 bg-[#f1f3f5] rounded-lg font-mono font-semibold text-cyan-600 border border-[#dee2e6]">
+                <span className="text-muted-foreground">数据日期</span>
+                <span className="px-3 py-1.5 bg-secondary rounded-lg font-mono font-semibold text-primary border border-border">
                   {data.date}
                 </span>
               </div>
@@ -154,11 +154,11 @@ export default function SectorAnalysisPage() {
           <div className="text-center">
             <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold ${
               data.cache_status === 'hit'
-                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                : 'bg-[#f1f3f5] text-[#6c757d] border border-[#e9ecef]'
+                ? 'bg-rise/10 text-rise border border-rise/30'
+                : 'bg-secondary text-muted-foreground border border-border'
             }`}>
               <span className={`w-2 h-2 rounded-full ${
-                data.cache_status === 'hit' ? 'bg-emerald-500' : 'bg-[#adb5bd]'
+                data.cache_status === 'hit' ? 'bg-rise' : 'bg-muted-foreground'
               }`} />
               数据来源: {data.cache_status === 'hit' ? '缓存' : '实时查询'}
             </span>

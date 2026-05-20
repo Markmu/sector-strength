@@ -148,7 +148,7 @@ export default function DataInitPanel() {
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      pending: 'bg-gray-100 text-gray-700',
+      pending: 'bg-secondary text-foreground',
       running: 'bg-blue-100 text-blue-700',
       completed: 'bg-green-100 text-green-700',
       failed: 'bg-red-100 text-red-700',
@@ -174,8 +174,8 @@ export default function DataInitPanel() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <ShieldAlert className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <p className="text-gray-600">您没有权限访问此页面</p>
+          <ShieldAlert className="w-12 h-12 text-destructive mx-auto mb-4" />
+          <p className="text-muted-foreground">您没有权限访问此页面</p>
         </div>
       </div>
     );
@@ -184,24 +184,24 @@ export default function DataInitPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">数据初始化</h2>
-        <p className="text-gray-600">
+        <h2 className="text-2xl font-bold text-foreground mb-2">数据初始化</h2>
+        <p className="text-muted-foreground">
           从 AkShare 拉取板块、股票和历史数据，初始化系统数据库。
         </p>
       </div>
 
       {/* 日期范围设置 */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Calendar className="w-5 h-5 text-blue-600" />
-          <label className="text-sm font-medium text-gray-700">
+          <Calendar className="w-5 h-5 text-primary" />
+          <label className="text-sm font-medium text-foreground">
             历史数据日期范围
           </label>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* 开始日期 */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-medium text-muted-foreground mb-2">
               开始日期
             </label>
             <input
@@ -210,13 +210,13 @@ export default function DataInitPanel() {
               onChange={(e) => setStartDate(e.target.value)}
               disabled={loading}
               max={endDate}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary disabled:bg-secondary disabled:cursor-not-allowed"
             />
           </div>
 
           {/* 结束日期 */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-medium text-muted-foreground mb-2">
               结束日期
             </label>
             <input
@@ -226,14 +226,14 @@ export default function DataInitPanel() {
               disabled={loading}
               min={startDate}
               max={new Date().toISOString().split('T')[0]}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary disabled:bg-secondary disabled:cursor-not-allowed"
             />
           </div>
         </div>
 
         {/* 快捷选择 */}
         <div className="mt-4 flex flex-wrap gap-2">
-          <span className="text-sm text-gray-500">快捷选择：</span>
+          <span className="text-sm text-muted-foreground">快捷选择：</span>
           <button
             onClick={() => {
               const end = new Date();
@@ -243,7 +243,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 30 天
           </button>
@@ -256,7 +256,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 60 天
           </button>
@@ -269,7 +269,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 90 天
           </button>
@@ -282,7 +282,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近半年
           </button>
@@ -295,7 +295,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 1 年
           </button>
@@ -308,7 +308,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 2 年
           </button>
@@ -321,7 +321,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 3 年
           </button>
@@ -334,7 +334,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 5 年
           </button>
@@ -347,7 +347,7 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 10 年
           </button>
@@ -360,16 +360,16 @@ export default function DataInitPanel() {
               setEndDate(end.toISOString().split('T')[0]);
             }}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-secondary hover:bg-border rounded-md transition-colors disabled:opacity-50"
           >
             最近 20 年
           </button>
         </div>
 
         {/* 日期范围提示 */}
-        <div className="mt-3 text-sm text-gray-500">
-          将获取 <span className="font-medium text-gray-700">{startDate}</span>
-          至 <span className="font-medium text-gray-700">{endDate}</span>
+        <div className="mt-3 text-sm text-muted-foreground">
+          将获取 <span className="font-medium text-foreground">{startDate}</span>
+          至 <span className="font-medium text-foreground">{endDate}</span>
           的历史数据
         </div>
       </div>
@@ -379,25 +379,25 @@ export default function DataInitPanel() {
         <button
           onClick={() => startInit('sectors')}
           disabled={loading}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Database className="w-5 h-5 text-blue-600" />
+          <Database className="w-5 h-5 text-primary" />
           <span className="font-medium">初始化板块</span>
         </button>
 
         <button
           onClick={() => startInit('stocks')}
           disabled={loading}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <List className="w-5 h-5 text-green-600" />
+          <List className="w-5 h-5 text-rise" />
           <span className="font-medium">初始化股票</span>
         </button>
 
         <button
           onClick={() => startInit('sector_historical')}
           disabled={loading}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <BarChart3 className="w-5 h-5 text-indigo-600" />
           <span className="font-medium">板块历史数据</span>
@@ -406,7 +406,7 @@ export default function DataInitPanel() {
         <button
           onClick={() => startInit('historical')}
           disabled={loading}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <TrendingUp className="w-5 h-5 text-purple-600" />
           <span className="font-medium">股票历史数据</span>
@@ -415,7 +415,7 @@ export default function DataInitPanel() {
         <button
           onClick={() => startInit('sector_classification')}
           disabled={loading}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-orange-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-orange-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <BarChart3 className="w-5 h-5 text-orange-600" />
           <span className="font-medium">板块分类初始化</span>
@@ -424,7 +424,7 @@ export default function DataInitPanel() {
         <button
           onClick={() => startInit('all')}
           disabled={loading}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Play className="w-5 h-5" />
           <span className="font-medium">全部初始化</span>
@@ -433,18 +433,18 @@ export default function DataInitPanel() {
 
       {/* 错误提示 */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
           <div className="flex">
             <div className="flex-shrink-0">
-              <AlertCircle className="w-5 h-5 text-red-600" />
+              <AlertCircle className="w-5 h-5 text-destructive" />
             </div>
             <div className="ml-3 flex-1">
-              <h4 className="text-sm font-medium text-red-800">操作失败</h4>
-              <p className="mt-1 text-sm text-red-700">{error}</p>
+              <h4 className="text-sm font-medium text-destructive">操作失败</h4>
+              <p className="mt-1 text-sm text-destructive">{error}</p>
             </div>
             <button
               onClick={() => setError(null)}
-              className="ml-3 text-red-600 hover:text-red-800"
+              className="ml-3 text-destructive hover:text-destructive"
             >
               <X className="w-5 h-5" />
             </button>
@@ -454,36 +454,36 @@ export default function DataInitPanel() {
 
       {/* 活动任务 */}
       {activeTask && tasks[activeTask] && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-card rounded-lg shadow-sm border border-border p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+              <Loader2 className="w-5 h-5 text-primary animate-spin" />
               <h3 className="text-lg font-semibold">正在进行</h3>
               {getStatusBadge(tasks[activeTask].status)}
             </div>
             <button
               onClick={() => cancelTask(activeTask)}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 hover:bg-secondary rounded-full transition-colors"
               title="取消任务"
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <X className="w-5 h-5 text-muted-foreground" />
             </button>
           </div>
 
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">{tasks[activeTask].message}</span>
+              <span className="text-muted-foreground">{tasks[activeTask].message}</span>
               <span className="font-medium">{tasks[activeTask].current} / {tasks[activeTask].total}</span>
             </div>
 
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-border rounded-full h-2">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                className="bg-primary h-2 rounded-full transition-all duration-300"
                 style={{ width: `${getProgress(tasks[activeTask])}%` }}
               />
             </div>
 
-            <div className="text-right text-sm text-gray-500">
+            <div className="text-right text-sm text-muted-foreground">
               {getProgress(tasks[activeTask])}%
             </div>
           </div>
@@ -492,25 +492,25 @@ export default function DataInitPanel() {
 
       {/* 任务历史 */}
       {Object.keys(tasks).length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
+        <div className="bg-card rounded-lg shadow-sm border border-border">
+          <div className="px-6 py-4 border-b border-border">
             <h3 className="text-lg font-semibold">任务历史</h3>
           </div>
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-border">
             {Object.values(tasks).reverse().map((task) => (
               <div key={task.task_id} className="px-6 py-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
                     {getStatusBadge(task.status)}
-                    <span className="text-sm text-gray-600">{task.message}</span>
+                    <span className="text-sm text-muted-foreground">{task.message}</span>
                   </div>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted-foreground">
                     {task.current} / {task.total}
                   </span>
                 </div>
 
                 {task.result && (
-                  <div className="mt-2 p-3 bg-gray-50 rounded text-sm">
+                  <div className="mt-2 p-3 bg-secondary rounded text-sm">
                     <pre className="text-xs overflow-auto max-h-40">
                       {JSON.stringify(task.result, null, 2)}
                     </pre>

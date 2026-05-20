@@ -44,12 +44,12 @@ function VerifyEmailContent() {
   }, [token]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-full max-w-md p-8 text-center">
         {status === 'loading' && (
           <div className="space-y-4">
-            <div className="w-16 h-16 mx-auto bg-blue-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+            <div className="w-16 h-16 mx-auto bg-primary-light rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-primary animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle
                   className="opacity-25"
                   cx="12"
@@ -65,15 +65,15 @@ function VerifyEmailContent() {
                 ></path>
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900">正在验证您的邮箱...</h2>
-            <p className="text-gray-600">请稍候，系统正在处理您的验证请求</p>
+            <h2 className="text-xl font-semibold text-foreground">正在验证您的邮箱...</h2>
+            <p className="text-muted-foreground">请稍候，系统正在处理您的验证请求</p>
           </div>
         )}
 
         {status === 'success' && (
           <div className="space-y-4">
-            <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24">
+            <div className="w-16 h-16 mx-auto bg-rise/10 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-rise" fill="none" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -82,16 +82,16 @@ function VerifyEmailContent() {
                 ></path>
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">验证成功！</h2>
-            <p className="text-gray-600">{message}</p>
+            <h2 className="text-xl font-semibold text-foreground mb-2">验证成功！</h2>
+            <p className="text-muted-foreground">{message}</p>
             <Loading text="正在跳转到登录页面..." />
           </div>
         )}
 
         {status === 'error' && (
           <div className="space-y-4">
-            <div className="w-16 h-16 mx-auto bg-red-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24">
+            <div className="w-16 h-16 mx-auto bg-destructive/10 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-destructive" fill="none" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -100,8 +100,8 @@ function VerifyEmailContent() {
                 ></path>
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">验证失败</h2>
-            <p className="text-gray-600">{message}</p>
+            <h2 className="text-xl font-semibold text-foreground mb-2">验证失败</h2>
+            <p className="text-muted-foreground">{message}</p>
             <div className="mt-6">
               <a
                 href="/login"
@@ -120,7 +120,7 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loading />
       </div>
     }>

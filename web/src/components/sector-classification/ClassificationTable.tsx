@@ -216,7 +216,7 @@ export function ClassificationTable({
   // 渲染涨跌幅
   const renderChangePercent = (value: number | null) => {
     if (value === null) {
-      return <span className="text-gray-400">-</span>
+      return <span className="text-muted-foreground">-</span>
     }
 
     const color = getChangeColor(value)
@@ -242,7 +242,7 @@ export function ClassificationTable({
   }
 
   return (
-    <div className={cn('w-full overflow-auto rounded-xl border border-[#e9ecef] bg-white', className)}>
+    <div className={cn('w-full overflow-auto rounded-xl border border-border bg-card', className)}>
       <table
         ref={tableRef}
         tabIndex={0}
@@ -252,14 +252,14 @@ export function ClassificationTable({
         className="w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2"
       >
         {/* 表头 */}
-        <thead className="bg-[#f8f9fb] border-b border-[#e9ecef]">
+        <thead className="bg-background border-b border-border">
           <tr>
             {/* 板块名称 */}
             <SortableTableHeader
               column="sector_name"
               label="板块名称"
               align="left"
-              className="border-r border-[#e9ecef]"
+              className="border-r border-border"
             />
 
             {/* 分类级别 */}
@@ -267,12 +267,12 @@ export function ClassificationTable({
               column="classification_level"
               label="分类级别"
               align="center"
-              className="border-r border-[#e9ecef]"
+              className="border-r border-border"
             />
 
             {/* 状态（不可排序） */}
             <th
-              className="px-4 py-3 font-semibold text-[#6c757d] text-xs uppercase tracking-wider text-center border-r border-[#e9ecef]"
+              className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-center border-r border-border"
               scope="col"
             >
               状态
@@ -280,7 +280,7 @@ export function ClassificationTable({
 
             {/* 当前价格（不可排序） */}
             <th
-              className="px-4 py-3 font-semibold text-[#6c757d] text-xs uppercase tracking-wider text-right border-r border-[#e9ecef]"
+              className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-right border-r border-border"
               scope="col"
             >
               当前价格
@@ -296,16 +296,16 @@ export function ClassificationTable({
         </thead>
 
         {/* 表体 */}
-        <tbody className={cn('divide-y divide-[#f1f3f5]')}>
+        <tbody className={cn('divide-y divide-border')}>
           {loading ? (
             <tr>
               <td
                 colSpan={5}
-                className="px-4 py-8 text-center text-[#6c757d]"
+                className="px-4 py-8 text-center text-muted-foreground"
               >
                 <div className="flex items-center justify-center">
                   <svg
-                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-cyan-500"
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-primary"
                     fill="none"
                     viewBox="0 0 24 24"
                   >
@@ -331,7 +331,7 @@ export function ClassificationTable({
             <tr>
               <td
                 colSpan={5}
-                className="px-4 py-8 text-center text-[#6c757d]"
+                className="px-4 py-8 text-center text-muted-foreground"
               >
                 {emptyText}
               </td>
@@ -344,9 +344,9 @@ export function ClassificationTable({
                 aria-rowindex={index + 1}
                 aria-selected={focusedCell?.rowIndex === index}
                 className={cn(
-                  'bg-white even:bg-[#f8f9fb]',
+                  'bg-card even:bg-background',
                   focusedCell?.rowIndex === index && 'bg-blue-50',
-                  onRowClick && 'hover:bg-[#f8f9fb]/80 transition-colors cursor-pointer'
+                  onRowClick && 'hover:bg-background/80 transition-colors cursor-pointer'
                 )}
                 onClick={() => handleRowClick(record, index)}
               >
@@ -356,8 +356,8 @@ export function ClassificationTable({
                   aria-colindex={1}
                   tabIndex={focusedCell?.rowIndex === index && focusedCell?.cellIndex === 0 ? 0 : -1}
                   className={cn(
-                    'px-4 py-3 text-[#1a1a2e] border-r border-[#f1f3f5]',
-                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 0 && 'ring-2 ring-blue-500 ring-inset'
+                    'px-4 py-3 text-foreground border-r border-border',
+                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 0 && 'ring-2 ring-primary ring-inset'
                   )}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -373,8 +373,8 @@ export function ClassificationTable({
                   aria-colindex={2}
                   tabIndex={focusedCell?.rowIndex === index && focusedCell?.cellIndex === 1 ? 0 : -1}
                   className={cn(
-                    'px-4 py-3 border-r border-[#f1f3f5]',
-                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 1 && 'ring-2 ring-blue-500 ring-inset'
+                    'px-4 py-3 border-r border-border',
+                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 1 && 'ring-2 ring-primary ring-inset'
                   )}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -390,8 +390,8 @@ export function ClassificationTable({
                   aria-colindex={3}
                   tabIndex={focusedCell?.rowIndex === index && focusedCell?.cellIndex === 2 ? 0 : -1}
                   className={cn(
-                    'px-4 py-3 border-r border-[#f1f3f5]',
-                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 2 && 'ring-2 ring-blue-500 ring-inset'
+                    'px-4 py-3 border-r border-border',
+                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 2 && 'ring-2 ring-primary ring-inset'
                   )}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -407,15 +407,15 @@ export function ClassificationTable({
                   aria-colindex={4}
                   tabIndex={focusedCell?.rowIndex === index && focusedCell?.cellIndex === 3 ? 0 : -1}
                   className={cn(
-                    'px-4 py-3 text-right border-r border-[#f1f3f5]',
-                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 3 && 'ring-2 ring-blue-500 ring-inset'
+                    'px-4 py-3 text-right border-r border-border',
+                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 3 && 'ring-2 ring-primary ring-inset'
                   )}
                   onClick={(e) => {
                     e.stopPropagation()
                     handleCellClick(index, 3)
                   }}
                 >
-                  <span className="tabular-nums text-[#1a1a2e]">
+                  <span className="tabular-nums text-foreground">
                     {record.current_price !== null ? record.current_price.toFixed(2) : '-'}
                   </span>
                 </td>
@@ -427,7 +427,7 @@ export function ClassificationTable({
                   tabIndex={focusedCell?.rowIndex === index && focusedCell?.cellIndex === 4 ? 0 : -1}
                   className={cn(
                     'px-4 py-3 text-right',
-                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 4 && 'ring-2 ring-blue-500 ring-inset'
+                    focusedCell?.rowIndex === index && focusedCell?.cellIndex === 4 && 'ring-2 ring-primary ring-inset'
                   )}
                   onClick={(e) => {
                     e.stopPropagation()

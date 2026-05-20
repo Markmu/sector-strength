@@ -28,7 +28,7 @@ export const MAToggleControls = memo(function MAToggleControls({
 }: MAToggleControlsProps) {
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <span className="text-sm text-gray-600">均线:</span>
+      <span className="text-sm text-muted-foreground">均线:</span>
       {MA_CONFIGS.map((config) => {
         const isVisible = visibleMAs[config.key]
         const isDisabled = disabledMAs.has(config.key)
@@ -41,7 +41,7 @@ export const MAToggleControls = memo(function MAToggleControls({
               ${
                 isDisabled
                   ? 'opacity-40 cursor-not-allowed'
-                  : 'hover:bg-gray-50'
+                  : 'hover:bg-background'
               }
             `}
             style={{

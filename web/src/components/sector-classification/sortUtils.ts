@@ -34,12 +34,12 @@ export function sortClassifications(
 
       case 'sector_name':
         // 中文排序：使用 localeCompare 支持中文字符
-        comparison = a.sector_name.localeCompare(b.sector_name, 'zh-CN')
+        comparison = (a.sector_name ?? '').localeCompare(b.sector_name ?? '', 'zh-CN')
         break
 
       case 'change_percent':
         // 数值排序：涨跌幅（正负零）
-        comparison = a.change_percent - b.change_percent
+        comparison = (a.change_percent ?? 0) - (b.change_percent ?? 0)
         break
     }
 

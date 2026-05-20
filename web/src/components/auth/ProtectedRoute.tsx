@@ -45,10 +45,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   if (!hasRequiredRole) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">访问被拒绝</h1>
-          <p className="text-gray-600">您没有权限访问此页面</p>
+          <h1 className="text-2xl font-bold text-foreground mb-4">访问被拒绝</h1>
+          <p className="text-muted-foreground">您没有权限访问此页面</p>
         </div>
       </div>
     );

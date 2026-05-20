@@ -23,7 +23,6 @@ const baseSidebarItems: SidebarItem[] = [
     title: '板块分析',
     href: '/dashboard/sector-analysis',
     icon: <LineChart className="w-5 h-5" />,
-    badge: '新功能',
   },
   {
     title: '板块强弱分类',

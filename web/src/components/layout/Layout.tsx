@@ -19,9 +19,9 @@ const Layout = ({
   sidebarCollapsed = false
 }: LayoutProps) => {
   return (
-    <div className={cn('h-screen bg-[#f8f9fb] flex flex-col overflow-hidden', className)}>
+    <div className={cn('h-screen bg-background flex flex-col overflow-hidden', className)}>
       {header && (
-        <header className="bg-white border-b border-[#e9ecef] sticky top-0 z-30 flex-shrink-0">
+        <header className="bg-card border-b border-border sticky top-0 z-30 flex-shrink-0">
           {header}
         </header>
       )}
@@ -29,7 +29,7 @@ const Layout = ({
       <div className={cn('flex flex-1 min-h-0', sidebar ? 'overflow-hidden' : '')}>
         {sidebar && (
           <aside className={cn(
-            'h-full bg-white border-r border-[#e9ecef] flex flex-col transition-all duration-200 flex-shrink-0',
+            'h-full bg-card border-r border-border flex flex-col transition-all duration-200 flex-shrink-0',
             sidebarCollapsed ? 'w-16' : 'w-64'
           )}>
             {sidebar}
@@ -45,7 +45,7 @@ const Layout = ({
       </div>
 
       {footer && (
-        <footer className="bg-white border-t border-[#e9ecef] py-4 flex-shrink-0">
+        <footer className="bg-card border-t border-border py-4 flex-shrink-0">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {footer}
           </div>

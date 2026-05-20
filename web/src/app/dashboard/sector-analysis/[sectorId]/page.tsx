@@ -183,7 +183,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
 
       <div className="space-y-6">
         {/* 小屏幕提示 */}
-        <div className="lg:hidden bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+        <div className="lg:hidden bg-secondary border border-border rounded-lg p-4 text-sm text-muted-foreground">
           <div className="flex items-start gap-2">
             <span className="text-lg">💡</span>
             <div>
@@ -194,13 +194,13 @@ export default function SectorAnalysisPage({ params }: PageParams) {
         </div>
 
         {/* 控制面板 */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
+        <div className="bg-card rounded-xl border border-border shadow-sm p-6 space-y-4">
           {/* 返回按钮和板块选择器 */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => router.back()}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ArrowLeftIcon className="w-5 h-5" />
                 <span className="text-sm font-medium">返回</span>
@@ -208,21 +208,21 @@ export default function SectorAnalysisPage({ params }: PageParams) {
 
               {/* 面包屑导航 */}
               <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600">
-                <span className="hover:text-gray-900 cursor-pointer" onClick={() => router.push('/dashboard')}>
+                <span className="hover:text-foreground cursor-pointer" onClick={() => router.push('/dashboard')}>
                   仪表盘
                 </span>
                 <span>/</span>
-                <span className="hover:text-gray-900 cursor-pointer" onClick={() => router.push('/dashboard/sector-analysis')}>
+                <span className="hover:text-foreground cursor-pointer" onClick={() => router.push('/dashboard/sector-analysis')}>
                   板块分析
                 </span>
                 <span>/</span>
-                <span className="text-gray-900 font-medium">{sectorName}</span>
+                <span className="text-foreground font-medium">{sectorName}</span>
               </div>
             </div>
 
             {/* 板块选择器 */}
             <div className="flex items-center gap-2 w-full lg:w-auto min-w-[300px]">
-              <label htmlFor="sector-select" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+              <label htmlFor="sector-select" className="text-sm font-medium text-foreground whitespace-nowrap">
                 选择板块:
               </label>
               <SearchableSelect
@@ -260,15 +260,15 @@ export default function SectorAnalysisPage({ params }: PageParams) {
 
           {/* 移动端面包屑 */}
           <div className="sm:hidden flex items-center gap-2 text-sm text-gray-600">
-            <span className="hover:text-gray-900 cursor-pointer" onClick={() => router.push('/dashboard')}>
+            <span className="hover:text-foreground cursor-pointer" onClick={() => router.push('/dashboard')}>
               仪表盘
             </span>
             <span>/</span>
-            <span className="hover:text-gray-900 cursor-pointer" onClick={() => router.push('/dashboard/sector-analysis')}>
+            <span className="hover:text-foreground cursor-pointer" onClick={() => router.push('/dashboard/sector-analysis')}>
               板块分析
             </span>
             <span>/</span>
-            <span className="text-gray-900 font-medium">{sectorName}</span>
+            <span className="text-foreground font-medium">{sectorName}</span>
           </div>
 
           {/* 时间范围选择器 */}
@@ -292,7 +292,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 左侧: 强度历史曲线 */}
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-gray-900">强度历史</h3>
+            <h3 className="text-lg font-semibold text-foreground">强度历史</h3>
             <SectorStrengthChart
               data={strengthData?.data ?? []}
               sectorName={sectorName}
@@ -302,7 +302,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
 
           {/* 右侧: 均线曲线 */}
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-gray-900">均线分析</h3>
+            <h3 className="text-lg font-semibold text-foreground">均线分析</h3>
             <SectorMAChart
               data={maData?.data ?? []}
               sectorName={sectorName}
@@ -313,7 +313,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
         </div>
 
         {/* 数据说明 */}
-        <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 text-sm text-blue-800">
+        <div className="bg-primary-light rounded-lg border border-primary/30 p-4 text-sm text-muted-foreground">
           <div className="font-semibold mb-2">💡 图表说明</div>
           <ul className="space-y-1 list-disc list-inside">
             <li><strong>强度历史:</strong> 显示板块的强度得分变化趋势 (0-100分制)</li>

@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-20T00:00:00Z",
+  "title": "Design System: Sector Strength",
+  "extensions": {
+    "colorMeta": {
+      "slate-primary": {
+        "role": "primary",
+        "displayName": "石墨蓝",
+        "canonical": "oklch(48% 0.04 250)",
+        "tonalRamp": [
+          "oklch(15% 0.02 250)",
+          "oklch(25% 0.03 250)",
+          "oklch(35% 0.035 250)",
+          "oklch(42% 0.038 250)",
+          "oklch(48% 0.04 250)",
+          "oklch(58% 0.03 250)",
+          "oklch(75% 0.015 250)",
+          "oklch(92% 0.005 250)"
+        ]
+      },
+      "ink-slate": {
+        "role": "neutral",
+        "displayName": "墨石蓝",
+        "canonical": "oklch(18% 0.015 250)",
+        "tonalRamp": [
+          "oklch(8% 0.01 250)",
+          "oklch(18% 0.015 250)",
+          "oklch(30% 0.012 250)",
+          "oklch(45% 0.01 250)",
+          "oklch(60% 0.008 250)",
+          "oklch(75% 0.006 250)",
+          "oklch(90% 0.004 250)",
+          "oklch(97% 0.002 250)"
+        ]
+      },
+      "cool-paper": {
+        "role": "neutral",
+        "displayName": "冷灰纸",
+        "canonical": "oklch(97% 0.005 250)",
+        "tonalRamp": [
+          "oklch(15% 0.005 250)",
+          "oklch(30% 0.005 250)",
+          "oklch(45% 0.005 250)",
+          "oklch(60% 0.005 250)",
+          "oklch(75% 0.005 250)",
+          "oklch(85% 0.005 250)",
+          "oklch(93% 0.005 250)",
+          "oklch(97% 0.005 250)"
+        ]
+      },
+      "rise-red": {
+        "role": "functional",
+        "displayName": "涨色",
+        "canonical": "oklch(55% 0.12 20)",
+        "tonalRamp": [
+          "oklch(15% 0.06 20)",
+          "oklch(25% 0.08 20)",
+          "oklch(35% 0.10 20)",
+          "oklch(45% 0.11 20)",
+          "oklch(55% 0.12 20)",
+          "oklch(68% 0.08 20)",
+          "oklch(82% 0.04 20)",
+          "oklch(93% 0.02 20)"
+        ]
+      },
+      "fall-green": {
+        "role": "functional",
+        "displayName": "跌色",
+        "canonical": "oklch(55% 0.08 155)",
+        "tonalRamp": [
+          "oklch(15% 0.04 155)",
+          "oklch(25% 0.05 155)",
+          "oklch(35% 0.06 155)",
+          "oklch(45% 0.07 155)",
+          "oklch(55% 0.08 155)",
+          "oklch(68% 0.06 155)",
+          "oklch(82% 0.03 155)",
+          "oklch(93% 0.015 155)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "页面主标题，每页最多一个。" },
+      "headline": { "displayName": "Headline", "purpose": "卡片标题、区块标题。" },
+      "title": { "displayName": "Title", "purpose": "表单标签、小组件标题。" },
+      "body": { "displayName": "Body", "purpose": "正文、描述文字、表格内容。行宽限制 65ch。" },
+      "label": { "displayName": "Label", "purpose": "表头、辅助标签、状态标记。全大写。" },
+      "mono": { "displayName": "Mono", "purpose": "数值数据、代码片段、数字列对齐。" }
+    },
+    "shadows": [
+      { "name": "ambient-sm", "value": "0 1px 2px rgba(0,0,0,0.05)", "purpose": "卡片默认态微弱浮起感。" },
+      { "name": "ambient-md", "value": "0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04)", "purpose": "卡片 hover、滚动后 Header。" },
+      { "name": "ambient-lg", "value": "0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -2px rgba(0,0,0,0.04)", "purpose": "弹窗、下拉菜单。" }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "默认状态过渡（颜色、阴影、位移）。" },
+      { "name": "duration-fast", "value": "200ms", "purpose": "所有交互过渡的统一时长。" }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "主操作按钮，石墨蓝纯色底，无渐变。",
+      "html": "<button class=\"ds-btn ds-btn-primary\">刷新数据</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; font-family: 'Geist Sans', -apple-system, sans-serif; font-weight: 500; font-size: 16px; line-height: 1.5; border: none; cursor: pointer; transition: background-color 200ms cubic-bezier(0.4,0,0.2,1), color 200ms cubic-bezier(0.4,0,0.2,1); padding: 10px 20px; } .ds-btn:focus-visible { outline: 2px solid #5E6B7A; outline-offset: 2px; } .ds-btn:disabled { opacity: 0.5; cursor: not-allowed; } .ds-btn-primary { background: #5E6B7A; color: #ffffff; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); } .ds-btn-primary:hover { background: #4D5A69; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "次级操作按钮，浅灰底。",
+      "html": "<button class=\"ds-btn ds-btn-secondary\">取消</button>",
+      "css": ".ds-btn-secondary { background: #EAECEF; color: #242830; border-radius: 8px; } .ds-btn-secondary:hover { background: rgba(234,236,239,0.8); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "描边按钮，hover 时边框变石墨蓝。",
+      "html": "<button class=\"ds-btn ds-btn-outline\">导出</button>",
+      "css": ".ds-btn-outline { background: #ffffff; color: #242830; border: 1px solid #E0E3E7; border-radius: 8px; } .ds-btn-outline:hover { background: #F4F5F7; border-color: #5E6B7A; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "透明按钮，最低视觉权重。",
+      "html": "<button class=\"ds-btn ds-btn-ghost\">筛选</button>",
+      "css": ".ds-btn-ghost { background: transparent; color: #7C828E; border-radius: 8px; } .ds-btn-ghost:hover { color: #242830; background: #EAECEF; }"
+    },
+    {
+      "name": "Default Card",
+      "kind": "card",
+      "refersTo": "card-default",
+      "description": "标准容器，白底 + 微弱边框和阴影。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-header\"><h3 class=\"ds-card-title\">板块强度热力图</h3><p class=\"ds-card-desc\">通过热力图直观查看各板块的强度分布。</p></div><div class=\"ds-card-body\"><!-- content --></div></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #E0E3E7; border-radius: 12px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); } .ds-card-title { font-family: 'Geist Sans', sans-serif; font-size: 20px; font-weight: 700; color: #242830; margin: 0; } .ds-card-desc { font-size: 14px; color: #7C828E; margin: 4px 0 0 0; } .ds-card-header { margin-bottom: 16px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "标准文本输入框，focus 时石墨蓝环。",
+      "html": "<div class=\"ds-input-wrap\"><label class=\"ds-input-label\">搜索板块</label><input type=\"text\" class=\"ds-input\" placeholder=\"输入板块名称或代码...\"></div>",
+      "css": ".ds-input-wrap { width: 100%; } .ds-input-label { display: block; font-size: 14px; font-weight: 500; color: #242830; margin-bottom: 6px; } .ds-input { display: block; width: 100%; padding: 10px 16px; font-size: 14px; font-family: 'Geist Sans', sans-serif; color: #242830; background: #ffffff; border: 1px solid #E0E3E7; border-radius: 8px; transition: border-color 200ms, box-shadow 200ms; outline: none; } .ds-input::placeholder { color: #A5ABB5; } .ds-input:focus { border-color: #5E6B7A; box-shadow: 0 0 0 2px rgba(94,107,122,0.15); }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "button-primary",
+      "description": "侧边栏导航项，激活态为石墨蓝纯色。",
+      "html": "<nav class=\"ds-sidebar\"><a class=\"ds-nav-item ds-nav-active\" href=\"#\"><svg class=\"ds-nav-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 20V10M18 20V4M6 20v-6\"/></svg><span>强度分析</span></a><a class=\"ds-nav-item\" href=\"#\"><svg class=\"ds-nav-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 3v18h18\"/></svg><span>板块分析</span></a></nav>",
+      "css": ".ds-sidebar { display: flex; flex-direction: column; gap: 4px; } .ds-nav-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; font-size: 14px; font-weight: 500; color: #7C828E; border-radius: 8px; text-decoration: none; transition: background-color 200ms, color 200ms; } .ds-nav-item:hover { color: #242830; background: #F4F5F7; } .ds-nav-icon { width: 20px; height: 20px; flex-shrink: 0; } .ds-nav-active { background: #5E6B7A; color: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.05); } .ds-nav-active:hover { background: #4D5A69; }"
+    },
+    {
+      "name": "Data Table",
+      "kind": "custom",
+      "refersTo": "table-header",
+      "description": "数据表格，紧凑间距，可排序表头。",
+      "html": "<div class=\"ds-table-wrap\"><table class=\"ds-table\"><thead class=\"ds-thead\"><tr><th class=\"ds-th\">板块名称</th><th class=\"ds-th ds-th-sort\">强度得分 <svg class=\"ds-sort-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M5 15l7-7 7 7\"/></svg></th><th class=\"ds-th\">趋势</th></tr></thead><tbody><tr class=\"ds-tr\"><td class=\"ds-td\">半导体</td><td class=\"ds-td ds-score-high\">87.2</td><td class=\"ds-td ds-trend-up\">↑</td></tr><tr class=\"ds-tr\"><td class=\"ds-td\">新能源汽车</td><td class=\"ds-td ds-score-mid\">63.5</td><td class=\"ds-td ds-trend-down\">↓</td></tr></tbody></table></div>",
+      "css": ".ds-table-wrap { width: 100%; overflow: auto; border-radius: 12px; border: 1px solid #E0E3E7; background: #ffffff; } .ds-table { width: 100%; border-collapse: collapse; font-size: 14px; } .ds-thead { background: #F4F5F7; border-bottom: 1px solid #E0E3E7; } .ds-th { padding: 12px 16px; font-size: 12px; font-weight: 600; color: #7C828E; text-transform: uppercase; letter-spacing: 0.05em; text-align: left; } .ds-th-sort { cursor: pointer; } .ds-th-sort:hover { background: #EAECEF; } .ds-sort-icon { width: 16px; height: 16px; display: inline-block; vertical-align: middle; color: #5E6B7A; } .ds-tr { border-bottom: 1px solid #EAECEF; transition: background-color 200ms; } .ds-tr:hover { background: rgba(244,245,247,0.8); } .ds-td { padding: 12px 16px; color: #242830; } .ds-score-high { color: #C04E42; font-weight: 700; font-size: 18px; } .ds-score-mid { color: #d97706; font-weight: 700; font-size: 18px; } .ds-trend-up { color: #C04E42; font-weight: 600; font-size: 18px; } .ds-trend-down { color: #4A8B6F; font-weight: 600; font-size: 18px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Signal Filter",
+    "overview": "从市场噪音中提取清晰信号的视觉系统。每个像素要么承载数据，要么服务于数据的可读性。没有装饰层，没有情绪化设计，只有冷静的信号呈现。\n\n桌面端盘后复盘场景，屏幕空间充裕，信息密度是美德。用户需要快速扫视板块强弱、定位机会，而非被 UI 打断思考。视觉系统的工作是让自己消失，让数据浮现。\n\n浅色主题，以微带蓝色调的冷灰色为基底，石墨蓝（slate）作为唯一的交互强调色。功能色遵循中国 A 股惯例：红色代表涨/强势，绿色代表跌/弱势。9 级分类色阶从深红（最强）到深绿（最弱），始终搭配数值标签确保无障碍。整体克制、精确、可预测。",
+    "keyCharacteristics": [
+      "信息密度高，间距紧凑，数据优先",
+      "单一强调色（石墨蓝），其余均为功能色或中性色",
+      "低饱和度色板：所有颜色 chroma ≤ 0.12，不刺激不疲劳",
+      "中式配色：红涨绿跌，符合 A 股市场习惯",
+      "极低透明度阴影，层次感来自边框和背景色差",
+      "交互反馈克制：hover 变色、focus 环、loading 旋转，没有多余动效"
+    ],
+    "rules": [
+      { "name": "The Signal Rule", "body": "石墨蓝出现在 ≤10% 的屏幕面积中。它的稀有性就是它的信号强度。如果一个页面上超过 10% 的元素都是石墨蓝，说明层次结构出了问题。", "section": "colors" },
+      { "name": "The Weight Rule", "body": "字重只有四档：400（正文）、500（中等强调）、600（标题/标签）、700（主标题）。不使用 300 以下的轻字重，复盘场景下所有文字必须清晰可读。", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "静态元素是平的。阴影仅作为状态响应出现（hover、滚动、浮层）。如果一个元素在默认态就有明显阴影，它抢了数据的注意力。", "section": "elevation" }
+    ],
+    "dos": [
+      "在数据可视化中始终同时提供色块和数值标签，确保红绿色盲用户可以获取完整信息。",
+      "保持石墨蓝在 ≤10% 的屏幕面积内，让它保持信号强度。",
+      "使用字重和字号建立层次，而非颜色数量。",
+      "让表格行高和间距紧凑（py-3），信息密度优先于呼吸感。",
+      "在 hover/focus 时使用可预测的变色反馈（次级灰底、石墨蓝边框）。",
+      "遵循中式红涨绿跌配色，保持与 A 股市场习惯一致。"
+    ],
+    "donts": [
+      "使用超过 1px 的彩色左边框（border-left）作为卡片或列表项的装饰条纹。",
+      "使用渐变文字（background-clip: text + gradient）。",
+      "在默认态使用毛玻璃效果（backdrop-blur）。",
+      "添加弹跳、弹性、缩放等装饰性动画。",
+      "在一个页面上使用超过 3 种字号差异超过 1.5 倍的文字。",
+      "使用纯黑（#000）或纯白（#fff）作为大面积底色。",
+      "在按钮或交互元素上使用渐变背景。",
+      "使用西式绿涨红跌配色。"
+    ]
+  }
+}

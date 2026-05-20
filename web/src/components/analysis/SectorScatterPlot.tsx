@@ -230,7 +230,7 @@ function SectorScatterPlotComponent({
   if (!allPoints.length) {
     return (
       <div className="flex items-center justify-center" style={{ height: '500px' }}>
-        <div className="text-center text-gray-500">
+        <div className="text-center text-muted-foreground">
           <p className="text-lg mb-2">暂无散点图数据</p>
           <p className="text-sm">请尝试调整筛选条件</p>
         </div>

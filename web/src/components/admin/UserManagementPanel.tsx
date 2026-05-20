@@ -46,7 +46,7 @@ interface UserData {
 function RoleBadge({ role }: { role: UserRole }) {
   const config = {
     admin: { color: 'bg-purple-100 text-purple-700', label: '管理员', icon: Shield },
-    user: { color: 'bg-gray-100 text-gray-700', label: '用户', icon: ShieldAlert },
+    user: { color: 'bg-secondary text-foreground', label: '用户', icon: ShieldAlert },
   };
 
   const { color, label, icon: Icon } = config[role];
@@ -65,7 +65,7 @@ function RoleBadge({ role }: { role: UserRole }) {
 function StatusBadge({ status }: { status: UserStatus }) {
   const config = {
     active: { color: 'bg-green-100 text-green-700', label: '活跃' },
-    inactive: { color: 'bg-gray-100 text-gray-700', label: '未激活' },
+    inactive: { color: 'bg-secondary text-foreground', label: '未激活' },
     banned: { color: 'bg-red-100 text-red-700', label: '已禁用' },
   };
 
@@ -120,28 +120,28 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden">
       <div
-        className="flex items-center justify-between p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+        className="flex items-center justify-between p-4 hover:bg-secondary cursor-pointer transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-4 flex-1 min-w-0">
           {/* 头像/首字母 */}
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold">
             {(user.displayName || user.username || user.email || 'U').charAt(0).toUpperCase()}
           </div>
 
           {/* 用户信息 */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-medium text-gray-900 truncate">
+              <span className="font-medium text-foreground truncate">
                 {user.displayName || user.username || '未设置'}
               </span>
               {isCurrentUser && (
-                <span className="text-xs text-blue-600">(当前用户)</span>
+                <span className="text-xs text-primary">(当前用户)</span>
               )}
             </div>
-            <div className="text-sm text-gray-500 truncate">{user.email}</div>
+            <div className="text-sm text-muted-foreground truncate">{user.email}</div>
           </div>
 
           {/* 角色和状态 */}
@@ -151,38 +151,38 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
           </div>
 
           {/* 注册时间 */}
-          <div className="hidden md:block text-sm text-gray-500">
+          <div className="hidden md:block text-sm text-muted-foreground">
             {new Date(user.createdAt).toLocaleDateString()}
           </div>
 
           {/* 展开/收起 */}
           {expanded ? (
-            <ChevronUp className="w-5 h-5 text-gray-400" />
+            <ChevronUp className="w-5 h-5 text-faint" />
           ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
+            <ChevronDown className="w-5 h-5 text-faint" />
           )}
         </div>
       </div>
 
       {/* 展开详情 */}
       {expanded && (
-        <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-4">
+        <div className="border-t border-border p-4 bg-secondary space-y-4">
           {/* 用户详情 */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <span className="text-gray-500">用户ID:</span>
+              <span className="text-muted-foreground">用户ID:</span>
               <span className="ml-2 font-mono text-xs">{user.id}</span>
             </div>
             <div>
-              <span className="text-gray-500">用户名:</span>
+              <span className="text-muted-foreground">用户名:</span>
               <span className="ml-2">{user.username || '-'}</span>
             </div>
             <div>
-              <span className="text-gray-500">显示名:</span>
+              <span className="text-muted-foreground">显示名:</span>
               <span className="ml-2">{user.displayName || '-'}</span>
             </div>
             <div>
-              <span className="text-gray-500">最后登录:</span>
+              <span className="text-muted-foreground">最后登录:</span>
               <span className="ml-2">
                 {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '从未'}
               </span>
@@ -193,15 +193,15 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
           <div className="flex flex-wrap gap-3">
             {/* 角色切换 */}
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">角色:</span>
-              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <span className="text-sm text-muted-foreground">角色:</span>
+              <div className="flex rounded-lg border border-border overflow-hidden">
                 <button
                   onClick={() => handleRoleChange('user')}
                   disabled={isCurrentUser}
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     user.role === 'user'
                       ? 'bg-gray-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                      : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   用户
@@ -212,7 +212,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     user.role === 'admin'
                       ? 'bg-purple-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                      : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   管理员
@@ -222,15 +222,15 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
 
             {/* 状态切换 */}
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">状态:</span>
-              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <span className="text-sm text-muted-foreground">状态:</span>
+              <div className="flex rounded-lg border border-border overflow-hidden">
                 <button
                   onClick={() => handleStatusChange('active')}
                   disabled={isCurrentUser}
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     user.status === 'active'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   活跃
@@ -241,7 +241,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     user.status === 'inactive'
                       ? 'bg-gray-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                      : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   未激活
@@ -252,7 +252,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     user.status === 'banned'
                       ? 'bg-red-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                      : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   禁用
@@ -263,7 +263,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
             {/* 编辑按钮 */}
             <button
               onClick={() => onEdit(user)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-primary hover:bg-primary-light rounded-lg transition-colors"
             >
               <Edit2 className="w-4 h-4" />
               编辑详情
@@ -315,42 +315,42 @@ function EditUserDialog({ user, open, onClose, onSave }: EditUserDialogProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+      <div className="bg-card rounded-lg shadow-xl max-w-md w-full p-6">
         <h3 className="text-lg font-semibold mb-4">编辑用户</h3>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-destructive">
             {error}
           </div>
         )}
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               用户名
             </label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               显示名
             </label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
             />
           </div>
 
-          <div className="p-3 bg-gray-50 rounded-lg text-sm">
-            <div className="text-gray-600">
+          <div className="p-3 bg-secondary rounded-lg text-sm">
+            <div className="text-muted-foreground">
               <div>邮箱: {user.email}</div>
               <div>角色: {user.role}</div>
               <div>状态: {user.status}</div>
@@ -362,14 +362,14 @@ function EditUserDialog({ user, open, onClose, onSave }: EditUserDialogProps) {
           <button
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-foreground hover:bg-secondary rounded-lg transition-colors disabled:opacity-50"
           >
             取消
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary-hover transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {saving ? (
               <>
@@ -567,12 +567,12 @@ export default function UserManagementPanel() {
       {/* 标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">用户管理</h2>
-          <p className="text-gray-600 mt-1">管理用户账户、角色和权限</p>
+          <h2 className="text-2xl font-bold text-foreground">用户管理</h2>
+          <p className="text-muted-foreground mt-1">管理用户账户、角色和权限</p>
         </div>
         <button
           onClick={fetchUsers}
-          className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-foreground hover:bg-secondary rounded-lg transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
           刷新
@@ -581,12 +581,12 @@ export default function UserManagementPanel() {
 
       {/* 错误提示 */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
           <div className="flex">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
             <div className="ml-3">
-              <h4 className="text-sm font-medium text-red-800">加载失败</h4>
-              <p className="mt-1 text-sm text-red-700">{error}</p>
+              <h4 className="text-sm font-medium text-destructive">加载失败</h4>
+              <p className="mt-1 text-sm text-destructive">{error}</p>
             </div>
           </div>
         </div>
@@ -594,7 +594,7 @@ export default function UserManagementPanel() {
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-gray-100 text-gray-700 rounded-lg p-4">
+        <div className="bg-secondary text-foreground rounded-lg p-4">
           <div className="text-2xl font-bold">{stats.total}</div>
           <div className="text-sm opacity-80">全部用户</div>
         </div>
@@ -614,26 +614,26 @@ export default function UserManagementPanel() {
 
       {/* 搜索栏 */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
         <input
           type="text"
           placeholder="搜索用户（邮箱、用户名、显示名）..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
         />
       </div>
 
       {/* 用户列表 */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">加载中...</span>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <span className="ml-3 text-muted-foreground">加载中...</span>
         </div>
       ) : filteredUsers.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-          <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">
+        <div className="text-center py-12 bg-card rounded-lg border border-border">
+          <AlertCircle className="w-12 h-12 text-faint mx-auto mb-4" />
+          <p className="text-muted-foreground">
             {searchQuery ? '未找到匹配的用户' : '暂无用户'}
           </p>
         </div>

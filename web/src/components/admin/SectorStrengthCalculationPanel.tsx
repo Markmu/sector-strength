@@ -210,11 +210,11 @@ export default function SectorStrengthCalculationPanel() {
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      pending: 'bg-gray-100 text-gray-700',
-      running: 'bg-blue-100 text-blue-700',
-      completed: 'bg-green-100 text-green-700',
-      failed: 'bg-red-100 text-red-700',
-      cancelled: 'bg-yellow-100 text-yellow-700'
+      pending: 'bg-secondary text-foreground',
+      running: 'bg-primary-light text-primary',
+      completed: 'bg-rise/10 text-rise',
+      failed: 'bg-destructive/10 text-destructive',
+      cancelled: 'bg-secondary text-muted-foreground'
     };
 
     const labels = {
@@ -236,8 +236,8 @@ export default function SectorStrengthCalculationPanel() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <ShieldAlert className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <p className="text-gray-600">您没有权限访问此页面</p>
+          <ShieldAlert className="w-12 h-12 text-destructive mx-auto mb-4" />
+          <p className="text-muted-foreground">您没有权限访问此页面</p>
         </div>
       </div>
     );
@@ -246,8 +246,8 @@ export default function SectorStrengthCalculationPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">板块强度计算</h2>
-        <p className="text-gray-600">
+        <h2 className="text-2xl font-bold text-foreground mb-2">板块强度计算</h2>
+        <p className="text-muted-foreground">
           计算或更新板块强度得分，支持多种日期范围和计算模式。
         </p>
       </div>
@@ -258,8 +258,8 @@ export default function SectorStrengthCalculationPanel() {
           onClick={() => setCalculationMode('by-date')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
             calculationMode === 'by-date'
-              ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : 'bg-white border-gray-200 hover:bg-gray-50'
+              ? 'bg-primary-light border-primary/30 text-primary'
+              : 'bg-card border-border hover:bg-secondary'
           }`}
         >
           <Calendar className="w-4 h-4" />
@@ -269,8 +269,8 @@ export default function SectorStrengthCalculationPanel() {
           onClick={() => setCalculationMode('by-range')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
             calculationMode === 'by-range'
-              ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : 'bg-white border-gray-200 hover:bg-gray-50'
+              ? 'bg-primary-light border-primary/30 text-primary'
+              : 'bg-card border-border hover:bg-secondary'
           }`}
         >
           <CalendarDays className="w-4 h-4" />
@@ -280,8 +280,8 @@ export default function SectorStrengthCalculationPanel() {
           onClick={() => setCalculationMode('full-history')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
             calculationMode === 'full-history'
-              ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : 'bg-white border-gray-200 hover:bg-gray-50'
+              ? 'bg-primary-light border-primary/30 text-primary'
+              : 'bg-card border-border hover:bg-secondary'
           }`}
         >
           <History className="w-4 h-4" />
@@ -291,10 +291,10 @@ export default function SectorStrengthCalculationPanel() {
 
       {/* 日期设置 */}
       {calculationMode !== 'full-history' && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-card rounded-lg shadow-sm border border-border p-6">
           {calculationMode === 'by-date' ? (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 选择日期
               </label>
               <input
@@ -303,13 +303,13 @@ export default function SectorStrengthCalculationPanel() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 max={formatDate(new Date())}
                 disabled={loading}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                className="px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
               />
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   开始日期
                 </label>
                 <input
@@ -318,11 +318,11 @@ export default function SectorStrengthCalculationPanel() {
                   onChange={(e) => setStartDate(e.target.value)}
                   max={endDate}
                   disabled={loading}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   结束日期
                 </label>
                 <input
@@ -332,7 +332,7 @@ export default function SectorStrengthCalculationPanel() {
                   min={startDate}
                   max={formatDate(new Date())}
                   disabled={loading}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
                 />
               </div>
             </div>
@@ -342,14 +342,14 @@ export default function SectorStrengthCalculationPanel() {
 
       {/* 完整历史计算说明 */}
       {calculationMode === 'full-history' && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <div className="bg-rise/10 border border-rise/30 rounded-lg p-4">
           <div className="flex">
             <div className="flex-shrink-0">
-              <History className="w-5 h-5 text-green-600" />
+              <History className="w-5 h-5 text-rise" />
             </div>
             <div className="ml-3">
-              <h4 className="text-sm font-medium text-green-800">完整历史计算模式</h4>
-              <div className="mt-1 text-sm text-green-700">
+              <h4 className="text-sm font-medium text-rise">完整历史计算模式</h4>
+              <div className="mt-1 text-sm text-rise">
                 <p>此模式将自动从每个板块的最早数据日期开始，逐步计算到最新数据的所有强度得分。</p>
                 <p className="mt-1">无需手动选择日期范围，系统会自动计算所有可用历史数据。</p>
               </div>
@@ -359,8 +359,8 @@ export default function SectorStrengthCalculationPanel() {
       )}
 
       {/* 目标选择 */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <label className="block text-sm font-medium text-gray-700 mb-3">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
+        <label className="block text-sm font-medium text-foreground mb-3">
           计算范围
         </label>
         <div className="flex flex-wrap gap-2 mb-3">
@@ -370,8 +370,8 @@ export default function SectorStrengthCalculationPanel() {
               onClick={() => setTargetType(type)}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 targetType === type
-                  ? 'bg-blue-50 border-blue-300 text-blue-700'
-                  : 'bg-white border-gray-200 hover:bg-gray-50'
+                  ? 'bg-primary-light border-primary/30 text-primary'
+                  : 'bg-card border-border hover:bg-secondary'
               }`}
             >
               {type === 'all' ? '全部板块' : '指定板块'}
@@ -390,7 +390,7 @@ export default function SectorStrengthCalculationPanel() {
 
       {/* 覆盖选项 */}
       <div className={`bg-white rounded-lg shadow-sm border p-6 ${
-        overwrite ? 'border-orange-200 bg-orange-50' : 'border-gray-200'
+        overwrite ? 'border-orange-200 bg-orange-50' : 'border-border'
       }`}>
         <div className="flex items-start gap-3">
           <input
@@ -407,12 +407,11 @@ export default function SectorStrengthCalculationPanel() {
             className="mt-1"
           />
           <div className="flex-1">
-            <label htmlFor="overwrite-strength" className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
-              <AlertTriangle className={`w-4 h-4 ${overwrite ? 'text-orange-600' : 'text-gray-400'}`} />
+            <label htmlFor="overwrite-strength" className="flex items-center gap-2 text-sm font-medium text-foreground cursor-pointer">
+              <AlertTriangle className={`w-4 h-4 ${overwrite ? 'text-orange-600' : 'text-faint'}`} />
               覆盖已有强度数据
             </label>
-            <p className="mt-1 text-sm text-gray-600">
-              {overwrite
+            <p className="mt-1 text-sm text-muted-foreground">{overwrite
                 ? '将强制更新已有强度数据，用于修正异常计算结果。此操作不可撤销。'
                 : '只添加缺失的强度数据，不修改已有数据。'}
             </p>
@@ -442,7 +441,7 @@ export default function SectorStrengthCalculationPanel() {
           onClick={startCalculation}
           disabled={loading || (overwrite && !confirmOverwrite) ||
             (targetType === 'single' && !sectorId)}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <TrendingUp className="w-5 h-5" />
           <span className="font-medium">
@@ -455,18 +454,18 @@ export default function SectorStrengthCalculationPanel() {
 
       {/* 错误提示 */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
           <div className="flex">
             <div className="flex-shrink-0">
               <AlertCircle className="w-5 h-5 text-red-600" />
             </div>
             <div className="ml-3 flex-1">
-              <h4 className="text-sm font-medium text-red-800">操作失败</h4>
-              <p className="mt-1 text-sm text-red-700">{error}</p>
+              <h4 className="text-sm font-medium text-destructive">操作失败</h4>
+              <p className="mt-1 text-sm text-destructive">{error}</p>
             </div>
             <button
               onClick={() => setError(null)}
-              className="ml-3 text-red-600 hover:text-red-800"
+              className="ml-3 text-destructive hover:text-destructive"
             >
               <X className="w-5 h-5" />
             </button>
@@ -476,36 +475,36 @@ export default function SectorStrengthCalculationPanel() {
 
       {/* 活动任务 */}
       {activeTask && tasks[activeTask] && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-card rounded-lg shadow-sm border border-border p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+              <Loader2 className="w-5 h-5 text-primary animate-spin" />
               <h3 className="text-lg font-semibold">正在进行</h3>
               {getStatusBadge(tasks[activeTask].status)}
             </div>
             <button
               onClick={() => cancelTask(activeTask)}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 hover:bg-secondary rounded-full transition-colors"
               title="取消任务"
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <X className="w-5 h-5 text-muted-foreground" />
             </button>
           </div>
 
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">{tasks[activeTask].message}</span>
+              <span className="text-muted-foreground">{tasks[activeTask].message}</span>
               <span className="font-medium">{tasks[activeTask].current} / {tasks[activeTask].total}</span>
             </div>
 
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-border rounded-full h-2">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                className="bg-primary h-2 rounded-full transition-all duration-300"
                 style={{ width: `${getProgress(tasks[activeTask])}%` }}
               />
             </div>
 
-            <div className="text-right text-sm text-gray-500">
+            <div className="text-right text-sm text-muted-foreground">
               {getProgress(tasks[activeTask])}%
             </div>
           </div>
@@ -513,14 +512,14 @@ export default function SectorStrengthCalculationPanel() {
       )}
 
       {/* 提示信息 */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-primary-light border border-primary/30 rounded-lg p-4">
         <div className="flex">
           <div className="flex-shrink-0">
-            <LineChart className="w-5 h-5 text-blue-600" />
+            <LineChart className="w-5 h-5 text-primary" />
           </div>
           <div className="ml-3">
-            <h4 className="text-sm font-medium text-blue-800">功能说明</h4>
-            <div className="mt-1 text-sm text-blue-700">
+            <h4 className="text-sm font-medium text-foreground">功能说明</h4>
+            <div className="mt-1 text-sm text-muted-foreground">
               <ul className="list-disc list-inside space-y-1">
                 <li>按日期计算：补齐指定日期的板块强度数据</li>
                 <li>按时间段计算：计算指定时间段内的板块强度，支持筛选特定板块</li>

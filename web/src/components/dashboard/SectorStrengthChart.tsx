@@ -206,12 +206,12 @@ export const SectorStrengthChart = memo(function SectorStrengthChart({
   if (!data || data.length === 0) {
     return (
       <div
-        className="flex items-center justify-center border rounded-lg bg-gray-50"
+        className="flex items-center justify-center border rounded-lg bg-background"
         style={{ height }}
         role="img"
         aria-label={`${sectorName}强度历史图表 - 暂无数据`}
       >
-        <div className="text-gray-500 text-center">
+        <div className="text-muted-foreground text-center">
           <div className="text-4xl mb-2">📊</div>
           <div>暂无强度历史数据</div>
         </div>
@@ -220,7 +220,7 @@ export const SectorStrengthChart = memo(function SectorStrengthChart({
   }
 
   return (
-    <div className="border rounded-lg bg-white p-4">
+    <div className="border rounded-lg bg-card p-4">
       <ReactECharts
         option={option}
         style={{ height, width: '100%' }}

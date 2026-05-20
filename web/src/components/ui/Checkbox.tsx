@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 
 export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
   label?: string
+  onCheckedChange?: (checked: boolean) => void
 }
 
 const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
@@ -32,10 +33,10 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             defaultChecked={defaultChecked}
             onChange={handleChange}
             className={cn(
-              'peer h-4 w-4 cursor-pointer appearance-none rounded border border-[#dee2e6]',
-              'bg-white transition-all duration-200',
-              'checked:border-cyan-500 checked:bg-cyan-500',
-              'focus:outline-none focus:ring-2 focus:ring-cyan-100 focus:ring-offset-0',
+              'peer h-4 w-4 cursor-pointer appearance-none rounded border border-border',
+              'bg-card transition-colors duration-200',
+              'checked:border-primary checked:bg-primary',
+              'focus:outline-none focus:ring-2 focus:ring-primary-light focus:ring-offset-0',
               'disabled:cursor-not-allowed disabled:opacity-50'
             )}
             {...props}
@@ -58,7 +59,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
         {label && (
           <label
             htmlFor={checkboxId}
-            className="ml-2 text-sm text-[#1a1a2e] cursor-pointer select-none"
+            className="ml-2 text-sm text-foreground cursor-pointer select-none"
           >
             {label}
           </label>

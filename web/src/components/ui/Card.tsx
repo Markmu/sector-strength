@@ -17,9 +17,9 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
     const baseStyles = 'rounded-xl'
 
     const variants = {
-      default: 'bg-white border border-[#e9ecef] shadow-sm',
-      outlined: 'bg-white border-2 border-[#dee2e6]',
-      elevated: 'bg-white shadow-md border border-[#e9ecef] hover:shadow-lg transition-shadow duration-200',
+      default: 'bg-card border border-border shadow-sm',
+      outlined: 'bg-card border-2 border-border',
+      elevated: 'bg-card shadow-md border border-border hover:shadow-lg transition-shadow duration-200',
     }
 
     const paddings = {

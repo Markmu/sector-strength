@@ -17,13 +17,13 @@ export function getTrendLabel(direction: number): string {
 export function getTrendColor(direction: number): string {
   switch (direction) {
     case 1:
-      return 'text-green-600'
+      return 'text-rise'
     case 0:
-      return 'text-gray-500'
+      return 'text-muted-foreground'
     case -1:
-      return 'text-red-600'
+      return 'text-fall'
     default:
-      return 'text-gray-400'
+      return 'text-faint'
   }
 }
 
@@ -41,13 +41,13 @@ export function getTrendIcon(direction: number): string {
 }
 
 export function getStrengthColor(score: number): string {
-  if (score >= 80) return 'text-green-600'
-  if (score >= 60) return 'text-yellow-600'
-  return 'text-red-600'
+  if (score >= 80) return 'text-rise'
+  if (score >= 60) return 'text-amber-600'
+  return 'text-fall'
 }
 
 export function getStrengthBgColor(score: number): string {
-  if (score >= 80) return 'bg-green-100'
-  if (score >= 60) return 'bg-yellow-100'
-  return 'bg-red-100'
+  if (score >= 80) return 'bg-rise/10'
+  if (score >= 60) return 'bg-amber-100'
+  return 'bg-fall/10'
 }

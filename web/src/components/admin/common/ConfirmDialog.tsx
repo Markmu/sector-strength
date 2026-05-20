@@ -50,11 +50,11 @@ interface ConfirmDialogProps {
 }
 
 const typeConfig = {
-  default: { icon: null, bgColor: 'bg-gray-50', iconColor: 'text-gray-600' },
-  info: { icon: Info, bgColor: 'bg-blue-50', iconColor: 'text-blue-600' },
-  success: { icon: CheckCircle, bgColor: 'bg-green-50', iconColor: 'text-green-600' },
-  warning: { icon: AlertTriangle, bgColor: 'bg-yellow-50', iconColor: 'text-yellow-600' },
-  danger: { icon: AlertCircle, bgColor: 'bg-red-50', iconColor: 'text-red-600' },
+  default: { icon: null, bgColor: 'bg-secondary', iconColor: 'text-muted-foreground' },
+  info: { icon: Info, bgColor: 'bg-primary-light', iconColor: 'text-primary' },
+  success: { icon: CheckCircle, bgColor: 'bg-rise/10', iconColor: 'text-rise' },
+  warning: { icon: AlertTriangle, bgColor: 'bg-amber-50', iconColor: 'text-amber-600' },
+  danger: { icon: AlertCircle, bgColor: 'bg-destructive/10', iconColor: 'text-destructive' },
 };
 
 export default function ConfirmDialog({
@@ -99,8 +99,8 @@ export default function ConfirmDialog({
 
   const confirmButtonClass =
     confirmVariant === 'danger'
-      ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
-      : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600';
+      ? 'bg-destructive hover:bg-destructive text-destructive-foreground border-destructive'
+      : 'bg-primary hover:bg-primary-hover text-primary-foreground border-primary';
 
   return (
     <div
@@ -109,7 +109,7 @@ export default function ConfirmDialog({
     >
       <div
         ref={dialogRef}
-        className="w-full max-w-md rounded-lg bg-white shadow-xl"
+        className="w-full max-w-md rounded-lg bg-card shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
@@ -127,13 +127,13 @@ export default function ConfirmDialog({
             <div className="flex-1">
               <h3
                 id="dialog-title"
-                className="text-lg font-semibold text-gray-900"
+                className="text-lg font-semibold text-foreground"
               >
                 {title}
               </h3>
               <p
                 id="dialog-message"
-                className="mt-2 text-sm text-gray-600"
+                className="mt-2 text-sm text-muted-foreground"
               >
                 {message}
               </p>
@@ -142,7 +142,7 @@ export default function ConfirmDialog({
             <button
               onClick={onCancel}
               disabled={loading}
-              className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+              className="text-faint hover:text-muted-foreground disabled:opacity-50"
             >
               <X className="h-5 w-5" />
             </button>
@@ -150,11 +150,11 @@ export default function ConfirmDialog({
         </div>
 
         {/* 底部按钮 */}
-        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+        <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
           <button
             onClick={onCancel}
             disabled={loading}
-            className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {cancelText}
           </button>

@@ -46,7 +46,7 @@ export function SearchableSelect({
   const [searchLoading, setSearchLoading] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const searchTimeoutRef = useRef<NodeJS.Timeout>(null)
 
   // 获取当前选中项
   const selectedOption = filteredOptions.find(opt => opt.value === value) ||
@@ -162,10 +162,10 @@ export function SearchableSelect({
         disabled={disabled || isLoading}
         className={`
           w-full px-3 py-2 pr-10 text-left border rounded-lg text-sm
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+          focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
           disabled:opacity-50 disabled:cursor-not-allowed transition-colors
-          ${isOpen ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-300 hover:border-gray-400'}
-          ${disabled || isLoading ? 'bg-gray-50 text-gray-400' : 'bg-white text-gray-900'}
+          ${isOpen ? 'ring-2 ring-primary border-primary' : 'border-border hover:border-muted-foreground'}
+          ${disabled || isLoading ? 'bg-background text-muted-foreground' : 'bg-card text-foreground'}
         `}
       >
         <span className="block truncate">
@@ -175,18 +175,18 @@ export function SearchableSelect({
             <span className="flex items-center gap-2">
               <span>{selectedOption.label}</span>
               {selectedOption.description && (
-                <span className="text-xs text-gray-500">({selectedOption.description})</span>
+                <span className="text-xs text-muted-foreground">({selectedOption.description})</span>
               )}
             </span>
           ) : (
-            <span className="text-gray-400">{placeholder}</span>
+            <span className="text-muted-foreground">{placeholder}</span>
           )}
         </span>
 
         {/* 加载图标 */}
         {searchLoading && (
           <span className="absolute right-8 top-1/2 -translate-y-1/2">
-            <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+            <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
           </span>
         )}
 
@@ -195,32 +195,32 @@ export function SearchableSelect({
           <button
             type="button"
             onClick={handleClear}
-            className="absolute right-8 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded transition-colors"
+            className="absolute right-8 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"
           >
-            <XIcon className="w-4 h-4 text-gray-400" />
+            <XIcon className="w-4 h-4 text-muted-foreground" />
           </button>
         )}
 
         {/* 下拉箭头 */}
         <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-          <ChevronDownIcon className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDownIcon className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </span>
       </button>
 
       {/* 下拉面板 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-80 overflow-hidden flex flex-col">
+        <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-80 overflow-hidden flex flex-col">
           {/* 搜索框 */}
-          <div className="p-2 border-b border-gray-200">
+          <div className="p-2 border-b border-border">
             <div className="relative">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 ref={inputRef}
                 type="text"
                 value={searchTerm}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               />
               {searchTerm && (
                 <button
@@ -229,9 +229,9 @@ export function SearchableSelect({
                     setSearchTerm('')
                     setFilteredOptions(options)
                   }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"
                 >
-                  <XIcon className="w-3 h-3 text-gray-400" />
+                  <XIcon className="w-3 h-3 text-muted-foreground" />
                 </button>
               )}
             </div>
@@ -240,7 +240,7 @@ export function SearchableSelect({
           {/* 选项列表 */}
           <div className="overflow-y-auto flex-1">
             {searchLoading ? (
-              <div className="px-3 py-8 text-center text-gray-500 text-sm">
+              <div className="px-3 py-8 text-center text-muted-foreground text-sm">
                 <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />
                 <p>搜索中...</p>
               </div>
@@ -255,17 +255,17 @@ export function SearchableSelect({
                         onClick={() => handleSelect(option.value)}
                         className={`
                           w-full px-3 py-2 text-left text-sm transition-colors flex items-center justify-between gap-3
-                          ${isSelected ? 'bg-blue-50 text-blue-900' : 'text-gray-900 hover:bg-gray-50'}
+                          ${isSelected ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-background'}
                         `}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{option.label}</div>
                           {option.description && (
-                            <div className="text-xs text-gray-500 truncate">{option.description}</div>
+                            <div className="text-xs text-muted-foreground truncate">{option.description}</div>
                           )}
                         </div>
                         {isSelected && (
-                          <CheckIcon className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                          <CheckIcon className="w-4 h-4 text-primary flex-shrink-0" />
                         )}
                       </button>
                     </li>
@@ -273,12 +273,12 @@ export function SearchableSelect({
                 })}
               </ul>
             ) : searchTerm.length >= minSearchLength ? (
-              <div className="px-3 py-8 text-center text-gray-500 text-sm">
+              <div className="px-3 py-8 text-center text-muted-foreground text-sm">
                 <SearchIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>{emptyMessage}</p>
               </div>
             ) : (
-              <div className="px-3 py-8 text-center text-gray-500 text-sm">
+              <div className="px-3 py-8 text-center text-muted-foreground text-sm">
                 <SearchIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>输入关键词搜索</p>
               </div>
@@ -287,7 +287,7 @@ export function SearchableSelect({
 
           {/* 底部统计 */}
           {filteredOptions.length > 0 && !searchLoading && (
-            <div className="px-3 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-600">
+            <div className="px-3 py-2 bg-background border-t border-border text-xs text-muted-foreground">
               显示 {filteredOptions.length} 个选项
             </div>
           )}

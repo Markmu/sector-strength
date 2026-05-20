@@ -111,7 +111,7 @@ export default function AdminStatsCard({
     <div
       className={`
         relative overflow-hidden rounded-xl border ${config.border}
-        bg-white p-6 shadow-sm transition-all duration-200
+        bg-card p-6 shadow-sm transition-all duration-200
         ${onClick ? 'cursor-pointer hover:shadow-md' : ''}
         ${className}
       `}
@@ -137,13 +137,13 @@ export default function AdminStatsCard({
         {/* 数值 */}
         <div className="mt-4">
           {loading ? (
-            <div className="h-8 w-20 animate-pulse rounded bg-gray-200" />
+            <div className="h-8 w-20 animate-pulse rounded bg-border" />
           ) : (
             <p className={`text-3xl font-bold ${config.text}`}>
               {typeof value === 'number' ? value.toLocaleString() : value}
             </p>
           )}
-          <p className="mt-1 text-sm text-gray-600">{title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{title}</p>
         </div>
       </div>
     </div>

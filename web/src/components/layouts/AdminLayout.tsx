@@ -32,10 +32,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   // 加载状态
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">正在验证权限...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">正在验证权限...</p>
         </div>
       </div>
     );
@@ -45,15 +45,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   // （useRequireAdmin 会处理重定向，但作为额外保护）
   if (!isAuthenticated || !isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-8 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="max-w-md w-full bg-card shadow-lg rounded-lg p-8 text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-red-100 rounded-full">
-              <ShieldAlert className="w-12 h-12 text-red-600" />
+            <div className="p-3 bg-destructive/10 rounded-full">
+              <ShieldAlert className="w-12 h-12 text-destructive" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">访问被拒绝</h1>
-          <p className="text-gray-600 mb-6">
+          <h1 className="text-2xl font-bold text-foreground mb-2">访问被拒绝</h1>
+          <p className="text-muted-foreground mb-6">
             您没有访问此页面的权限。此页面仅限管理员访问。
           </p>
           <div className="space-y-3">
@@ -96,10 +96,10 @@ export function AdminLayoutWithSidebar({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">正在验证权限...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">正在验证权限...</p>
         </div>
       </div>
     );
@@ -107,15 +107,15 @@ export function AdminLayoutWithSidebar({
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-8 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="max-w-md w-full bg-card shadow-lg rounded-lg p-8 text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-red-100 rounded-full">
-              <ShieldAlert className="w-12 h-12 text-red-600" />
+            <div className="p-3 bg-destructive/10 rounded-full">
+              <ShieldAlert className="w-12 h-12 text-destructive" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">访问被拒绝</h1>
-          <p className="text-gray-600 mb-6">此页面仅限管理员访问。</p>
+          <h1 className="text-2xl font-bold text-foreground mb-2">访问被拒绝</h1>
+          <p className="text-muted-foreground mb-6">此页面仅限管理员访问。</p>
           <Button onClick={() => window.location.href = '/'} variant="primary">
             返回首页
           </Button>
@@ -125,7 +125,7 @@ export function AdminLayoutWithSidebar({
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-background">
       {sidebar}
       <main className="flex-1 overflow-y-auto p-6">
         {children}

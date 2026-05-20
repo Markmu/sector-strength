@@ -91,24 +91,24 @@ function Table<T extends Record<string, any>>({
   const sortedData = getSortedData()
 
   return (
-    <div className={cn('w-full overflow-auto rounded-xl border border-[#e9ecef] bg-white', className)}>
+    <div className={cn('w-full overflow-auto rounded-xl border border-border bg-card', className)}>
       <table className={cn(
         'w-full',
         compact ? 'text-sm' : 'text-base'
       )}>
         <thead className={cn(
-          'bg-[#f8f9fb] border-b border-[#e9ecef]'
+          'bg-background border-b border-border'
         )}>
           <tr>
             {columns.map((column) => (
               <th
                 key={String(column.key)}
                 className={cn(
-                  'px-4 py-3 font-semibold text-[#6c757d] text-xs uppercase tracking-wider',
+                  'px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider',
                   column.align === 'center' && 'text-center',
                   column.align === 'right' && 'text-right',
-                  column.sortable && 'cursor-pointer hover:bg-[#f1f3f5] transition-colors',
-                  bordered && 'border-r border-[#e9ecef] last:border-r-0'
+                  column.sortable && 'cursor-pointer hover:bg-secondary transition-colors',
+                  bordered && 'border-r border-border last:border-r-0'
                 )}
                 style={{ width: column.width }}
                 onClick={() => handleSort(column)}
@@ -117,7 +117,7 @@ function Table<T extends Record<string, any>>({
                   <span>{column.title}</span>
                   {column.sortable && sortConfig.key === String(column.key) && (
                     <svg
-                      className="w-4 h-4 text-cyan-500"
+                      className="w-4 h-4 text-primary"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -145,18 +145,18 @@ function Table<T extends Record<string, any>>({
           </tr>
         </thead>
         <tbody className={cn(
-          'divide-y divide-[#f1f3f5]',
-          striped && 'bg-white even:bg-[#f8f9fb]'
+          'divide-y divide-secondary',
+          striped && 'bg-card even:bg-background'
         )}>
           {loading ? (
             <tr>
               <td
                 colSpan={columns.length}
-                className="px-4 py-8 text-center text-[#6c757d]"
+                className="px-4 py-8 text-center text-muted-foreground"
               >
                 <div className="flex items-center justify-center">
                   <svg
-                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-cyan-500"
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-primary"
                     fill="none"
                     viewBox="0 0 24 24"
                   >
@@ -182,7 +182,7 @@ function Table<T extends Record<string, any>>({
             <tr>
               <td
                 colSpan={columns.length}
-                className="px-4 py-8 text-center text-[#6c757d]"
+                className="px-4 py-8 text-center text-muted-foreground"
               >
                 {emptyText}
               </td>
@@ -192,7 +192,7 @@ function Table<T extends Record<string, any>>({
               <tr
                 key={getRowKey(record, index)}
                 className={cn(
-                  hoverable && 'hover:bg-[#f8f9fb]/80 transition-colors',
+                  hoverable && 'hover:bg-background/80 transition-colors',
                   onRowClick && 'cursor-pointer'
                 )}
                 onClick={() => onRowClick?.(record, index)}
@@ -201,10 +201,10 @@ function Table<T extends Record<string, any>>({
                   <td
                     key={String(column.key)}
                     className={cn(
-                      'px-4 py-3 text-[#1a1a2e]',
+                      'px-4 py-3 text-foreground',
                       column.align === 'center' && 'text-center',
                       column.align === 'right' && 'text-right',
-                      bordered && 'border-r border-[#f1f3f5] last:border-r-0'
+                      bordered && 'border-r border-secondary last:border-r-0'
                     )}
                   >
                     {column.render

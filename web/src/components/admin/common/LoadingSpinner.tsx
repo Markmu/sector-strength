@@ -40,12 +40,12 @@ const colorClasses: Record<SpinnerColor, {
   borderTop: string;
 }> = {
   blue: {
-    border: 'border-blue-200',
-    borderTop: 'border-t-blue-600',
+    border: 'border-primary/30',
+    borderTop: 'border-t-primary',
   },
   gray: {
-    border: 'border-gray-200',
-    borderTop: 'border-t-gray-600',
+    border: 'border-border',
+    borderTop: 'border-t-muted-foreground',
   },
   white: {
     border: 'border-white/30',
@@ -76,14 +76,14 @@ export default function LoadingSpinner({
 
       {/* 文本提示 */}
       {text && (
-        <p className="text-sm text-gray-600">{text}</p>
+        <p className="text-sm text-muted-foreground">{text}</p>
       )}
     </div>
   );
 
   if (fullscreen) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-card/80 backdrop-blur-sm">
         {spinnerElement}
       </div>
     );

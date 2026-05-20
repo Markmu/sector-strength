@@ -21,11 +21,11 @@ import { useTaskStatus, type TaskData } from '@/hooks/useTaskStatus';
  */
 function TaskStatusBadge({ status }: { status: TaskStatus }) {
   const config = {
-    pending: { color: 'bg-gray-100 text-gray-700', label: '等待中', icon: Clock },
-    running: { color: 'bg-blue-100 text-blue-700', label: '运行中', icon: RefreshCw },
-    completed: { color: 'bg-green-100 text-green-700', label: '已完成', icon: CheckCircle2 },
-    failed: { color: 'bg-red-100 text-red-700', label: '失败', icon: XCircle },
-    cancelled: { color: 'bg-yellow-100 text-yellow-700', label: '已取消', icon: XCircleIcon },
+    pending: { color: 'bg-secondary text-foreground', label: '等待中', icon: Clock },
+    running: { color: 'bg-primary-light text-primary', label: '运行中', icon: RefreshCw },
+    completed: { color: 'bg-rise/10 text-rise', label: '已完成', icon: CheckCircle2 },
+    failed: { color: 'bg-destructive/10 text-destructive', label: '失败', icon: XCircle },
+    cancelled: { color: 'bg-secondary text-muted-foreground', label: '已取消', icon: XCircleIcon },
   };
 
   const { color, label, icon: Icon } = config[status];
@@ -46,14 +46,14 @@ function TaskProgressBar({ progress, total }: { progress: number; total: number 
 
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-xs text-gray-600">
+      <div className="flex justify-between text-xs text-muted-foreground">
         <span>{progress} / {total}</span>
         <span className="font-medium">{percent}%</span>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+      <div className="w-full bg-border rounded-full h-2 overflow-hidden">
         <div
           className={`h-2 rounded-full transition-all duration-500 ${
-            percent === 100 ? 'bg-green-500' : percent >= 50 ? 'bg-blue-500' : 'bg-blue-400'
+            percent === 100 ? 'bg-rise' : percent >= 50 ? 'bg-primary' : 'bg-primary'
           }`}
           style={{ width: `${percent}%` }}
         />
@@ -100,20 +100,20 @@ function TaskLogs({ taskId, onClose }: TaskLogsProps) {
 
   const getLevelColor = (level: string) => {
     switch (level) {
-      case 'ERROR': return 'text-red-600 bg-red-50';
+      case 'ERROR': return 'text-destructive bg-destructive/10';
       case 'WARNING': return 'text-yellow-600 bg-yellow-50';
-      default: return 'text-gray-600 bg-gray-50';
+      default: return 'text-muted-foreground bg-secondary';
     }
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden">
       <div
-        className="flex items-center justify-between px-4 py-3 bg-gray-50 cursor-pointer"
+        className="flex items-center justify-between px-4 py-3 bg-secondary cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-gray-600" />
+          <AlertCircle className="w-4 h-4 text-muted-foreground" />
           <span className="font-medium text-sm">任务日志</span>
           <span className="text-xs text-gray-500">({logs.length} 条)</span>
         </div>
@@ -123,25 +123,25 @@ function TaskLogs({ taskId, onClose }: TaskLogsProps) {
               e.stopPropagation();
               onClose();
             }}
-            className="p-1 hover:bg-gray-200 rounded"
+            className="p-1 hover:bg-border rounded"
             title="关闭"
           >
-            <XCircle className="w-4 h-4 text-gray-500" />
+            <XCircle className="w-4 h-4 text-muted-foreground" />
           </button>
           {expanded ? (
-            <ChevronUp className="w-4 h-4 text-gray-500" />
+            <ChevronUp className="w-4 h-4 text-muted-foreground" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-gray-500" />
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
           )}
         </div>
       </div>
 
       {expanded && (
-        <div className="max-h-64 overflow-y-auto p-4 space-y-2 bg-white">
+        <div className="max-h-64 overflow-y-auto p-4 space-y-2 bg-card">
           {loading ? (
-            <div className="text-center text-sm text-gray-500 py-4">加载中...</div>
+            <div className="text-center text-sm text-muted-foreground py-4">加载中...</div>
           ) : logs.length === 0 ? (
-            <div className="text-center text-sm text-gray-500 py-4">暂无日志</div>
+            <div className="text-center text-sm text-muted-foreground py-4">暂无日志</div>
           ) : (
             logs.map((log) => (
               <div key={log.id} className={`text-xs font-mono p-2 rounded ${getLevelColor(log.level)}`}>
@@ -180,20 +180,20 @@ function TaskRow({ task, onCancel, onViewLogs }: TaskRowProps) {
   });
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+    <div className="border border-border rounded-lg p-4 hover:shadow-sm transition-shadow">
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-2">
             <TaskStatusBadge status={task.status} />
-            <span className="text-sm font-mono text-gray-500 truncate">{task.taskId}</span>
+            <span className="text-sm font-mono text-muted-foreground truncate">{task.taskId}</span>
             {isPolling && (
-              <span className="text-xs text-blue-600 flex items-center gap-1">
+              <span className="text-xs text-primary flex items-center gap-1">
                 <RefreshCw className="w-3 h-3 animate-spin" />
                 更新中
               </span>
             )}
           </div>
-          <p className="text-sm font-medium text-gray-900">
+          <p className="text-sm font-medium text-foreground">
             {task.taskType === 'init_sectors' && '初始化板块数据'}
             {task.taskType === 'init_stocks' && '初始化股票数据'}
             {task.taskType === 'init_historical_data' && '初始化历史数据'}
@@ -207,7 +207,7 @@ function TaskRow({ task, onCancel, onViewLogs }: TaskRowProps) {
           {(task.status === 'pending' || task.status === 'running') && (
             <button
               onClick={onCancel}
-              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
               title="取消任务"
             >
               <Trash2 className="w-4 h-4" />
@@ -215,7 +215,7 @@ function TaskRow({ task, onCancel, onViewLogs }: TaskRowProps) {
           )}
           <button
             onClick={() => setShowLogs(!showLogs)}
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 text-muted-foreground hover:bg-secondary rounded-lg transition-colors"
             title="查看日志"
           >
             <AlertCircle className="w-4 h-4" />
@@ -230,12 +230,12 @@ function TaskRow({ task, onCancel, onViewLogs }: TaskRowProps) {
       )}
 
       {task.errorMessage && (
-        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mb-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
           <div className="flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
+            <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm text-red-800 font-medium">错误信息</p>
-              <p className="text-sm text-red-700 mt-1">{task.errorMessage}</p>
+              <p className="text-sm text-destructive font-medium">错误信息</p>
+              <p className="text-sm text-destructive mt-1">{task.errorMessage}</p>
             </div>
           </div>
         </div>
@@ -245,7 +245,7 @@ function TaskRow({ task, onCancel, onViewLogs }: TaskRowProps) {
         <TaskLogs taskId={task.taskId} onClose={() => setShowLogs(false)} />
       )}
 
-      <div className="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
+      <div className="flex items-center justify-between text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
         <span>创建于: {new Date(task.createdAt).toLocaleString()}</span>
         {task.startedAt && (
           <span>开始: {new Date(task.startedAt).toLocaleString()}</span>
@@ -272,14 +272,14 @@ function TaskFilters({ status, taskType, onStatusChange, onTaskTypeChange }: Tas
   return (
     <div className="flex flex-wrap gap-3 mb-4">
       <div className="flex items-center gap-2">
-        <Filter className="w-4 h-4 text-gray-500" />
-        <span className="text-sm font-medium text-gray-700">筛选:</span>
+        <Filter className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-medium text-foreground">筛选:</span>
       </div>
 
       <select
         value={status}
         onChange={(e) => onStatusChange(e.target.value)}
-        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="px-3 py-1.5 text-sm border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
       >
         <option value="">全部状态</option>
         <option value="pending">等待中</option>
@@ -292,7 +292,7 @@ function TaskFilters({ status, taskType, onStatusChange, onTaskTypeChange }: Tas
       <select
         value={taskType}
         onChange={(e) => onTaskTypeChange(e.target.value)}
-        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="px-3 py-1.5 text-sm border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
       >
         <option value="">全部类型</option>
         <option value="init_sectors">初始化板块</option>
@@ -322,10 +322,10 @@ interface TaskStatsProps {
 
 function TaskStats({ stats }: TaskStatsProps) {
   const cards = [
-    { label: '全部', value: stats.total, color: 'bg-gray-100 text-gray-700' },
-    { label: '运行中', value: stats.running, color: 'bg-blue-100 text-blue-700' },
-    { label: '已完成', value: stats.completed, color: 'bg-green-100 text-green-700' },
-    { label: '失败', value: stats.failed, color: 'bg-red-100 text-red-700' },
+    { label: '全部', value: stats.total, color: 'bg-secondary text-foreground' },
+    { label: '运行中', value: stats.running, color: 'bg-primary-light text-primary' },
+    { label: '已完成', value: stats.completed, color: 'bg-rise/10 text-rise' },
+    { label: '失败', value: stats.failed, color: 'bg-destructive/10 text-destructive' },
   ];
 
   return (
@@ -414,15 +414,15 @@ export default function TaskMonitorPanel() {
       {/* 标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">任务监控</h2>
-          <p className="text-gray-600 mt-1">查看和管理系统异步任务</p>
+          <h2 className="text-2xl font-bold text-foreground">任务监控</h2>
+          <p className="text-muted-foreground mt-1">查看和管理系统异步任务</p>
         </div>
         <button
           onClick={() => {
             fetchTasks();
             fetchStats();
           }}
-          className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-foreground hover:bg-secondary rounded-lg transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
           刷新
@@ -431,12 +431,12 @@ export default function TaskMonitorPanel() {
 
       {/* 错误提示 */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
           <div className="flex">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
             <div className="ml-3">
-              <h4 className="text-sm font-medium text-red-800">加载失败</h4>
-              <p className="mt-1 text-sm text-red-700">{error}</p>
+              <h4 className="text-sm font-medium text-destructive">加载失败</h4>
+              <p className="mt-1 text-sm text-destructive">{error}</p>
             </div>
           </div>
         </div>
@@ -456,13 +456,13 @@ export default function TaskMonitorPanel() {
       {/* 任务列表 */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">加载中...</span>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <span className="ml-3 text-muted-foreground">加载中...</span>
         </div>
       ) : tasks.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-          <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">暂无任务</p>
+        <div className="text-center py-12 bg-card rounded-lg border border-border">
+          <AlertCircle className="w-12 h-12 text-faint mx-auto mb-4" />
+          <p className="text-muted-foreground">暂无任务</p>
         </div>
       ) : (
         <div className="space-y-4">

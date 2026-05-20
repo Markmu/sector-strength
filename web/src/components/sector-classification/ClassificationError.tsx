@@ -82,13 +82,13 @@ export function ClassificationError({
       aria-atomic="true"
     >
       {/* 错误提示卡片 */}
-      <div className="bg-white rounded-xl border border-red-200 shadow-sm p-8">
+      <div className="bg-card rounded-xl border border-red-200 shadow-sm p-8">
         {/* 错误图标和标题 */}
         <div className="flex items-start gap-4">
           {/* 错误图标 */}
-          <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
+          <div className="flex-shrink-0 w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
             <svg
-              className="w-6 h-6 text-red-600"
+              className="w-6 h-6 text-destructive"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -105,10 +105,10 @@ export function ClassificationError({
 
           {/* 错误内容 */}
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-foreground mb-2">
               获取分类数据失败
             </h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-muted-foreground mb-4">
               {errorMessage}
             </p>
 
