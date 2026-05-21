@@ -194,7 +194,7 @@ export default function SectorSearchSelect({
 
       {/* 下拉列表 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-60 overflow-auto">
+        <div className="absolute z-50 w-full mt-1 bg-popover/95 backdrop-blur-sm border border-border rounded-lg shadow-xl max-h-60 overflow-auto">
           {loading && options.length === 0 ? (
             <div className="px-4 py-8 text-center text-muted-foreground">
               <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />

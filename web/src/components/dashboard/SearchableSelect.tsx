@@ -209,7 +209,7 @@ export function SearchableSelect({
 
       {/* 下拉面板 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-80 overflow-hidden flex flex-col">
+        <div className="absolute z-50 w-full mt-1 bg-popover/95 backdrop-blur-sm border border-border rounded-lg shadow-xl max-h-80 overflow-hidden flex flex-col">
           {/* 搜索框 */}
           <div className="p-2 border-b border-border">
             <div className="relative">
@@ -287,7 +287,7 @@ export function SearchableSelect({
 
           {/* 底部统计 */}
           {filteredOptions.length > 0 && !searchLoading && (
-            <div className="px-3 py-2 bg-background border-t border-border text-xs text-muted-foreground">
+            <div className="px-3 py-2 bg-secondary/50 border-t border-border text-xs text-muted-foreground">
               显示 {filteredOptions.length} 个选项
             </div>
           )}
