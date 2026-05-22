@@ -1,5 +1,83 @@
 @import "tailwindcss";
-@config "../../tailwind.config.ts";
+
+@theme {
+  --color-background: hsl(220 12% 96%);
+  --color-foreground: hsl(228 14% 16%);
+
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(228 14% 16%);
+
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(228 14% 16%);
+
+  --color-primary: hsl(212 16% 42%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-primary-hover: hsl(212 16% 36%);
+  --color-primary-light: hsl(212 14% 86%);
+  --color-primary-50: hsl(212 12% 96%);
+  --color-primary-100: hsl(212 12% 93%);
+  --color-primary-200: hsl(214 12% 89%);
+  --color-primary-300: hsl(212 14% 80%);
+  --color-primary-400: hsl(212 14% 65%);
+  --color-primary-500: hsl(212 16% 42%);
+  --color-primary-600: hsl(212 16% 36%);
+  --color-primary-700: hsl(212 18% 28%);
+  --color-primary-800: hsl(228 14% 20%);
+  --color-primary-900: hsl(228 14% 16%);
+
+  --color-secondary: hsl(214 12% 93%);
+  --color-secondary-foreground: hsl(228 14% 16%);
+
+  --color-muted: hsl(214 12% 93%);
+  --color-muted-foreground: hsl(220 7% 52%);
+
+  --color-accent: hsl(212 16% 42%);
+  --color-accent-foreground: hsl(0 0% 100%);
+
+  --color-destructive: hsl(8 50% 51%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+
+  --color-border: hsl(214 12% 89%);
+  --color-input: hsl(214 12% 89%);
+  --color-ring: hsl(212 16% 42%);
+
+  --color-rise: hsl(8 50% 51%);
+  --color-fall: hsl(153 31% 42%);
+  --color-faint: hsl(218 9% 68%);
+
+  --radius-lg: 0.75rem;
+  --radius-md: calc(0.75rem - 2px);
+  --radius-sm: calc(0.75rem - 4px);
+
+  --font-size-xxs: 0.625rem;
+  --font-size-xxs--line-height: 0.75rem;
+
+  --shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-medium: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in: fadeIn 0.3s ease-out;
+  --animate-slide-up: slideUp 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from { height: "0"; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: "0"; }
+  }
+  @keyframes fadeIn {
+    "0%" { opacity: "0"; }
+    "100%" { opacity: "1"; }
+  }
+  @keyframes slideUp {
+    "0%" { transform: translateY(10px); opacity: "0"; }
+    "100%" { transform: translateY(0); opacity: "1"; }
+  }
+}
 
 @layer base {
   :root {
