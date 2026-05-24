@@ -4,20 +4,23 @@
 统一协调所有数据采集任务。
 """
 
-import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta, date
-from typing import Dict, Any, Optional
+from datetime import datetime, date
+from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.database import AsyncSessionLocal
 from src.models.update_log import DataUpdateLog
-from src.models.period_config import PeriodConfig
+from src.models.sector import Sector
+from src.models.stock import Stock
+from src.models.daily_market_data import DailyMarketData
 from src.services.data_acquisition.akshare_client import AkShareDataSource
+from src.services.trading_calendar import TradingCalendar
 from src.services.cache.cache_manager import get_cache_manager
 
 try:
@@ -41,16 +44,9 @@ async def get_session():
 
 
 class DataCollector:
-    """
-    数据采集协调器
-
-    统一管理所有数据采集和更新任务。
-    """
 
     def __init__(self):
-        """初始化数据采集器"""
-        self._trading_days_cache = None
-        self._cache_expiry = None
+        self._trading_calendar = TradingCalendar()
 
     async def run_daily_update(self) -> Dict[str, Any]:
         """
@@ -59,7 +55,6 @@ class DataCollector:
         Returns:
             更新结果统计
         """
-        # 创建更新日志记录
         log_entry = DataUpdateLog(
             id=str(uuid.uuid4()),
             start_time=datetime.now(),
@@ -79,11 +74,13 @@ class DataCollector:
 
         try:
             # 1. 检查交易日
-            if not await self._is_trading_day():
-                logger.info("[数据更新] 今天不是交易日，跳过更新")
+            is_trading, reason = await self._trading_calendar.is_trading_day()
+            if not is_trading:
+                logger.info(f"[数据更新] 今天不是交易日，跳过更新: {reason}")
                 log_entry.status = 'skipped'
+                log_entry.error_message = reason
                 log_entry.end_time = datetime.now()
-                results['message'] = '非交易日，跳过更新'
+                results['message'] = f'非交易日，跳过更新: {reason}'
                 await self._save_update_log(log_entry)
                 return results
 
@@ -120,129 +117,179 @@ class DataCollector:
             log_entry.end_time = datetime.now()
 
         finally:
-            # 保存更新日志
             await self._save_update_log(log_entry)
 
         return results
 
-    async def _is_trading_day(self, check_date: Optional[date] = None) -> bool:
-        """
-        检查今天是否是交易日
-
-        使用简单的周末检查（暂不使用 AkShare 交易日历）
-
-        Returns:
-            是否为交易日
-        """
-        today = check_date or datetime.now().date()
-
-        # 简单判断：周一到周五是交易日
-        # TODO: 集成 AkShare 获取真实交易日历
-        is_weekend = today.weekday() >= 5
-        # 兼容旧测试：元旦视为休市日
-        if today.month == 1 and today.day == 1:
-            return False
-        return not is_weekend
+    async def _is_trading_day(self, check_date: Optional[date] = None) -> tuple[bool, Optional[str]]:
+        """检查是否为交易日"""
+        return await self._trading_calendar.is_trading_day(check_date)
 
     async def _update_sectors(self) -> int:
-        """
-        更新板块数据
-
-        Returns:
-            更新的板块数量
-        """
+        """更新板块数据到数据库"""
         logger.info("[数据更新] 开始更新板块数据")
 
-        try:
-            data_source = AkShareDataSource()
-            sectors = data_source.get_sector_list()
+        data_source = AkShareDataSource()
+        sectors = data_source.get_sector_list()
+
+        async with get_session() as session:
+            result = await session.execute(select(Sector))
+            existing_map = {s.code: s for s in result.scalars().all()}
 
             count = 0
-            async with get_session() as session:
-                for sector_info in sectors:
-                    # TODO: 更新板块数据到数据库
-                    # 这里需要实现具体的更新逻辑
+            for sector_info in sectors:
+                if sector_info.code in existing_map:
+                    if existing_map[sector_info.code].name != sector_info.name:
+                        existing_map[sector_info.code].name = sector_info.name
+                        count += 1
+                else:
+                    session.add(Sector(
+                        code=sector_info.code,
+                        name=sector_info.name,
+                        type=sector_info.type,
+                    ))
                     count += 1
 
-            logger.info(f"[数据更新] 板块数据更新完成: {count} 个板块")
-            return count
-        except Exception as e:
-            logger.error(f"[数据更新] 板块更新失败: {e}")
-            return 0
+            await session.commit()
+
+        logger.info(f"[数据更新] 板块数据更新完成: {count} 个板块")
+        return count
 
     async def _update_stocks(self) -> int:
-        """
-        更新股票数据
-
-        Returns:
-            更新的股票数量
-        """
+        """更新股票数据到数据库"""
         logger.info("[数据更新] 开始更新股票数据")
 
-        try:
-            data_source = AkShareDataSource()
-            stocks = data_source.get_stock_list()
+        data_source = AkShareDataSource()
+        stocks = data_source.get_stock_list()
+
+        async with get_session() as session:
+            result = await session.execute(select(Stock))
+            existing_map = {s.symbol: s for s in result.scalars().all()}
 
             count = 0
-            # TODO: 更新股票数据到数据库
-            async with get_session() as session:
-                for stock_info in stocks:
+            for stock_info in stocks:
+                if stock_info.symbol in existing_map:
+                    if existing_map[stock_info.symbol].name != stock_info.name:
+                        existing_map[stock_info.symbol].name = stock_info.name
+                        count += 1
+                else:
+                    session.add(Stock(
+                        symbol=stock_info.symbol,
+                        name=stock_info.name,
+                    ))
                     count += 1
 
-            logger.info(f"[数据更新] 股票数据更新完成: {count} 只股票")
-            return count
-        except Exception as e:
-            logger.error(f"[数据更新] 股票更新失败: {e}")
-            return 0
+            await session.commit()
+
+        logger.info(f"[数据更新] 股票数据更新完成: {count} 只股票")
+        return count
 
     async def _update_market_data(self) -> int:
-        """
-        更新行情数据
-
-        Returns:
-            更新的行情数据数量
-        """
+        """更新行情数据到数据库"""
         logger.info("[数据更新] 开始更新行情数据")
 
-        try:
-            data_source = AkShareDataSource()
-            # 获取最新交易日
-            latest_date = datetime.now().date()
+        data_source = AkShareDataSource()
+        today = datetime.now().date()
+        total_count = 0
 
-            # 获取所有股票代码
-            async with get_session() as session:
-                from src.models.stock import Stock
-                stmt = select(Stock.symbol)
-                result = await session.execute(stmt)
-                symbols = result.scalars().all()
+        async with get_session() as session:
+            # 构建板块映射 {code: (id, name, type)}
+            sector_result = await session.execute(select(Sector))
+            sector_map = {s.code: (s.id, s.name, s.type) for s in sector_result.scalars().all()}
 
-            count = 0
-            # TODO: 批量获取行情数据并保存
-            for symbol in list(symbols)[:10]:  # 限制处理数量
+            # 构建股票映射 {symbol: id}
+            stock_result = await session.execute(select(Stock))
+            stock_map = {s.symbol: s.id for s in stock_result.scalars().all()}
+
+            # 写入板块行情
+            for code, (entity_id, name, stype) in sector_map.items():
                 try:
-                    quotes = data_source.get_daily_data(
-                        symbol=symbol,
-                        start_date=latest_date,
-                        end_date=latest_date,
+                    quotes = data_source.get_sector_daily_data(
+                        sector_name=name,
+                        sector_type=stype,
+                        start_date=today,
+                        end_date=today,
                     )
-                    # TODO: 保存到 DailyMarketData 表
-                    count += len(quotes)
+                    if quotes:
+                        for q in quotes:
+                            stmt = pg_insert(DailyMarketData).values(
+                                entity_type='sector',
+                                entity_id=entity_id,
+                                symbol=code,
+                                date=q.trade_date,
+                                open=q.open,
+                                high=q.high,
+                                low=q.low,
+                                close=q.close,
+                                volume=q.volume,
+                                turnover=q.turnover,
+                            )
+                            stmt = stmt.on_conflict_do_nothing(
+                                constraint='uq_daily_market_data_entity_date'
+                            )
+                            await session.execute(stmt)
+                        total_count += len(quotes)
                 except Exception as e:
-                    logger.warning(f"[数据更新] 获取 {symbol} 行情失败: {e}")
+                    logger.warning(f"[数据更新] 获取板块 {name} 行情失败: {e}")
 
-            logger.info(f"[数据更新] 行情数据更新完成: {count} 条记录")
-            return count
-        except Exception as e:
-            logger.error(f"[数据更新] 行情更新失败: {e}")
-            return 0
+            await session.commit()
+
+            # 写入股票行情
+            symbols = list(stock_map.items())
+            failed_count = 0
+            batch_size = 50
+
+            for i in range(0, len(symbols), batch_size):
+                batch = symbols[i:i + batch_size]
+                for symbol, entity_id in batch:
+                    try:
+                        quotes = data_source.get_daily_data(
+                            symbol=symbol,
+                            start_date=today,
+                            end_date=today,
+                        )
+                        if quotes:
+                            for q in quotes:
+                                change_val = None
+                                change_pct = None
+                                if q.close and q.open:
+                                    change_val = q.close - q.open
+                                    if q.open != 0:
+                                        change_pct = change_val / q.open * 100
+
+                                stmt = pg_insert(DailyMarketData).values(
+                                    entity_type='stock',
+                                    entity_id=entity_id,
+                                    symbol=symbol,
+                                    date=q.trade_date,
+                                    open=q.open,
+                                    high=q.high,
+                                    low=q.low,
+                                    close=q.close,
+                                    volume=q.volume,
+                                    turnover=q.turnover,
+                                    change=change_val,
+                                    change_percent=change_pct,
+                                )
+                                stmt = stmt.on_conflict_do_nothing(
+                                    constraint='uq_daily_market_data_entity_date'
+                                )
+                                await session.execute(stmt)
+                            total_count += len(quotes)
+                    except Exception as e:
+                        failed_count += 1
+                        logger.warning(f"[数据更新] 获取 {symbol} 行情失败: {e}")
+
+                await session.commit()
+
+            if failed_count == len(symbols) and len(symbols) > 0:
+                raise RuntimeError(f"所有 {len(symbols)} 只股票行情拉取失败")
+
+        logger.info(f"[数据更新] 行情数据更新完成: {total_count} 条记录")
+        return total_count
 
     async def _run_calculations(self) -> int:
-        """
-        执行强度计算
-
-        Returns:
-            计算的实体数量
-        """
+        """执行强度计算"""
         logger.info("[数据更新] 开始执行强度计算")
 
         try:
@@ -278,7 +325,6 @@ class DataCollector:
     async def _save_update_log(self, log_entry: DataUpdateLog):
         """保存更新日志到数据库"""
         async with get_session() as session:
-            # 兼容旧测试：允许直接传入 dict
             if isinstance(log_entry, dict):
                 log_entry = DataUpdateLog(
                     id=str(uuid.uuid4()),
@@ -295,17 +341,11 @@ class DataCollector:
             await session.commit()
 
     async def get_latest_update_status(self) -> Optional[Dict[str, Any]]:
-        """
-        获取最新更新状态
-
-        Returns:
-            更新状态信息
-        """
+        """获取最新更新状态"""
         async with get_session() as session:
             stmt = select(DataUpdateLog).order_by(
                 DataUpdateLog.start_time.desc()
             ).limit(1)
-            # 兼容旧测试的 session.scalar mock
             if hasattr(session, "scalar"):
                 latest_log = await session.scalar(stmt)
             else:
@@ -336,16 +376,7 @@ class DataCollector:
         page: int = 1,
         page_size: int = 20
     ) -> Dict[str, Any]:
-        """
-        获取更新历史
-
-        Args:
-            page: 页码
-            page_size: 每页数量
-
-        Returns:
-            更新历史数据
-        """
+        """获取更新历史"""
         async with get_session() as session:
             offset = (page - 1) * page_size
             stmt = (
@@ -357,7 +388,6 @@ class DataCollector:
             result = await session.execute(stmt)
             logs = result.scalars().all()
 
-            # 获取总数
             count_stmt = select(func.count(DataUpdateLog.id))
             total_result = await session.execute(count_stmt)
             total = total_result.scalar()

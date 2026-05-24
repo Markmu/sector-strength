@@ -13,7 +13,8 @@ from src.core.settings import settings
 from src.core.exceptions import setup_exception_handlers
 from src.api.router import router as api_router
 from src.api.exceptions import APIError, api_error_handler, generic_error_handler
-from src.db.database import engine
+from sqlalchemy import text
+from src.db.database import engine, AsyncSessionLocal
 from src.api.v1.error_handlers import register_classification_exception_handlers
 
 # 导入任务执行器
@@ -137,7 +138,8 @@ async def health_check():
 async def database_health_check():
     """数据库健康检查"""
     try:
-        # TODO: 实现实际的数据库连接检查
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
         return {
             "status": "healthy",
             "database": "connected"

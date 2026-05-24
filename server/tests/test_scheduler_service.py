@@ -222,15 +222,29 @@ class TestJobManager:
         """测试数据质量检查任务执行"""
         with patch('src.services.monitoring.data_quality.DataQualityChecker') as mock_checker_class:
             mock_checker = AsyncMock()
-            mock_checker.check_data_integrity.return_value = {
-                'has_issues': False,
-                'issues': []
+            mock_checker.run_full_check.return_value = {
+                'check_time': '2024-01-10T10:00:00',
+                'is_healthy': True,
+                'latest_trading_date': '2024-01-09',
+                'checks': {'missing_data': {'affected_count': 0, 'severity': 'none'}},
+                'backfill': {
+                    'gap_start': None,
+                    'gap_end': None,
+                    'trading_days_to_fill': 0,
+                    'filled_successfully': 0,
+                    'filled_failed': 0,
+                },
+                'data_overview': {
+                    'total_stocks': 100,
+                    'total_sectors': 50,
+                    'total_market_data': 5000,
+                },
             }
             mock_checker_class.return_value = mock_checker
 
             await job_manager._check_data_quality()
 
-            mock_checker.check_data_integrity.assert_called_once()
+            mock_checker.run_full_check.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cache_cleanup_task(self, job_manager):

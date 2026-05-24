@@ -39,7 +39,7 @@ class DataUpdateLog(Base):
         String(20),
         nullable=False,
         index=True,
-    )  # 'running', 'completed', 'failed'
+    )  # 'running', 'completed', 'failed', 'skipped'
     sectors_updated = Column(Integer, default=0)
     stocks_updated = Column(Integer, default=0)
     market_data_updated = Column(Integer, default=0)

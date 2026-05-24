@@ -209,6 +209,45 @@ class AkShareDataSource(BaseDataSource):
         )
         return None
 
+    def get_trading_calendar(self) -> List[date]:
+        """获取 A 股交易日历（含节假日调休）"""
+        ak = self._get_akshare()
+
+        def _fetch() -> pd.DataFrame:
+            logger.info("正在获取交易日历...")
+            return ak.tool_trade_date_hist_sina()
+
+        try:
+            df = self._execute_with_retry(_fetch)
+            if df.empty:
+                raise DataFetchError(
+                    "交易日历返回空数据",
+                    source=self.source_name,
+                    endpoint="tool_trade_date_hist_sina",
+                )
+
+            dates: List[date] = []
+            col = df["trade_date"] if "trade_date" in df.columns else df.iloc[:, 0]
+            for val in col:
+                parsed = self._safe_parse_date(val)
+                if parsed is not None:
+                    dates.append(parsed)
+
+            dates.sort()
+            logger.info(f"获取到 {len(dates)} 个交易日")
+            return dates
+        except RetryExhaustedError:
+            raise
+        except DataFetchError:
+            raise
+        except Exception as e:
+            raise DataFetchError(
+                f"获取交易日历失败: {e}",
+                source=self.source_name,
+                endpoint="tool_trade_date_hist_sina",
+                original_error=e,
+            )
+
     def get_stock_list(self) -> List[StockInfo]:
         """
         获取 A 股股票列表

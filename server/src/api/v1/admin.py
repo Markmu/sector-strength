@@ -18,6 +18,7 @@ from src.models.user import User
 from src.core.settings import settings
 from src.services.scheduler.job_manager import get_job_manager
 from src.services.cache.cache_manager import get_cache_manager
+from src.services.monitoring.data_quality import DataQualityChecker as RealDataQualityChecker
 
 router = APIRouter(prefix="/admin/data", tags=["admin-legacy"])
 
@@ -26,14 +27,6 @@ def _require_api_key(api_key: Optional[str]) -> None:
     expected = getattr(settings, "ADMIN_API_KEY", "admin-secret-key-change-in-production")
     if api_key != expected:
         raise HTTPException(status_code=401, detail="Invalid API key")
-
-
-class DataQualityChecker:
-    async def check_data_integrity(self):
-        return {"has_issues": False, "issues": []}
-
-    async def get_data_quality_report(self):
-        return {"stock_count": 0}
 
 
 class AdminCheckData(BaseModel):
@@ -89,10 +82,9 @@ async def scheduler_trigger(job_id: str, api_key: Optional[str] = Header(None, a
 @router.get("/quality/check")
 async def quality_check(api_key: Optional[str] = Header(None, alias="api_key")):
     _require_api_key(api_key)
-    checker = DataQualityChecker()
-    integrity = await checker.check_data_integrity()
-    report = await checker.get_data_quality_report()
-    return {"success": True, "data": {"integrity": integrity, "report": report}}
+    checker = RealDataQualityChecker()
+    report = await checker.run_full_check()
+    return {"success": True, "data": report}
 
 
 @router.get("/cache/stats")

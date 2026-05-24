@@ -43,10 +43,10 @@ class JobManager:
             replace_existing=True
         )
 
-        # 每 5 分钟检查数据质量
+        # 每小时检查数据质量
         self.scheduler.add_job(
             self._check_data_quality,
-            trigger=IntervalTrigger(minutes=5),
+            trigger=IntervalTrigger(hours=1),
             id='data_quality_check',
             name='数据质量检查',
             replace_existing=True
@@ -90,16 +90,23 @@ class JobManager:
         """数据质量检查任务"""
         from src.services.monitoring.data_quality import DataQualityChecker
 
-        logger.debug("[定时任务] 执行数据质量检查")
+        logger.info("[定时任务] 执行数据质量检查")
 
         try:
             checker = DataQualityChecker()
-            issues = await checker.check_data_integrity()
+            report = await checker.run_full_check()
 
-            if issues.get('has_issues'):
-                logger.warning(f"[定时任务] 发现数据质量问题: {issues.get('issues', [])}")
+            if not report.get('is_healthy'):
+                logger.warning(
+                    f"[定时任务] 发现数据质量问题: 缺失 {report['checks']['missing_data']['affected_count']} 条"
+                )
+                backfill = report.get('backfill', {})
+                logger.info(
+                    f"[定时任务] 补齐结果: 成功 {backfill.get('filled_successfully', 0)} 日, "
+                    f"失败 {backfill.get('filled_failed', 0)} 日"
+                )
             else:
-                logger.debug("[定时任务] 数据质量检查通过")
+                logger.info("[定时任务] 数据质量检查通过")
         except Exception as e:
             logger.error(f"[定时任务] 数据质量检查失败: {e}")
 

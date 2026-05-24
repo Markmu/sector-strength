@@ -99,14 +99,25 @@ class TestDataQualityAdminAPI:
 
     def test_check_data_quality(self, client, admin_headers):
         """测试数据质量检查"""
-        with patch('src.api.v1.admin.DataQualityChecker') as mock_checker_class:
+        with patch('src.api.v1.admin.RealDataQualityChecker') as mock_checker_class:
             mock_checker = MagicMock()
-            mock_checker.check_data_integrity = AsyncMock(return_value={
-                'has_issues': False,
-                'issues': []
-            })
-            mock_checker.get_data_quality_report = AsyncMock(return_value={
-                'stock_count': 100
+            mock_checker.run_full_check = AsyncMock(return_value={
+                'check_time': '2024-01-10T10:00:00',
+                'is_healthy': True,
+                'latest_trading_date': '2024-01-09',
+                'checks': {'missing_data': {'affected_count': 0, 'severity': 'none'}},
+                'backfill': {
+                    'gap_start': None,
+                    'gap_end': None,
+                    'trading_days_to_fill': 0,
+                    'filled_successfully': 0,
+                    'filled_failed': 0,
+                },
+                'data_overview': {
+                    'total_stocks': 100,
+                    'total_sectors': 50,
+                    'total_market_data': 5000,
+                },
             })
             mock_checker_class.return_value = mock_checker
 
@@ -115,7 +126,7 @@ class TestDataQualityAdminAPI:
             assert response.status_code == 200
             data = response.json()
             assert data['success'] is True
-            assert 'integrity' in data['data']
+            assert data['data']['is_healthy'] is True
 
 
 class TestCacheAdminAPI:
