@@ -13,6 +13,7 @@ from .init import router as init_router
 from .tasks import router as tasks_router
 from .rbac import router as rbac_router
 from .sector_classifications import router as sector_classifications_router
+from .data_status import router as data_status_router
 
 # 创建 Admin 主路由
 # 注意：不在这里设置统一前缀，因为每个子路由有自己的前缀
@@ -23,5 +24,6 @@ router.include_router(init_router)    # /api/admin/init/*
 router.include_router(tasks_router)   # /api/admin/tasks/*
 router.include_router(rbac_router)    # /api/admin/*
 router.include_router(sector_classifications_router)  # /api/admin/sector-classification/*
+router.include_router(data_status_router)  # /api/admin/data/*
 
 __all__ = ["router"]

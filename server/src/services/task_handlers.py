@@ -47,6 +47,11 @@ class TaskType(str, Enum):
     CALCULATE_SECTOR_STRENGTH_BY_RANGE = "calculate_sector_strength_by_range"
     CALCULATE_SECTOR_STRENGTH_FULL_HISTORY = "calculate_sector_strength_full_history"
 
+    # 数据状态补齐任务
+    BACKFILL_HISTORY = "backfill_history"
+    BACKFILL_MA = "backfill_ma"
+    BACKFILL_STRENGTH = "backfill_strength"
+
     # 板块分类任务
     INIT_SECTOR_CLASSIFICATIONS = "init_sector_classifications"
     UPDATE_SECTOR_CLASSIFICATION_DAILY = "update_sector_classification_daily"
@@ -602,6 +607,9 @@ __all__ = [
     "calculate_sector_strength_full_history_task",
     "init_sector_classifications_task",
     "update_sector_classification_daily_task",
+    "backfill_history_task",
+    "backfill_ma_task",
+    "backfill_strength_task",
 ]
 
 
@@ -907,4 +915,114 @@ async def update_sector_classification_daily_task(
     else:
         error_msg = result.get("error", "Unknown error")
         await manager.log_message(task_id, "ERROR", f"Daily classification update failed: {error_msg}")
+        raise Exception(error_msg)
+
+
+# ============== 数据状态补齐任务 ==============
+
+@TaskRegistry.register(TaskType.BACKFILL_HISTORY)
+async def backfill_history_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """补齐板块历史数据缺口，复用 init_sector_historical_data_task"""
+    await init_sector_historical_data_task(task_id, {
+        "start_date": params["start_date"],
+        "end_date": params["end_date"],
+    }, manager)
+
+
+@TaskRegistry.register(TaskType.BACKFILL_MA)
+async def backfill_ma_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """补齐板块均线数据缺口（逐日循环）"""
+    from src.services.trading_calendar import TradingCalendar
+
+    start_date = date.fromisoformat(params["start_date"])
+    end_date = date.fromisoformat(params["end_date"])
+
+    calendar = TradingCalendar()
+    trading_days = await calendar.get_trading_days_between(start_date, end_date)
+
+    if not trading_days:
+        await manager.log_message(task_id, "INFO", "No trading days in range, skipping")
+        return
+
+    total = len(trading_days)
+    success_count = 0
+    fail_count = 0
+
+    await manager.log_message(
+        task_id, "INFO",
+        f"Starting MA backfill: {total} trading days from {trading_days[0]} to {trading_days[-1]}"
+    )
+
+    for i, target_date in enumerate(trading_days, 1):
+        try:
+            service = SectorMAService(manager.db)
+            await service.backfill_sector_ma(target_date)
+            success_count += 1
+        except Exception as e:
+            fail_count += 1
+            logger.warning(f"MA backfill failed for {target_date}: {e}")
+            await manager.log_message(
+                task_id, "WARNING",
+                f"MA backfill failed for {target_date}: {e}"
+            )
+
+        await manager.update_progress(task_id, i, total)
+
+    await manager.log_message(
+        task_id, "INFO",
+        f"MA backfill completed: {success_count} succeeded, {fail_count} failed out of {total}"
+    )
+
+    if fail_count == total:
+        raise Exception(f"All {total} days failed")
+
+
+@TaskRegistry.register(TaskType.BACKFILL_STRENGTH)
+async def backfill_strength_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """补齐板块强度数据缺口"""
+    service = SectorStrengthService(manager.db)
+
+    start_date = date.fromisoformat(params["start_date"])
+    end_date = date.fromisoformat(params["end_date"])
+
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    await manager.log_message(
+        task_id, "INFO",
+        f"Starting strength backfill: {start_date} to {end_date}"
+    )
+
+    result = await service.calculate_sector_strength_by_range(
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    if result.get("success"):
+        total = result.get("total_sectors", 0)
+        created = result.get("created", 0)
+        updated = result.get("updated", 0)
+        skipped = result.get("skipped", 0)
+        errors = result.get("errors", 0)
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"Strength backfill completed: {total} sectors, "
+            f"{created} created, {updated} updated, {skipped} skipped, {errors} errors"
+        )
+    else:
+        error_msg = result.get("error", "Unknown error")
+        await manager.log_message(task_id, "ERROR", f"Strength backfill failed: {error_msg}")
         raise Exception(error_msg)

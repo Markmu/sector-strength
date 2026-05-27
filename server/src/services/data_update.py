@@ -592,15 +592,15 @@ class DataUpdateService:
 
                 result = await self.session.execute(
                     select(Stock.symbol)
-                    .join(SectorStock, Stock.id == SectorStock.stock_id)
-                    .where(SectorStock.sector_id == sector.id)
+                    .join(SectorStock, Stock.symbol == SectorStock.stock_code)
+                    .where(SectorStock.sector_code == sector.code)
                 )
                 return [row[0] for row in result.all()]
             else:
                 # 获取所有板块的所有股票
                 result = await self.session.execute(
                     select(Stock.symbol)
-                    .join(SectorStock, Stock.id == SectorStock.stock_id)
+                    .join(SectorStock, Stock.symbol == SectorStock.stock_code)
                     .distinct()
                 )
                 return [row[0] for row in result.all()]
