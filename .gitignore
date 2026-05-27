@@ -142,3 +142,8 @@ temp/
 .claude
 _bmad
 .codex
+
+# Test artifacts
+server/test-results/
+web/test-results/
+web/playwright-report/
