@@ -202,7 +202,7 @@ class TestAuthServicePerformance:
 
         # 验证密码验证
         assert is_valid is True
-        assert verify_time < 0.1  # 验证应该很快
+        assert verify_time < 0.5  # bcrypt rounds=12 验证耗时放宽到 0.5s
 
     @pytest.mark.asyncio
     async def test_token_validation_performance(self):

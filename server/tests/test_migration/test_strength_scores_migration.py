@@ -245,7 +245,7 @@ class TestStrengthScoresMigration:
             entity_type="stock",
             entity_id=4,
             date=date(2025, 1, 1),
-            period="5d",
+            period="all",
             score=Decimal("80.00"),
             change_rate=Decimal("2.5"),
             strength_level="strong",

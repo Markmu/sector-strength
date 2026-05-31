@@ -39,6 +39,9 @@ async def test_user(test_db):
         "DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test%@example.com')"
     )
     await test_db.execute(
+        "DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test%@example.com')"
+    )
+    await test_db.execute(
         "DELETE FROM users WHERE email LIKE 'test%@example.com'"
     )
 

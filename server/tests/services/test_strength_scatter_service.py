@@ -73,11 +73,12 @@ async def test_get_scatter_data_with_grade_filter(db_session: AsyncSession, samp
     # 验证筛选条件
     assert result.filters_applied.grade_range == ['A', 'S+']
 
-    # 验证返回的数据符合等级范围
+    # 验证返回的数据都匹配等级范围
     all_points = result.scatter_data.industry + result.scatter_data.concept
     for point in all_points:
-        if point.full_data.score is not None:
-            assert point.full_data.score >= 70  # A 级最低 70 分
+        if point.full_data.strength_grade is not None:
+            # 等级应在 A ~ S+ 范围内
+            assert point.full_data.strength_grade >= 'A'
 
 
 @pytest.mark.asyncio

@@ -156,7 +156,7 @@ class TestAuthAPI:
         )
 
         assert response.status_code == 403
-        assert "账户已被锁定，请联系管理员" in response.json()["detail"]
+        assert "账户已被禁用" in response.json()["detail"]
 
     def test_login_invalid_email(self, client):
         """测试无效的邮箱格式"""
@@ -326,7 +326,7 @@ class TestAuthService:
 
         # 哈希后的密码应该与原密码不同
         assert hashed != password
-        assert hashed.startswith('$5$')  # sha256_crypt格式
+        assert hashed.startswith('$2b$')  # bcrypt 格式
 
     @pytest.mark.asyncio
     async def test_verify_password(self):

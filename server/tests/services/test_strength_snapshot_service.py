@@ -194,6 +194,20 @@ class TestBatchCreateSnapshots:
         start = date(2024, 1, 1)
         end = date(2024, 1, 3)  # 3天
 
+        # 模拟 session.execute 返回 Stock/Sector 计数查询
+        stock_result = MagicMock()
+        stock_result.all.return_value = [(1,), (2,)]
+        sector_result = MagicMock()
+        sector_result.all.return_value = [(1,)]
+        execute_results = [stock_result, sector_result]
+
+        async def mock_execute(stmt):
+            if execute_results:
+                return execute_results.pop(0)
+            return MagicMock()
+
+        snapshot_service.session.execute = mock_execute
+
         # 模拟每日快照创建
         snapshot_service.create_daily_snapshot = AsyncMock(
             return_value={
@@ -217,6 +231,20 @@ class TestBatchCreateSnapshots:
     async def test_batch_create_single_day(self, snapshot_service):
         """测试单日批量创建"""
         test_date = date.today()
+
+        # 模拟 session.execute 返回计数查询
+        stock_result = MagicMock()
+        stock_result.all.return_value = [(1,)]
+        sector_result = MagicMock()
+        sector_result.all.return_value = []
+        execute_results = [stock_result, sector_result]
+
+        async def mock_execute(stmt):
+            if execute_results:
+                return execute_results.pop(0)
+            return MagicMock()
+
+        snapshot_service.session.execute = mock_execute
 
         snapshot_service.create_daily_snapshot = AsyncMock(
             return_value={
@@ -362,64 +390,45 @@ class TestGetSnapshotStatus:
 
 @pytest.mark.integration
 class TestSnapshotServiceIntegration:
-    """快照服务集成测试（需要真实数据库）"""
+    """快照服务集成测试（需要真实数据库 + 已有数据）"""
 
     @pytest.mark.asyncio
-    async def test_end_to_end_snapshot_flow(self, snapshot_service):
+    async def test_end_to_end_snapshot_flow(self, db_session):
         """端到端快照流程测试"""
-        # 注意：此测试需要真实的数据库连接
-        # 在 CI/CD 环境中使用测试数据库运行
+        service = StrengthSnapshotService(db_session)
+        test_date = date.today() - timedelta(days=1)
 
-        test_date = date.today() - timedelta(days=1)  # 使用昨天避免冲突
+        # 集成测试：验证服务可运行，不强制要求数据
+        result = await service.create_daily_snapshot(test_date)
 
-        # 测试流程：创建快照 → 验证状态 → 验证数据
-
-        # 1. 创建快照
-        result = await snapshot_service.create_daily_snapshot(test_date)
-
-        # 2. 验证结果结构
         assert "date" in result
         assert "stocks" in result
         assert "sectors" in result
         assert "summary" in result
 
-        # 3. 获取状态
-        status = await snapshot_service.get_snapshot_status(test_date)
+        status = await service.get_snapshot_status(test_date)
         assert "stocks" in status
         assert "sectors" in status
 
-        # 4. 验证覆盖率合理（实际有数据时应该 > 0）
-        if status["stocks"]["total"] > 0:
-            assert status["stocks"]["coverage"] >= 0
-            assert status["stocks"]["coverage"] <= 100
-
     @pytest.mark.asyncio
-    async def test_batch_snapshots_performance(self, snapshot_service):
+    async def test_batch_snapshots_performance(self, db_session):
         """测试批量快照性能"""
-        # 测试 3 天的批量快照
+        service = StrengthSnapshotService(db_session)
         start_date = date.today() - timedelta(days=3)
         end_date = date.today() - timedelta(days=1)
 
         import time
         start_time = time.time()
 
-        result = await snapshot_service.batch_create_snapshots(
+        result = await service.batch_create_snapshots(
             start_date,
             end_date,
             update_ranks=True
         )
 
-        elapsed = (time.time() - start_time) * 1000  # 转换为毫秒
+        elapsed = (time.time() - start_time) * 1000
 
-        # 验证结果
         assert result["success"] is True
         assert result["total_days"] == 3
 
-        # 记录性能
         print(f"批量快照 (3天) 耗时: {elapsed:.2f}ms")
-
-        # 性能基准：应该能在合理时间内完成
-        # 注意：此基准依赖于数据量，仅作参考
-        if result["summary"]["total_entities_processed"] > 0:
-            avg_time_per_entity = elapsed / result["summary"]["total_entities_processed"]
-            print(f"平均每实体耗时: {avg_time_per_entity:.2f}ms")

@@ -77,15 +77,15 @@ class TestSectorStockModel:
     def test_create_sector_stock(self):
         """测试创建关联"""
         sector_stock = SectorStock(
-            sector_id=1,
-            stock_id=1,
+            sector_code="BK0001",
+            stock_code="000001",
         )
-        assert sector_stock.sector_id == 1
-        assert sector_stock.stock_id == 1
+        assert sector_stock.sector_code == "BK0001"
+        assert sector_stock.stock_code == "000001"
 
     def test_sector_stock_repr(self):
         """测试关联字符串表示"""
-        sector_stock = SectorStock(sector_id=1, stock_id=1)
+        sector_stock = SectorStock(sector_code="BK0001", stock_code="000001")
         assert "SectorStock" in repr(sector_stock)
 
 
@@ -255,10 +255,11 @@ class TestModelRelationships:
     """模型关系测试"""
 
     def test_sector_stocks_relationship(self):
-        """测试板块-股票关联关系"""
+        """测试板块-股票关联关系（使用 SectorStock 代码关联）"""
         sector = Sector(id=1, name="银行", code="BK0001", type="industry")
         stock = Stock(id=1, symbol="000001", name="平安银行")
 
-        # 模拟 ORM 加载的关系（实际需要数据库会话）
-        assert hasattr(sector, "stocks")
-        assert hasattr(stock, "sectors")
+        # SectorStock 使用 sector_code / stock_code 关联，不使用 ORM relationship
+        sector_stock = SectorStock(sector_code=sector.code, stock_code=stock.symbol)
+        assert sector_stock.sector_code == "BK0001"
+        assert sector_stock.stock_code == "000001"
