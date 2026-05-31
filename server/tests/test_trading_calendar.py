@@ -113,10 +113,10 @@ class TestTradingCalendar:
     @pytest.mark.asyncio
     async def test_cache_reuse_within_same_day(self, trading_calendar, sample_trading_dates):
         """测试同日内存缓存 - 多次调用不重复请求"""
-        with patch('src.services.trading_calendar.AkShareDataSource') as mock_source_class:
+        with patch('src.services.trading_calendar.DataSourceFactory') as mock_factory:
             mock_source = MagicMock()
             mock_source.get_trading_calendar.return_value = sample_trading_dates
-            mock_source_class.return_value = mock_source
+            mock_factory.create.return_value = mock_source
 
             # 第一次调用：获取数据并缓存
             await trading_calendar.is_trading_day(date(2024, 1, 2))

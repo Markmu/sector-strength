@@ -96,6 +96,19 @@ class BaseDataSource(ABC):
         pass
 
     @abstractmethod
+    def get_trading_calendar(self) -> List[date]:
+        """
+        获取交易日历
+
+        Returns:
+            交易日日期列表
+
+        Raises:
+            DataFetchError: 数据获取失败
+        """
+        pass
+
+    @abstractmethod
     def get_sector_daily_data(
         self,
         sector_name: str,

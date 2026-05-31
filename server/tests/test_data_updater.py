@@ -14,8 +14,13 @@ from src.services.data_acquisition.models import SectorInfo, StockInfo, DailyQuo
 
 @pytest.fixture
 def data_collector():
-    """创建数据收集器实例"""
-    return DataCollector()
+    """创建数据收集器实例，mock 数据源避免依赖真实 API"""
+    with patch('src.services.data_updater.collector.DataSourceFactory') as mock_factory:
+        mock_source = MagicMock()
+        mock_factory.create.return_value = mock_source
+        collector = DataCollector()
+        collector._mock_source = mock_source
+    return collector
 
 
 class TestDataCollector:
@@ -24,24 +29,27 @@ class TestDataCollector:
     @pytest.mark.asyncio
     async def test_is_trading_day_weekday(self, data_collector):
         """测试判断交易日 - 工作日"""
-        test_date = date(2024, 1, 10)
-        is_trading, reason = await data_collector._is_trading_day(test_date)
+        trading_days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 10)]
+        with patch.object(data_collector._trading_calendar, '_get_trading_days', new_callable=AsyncMock, return_value=trading_days):
+            is_trading, reason = await data_collector._is_trading_day(date(2024, 1, 10))
         assert is_trading is True
         assert reason is None
 
     @pytest.mark.asyncio
     async def test_is_trading_day_weekend(self, data_collector):
         """测试判断交易日 - 周末"""
-        test_date = date(2024, 1, 13)
-        is_trading, reason = await data_collector._is_trading_day(test_date)
+        trading_days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 10)]
+        with patch.object(data_collector._trading_calendar, '_get_trading_days', new_callable=AsyncMock, return_value=trading_days):
+            is_trading, reason = await data_collector._is_trading_day(date(2024, 1, 13))
         assert is_trading is False
         assert reason == "周末"
 
     @pytest.mark.asyncio
     async def test_is_trading_day_holiday(self, data_collector):
         """测试判断交易日 - 节假日"""
-        test_date = date(2024, 1, 1)
-        is_trading, reason = await data_collector._is_trading_day(test_date)
+        trading_days = [date(2024, 1, 2), date(2024, 1, 3)]
+        with patch.object(data_collector._trading_calendar, '_get_trading_days', new_callable=AsyncMock, return_value=trading_days):
+            is_trading, reason = await data_collector._is_trading_day(date(2024, 1, 1))
         assert is_trading is False
         assert reason == "节假日"
 
@@ -77,30 +85,22 @@ class TestDataCollector:
     @pytest.mark.asyncio
     async def test_update_sectors(self, data_collector):
         """测试更新板块数据"""
-        with patch('src.services.data_updater.collector.AkShareDataSource') as mock_source_class:
-            mock_source = MagicMock()
-            mock_source.get_sector_list.return_value = [
-                SectorInfo(code='BK0001', name='测试板块', type='concept')
-            ]
-            mock_source_class.return_value = mock_source
+        data_collector._data_source.get_sector_list.return_value = [
+            SectorInfo(code='BK0001', name='测试板块', type='concept')
+        ]
 
-            count = await data_collector._update_sectors()
-
-            assert count >= 0
+        count = await data_collector._update_sectors()
+        assert count >= 0
 
     @pytest.mark.asyncio
     async def test_update_stocks(self, data_collector):
         """测试更新股票数据"""
-        with patch('src.services.data_updater.collector.AkShareDataSource') as mock_source_class:
-            mock_source = MagicMock()
-            mock_source.get_stock_list.return_value = [
-                StockInfo(symbol='000001', name='测试股票')
-            ]
-            mock_source_class.return_value = mock_source
+        data_collector._data_source.get_stock_list.return_value = [
+            StockInfo(symbol='000001', name='测试股票')
+        ]
 
-            count = await data_collector._update_stocks()
-
-            assert count >= 0
+        count = await data_collector._update_stocks()
+        assert count >= 0
 
     @pytest.mark.asyncio
     async def test_update_market_data(self, data_collector):
@@ -119,13 +119,10 @@ class TestDataCollector:
         mock_stock.id = 1
         mock_stock.symbol = '000001'
 
-        with patch('src.services.data_updater.collector.AkShareDataSource') as mock_source_class, \
-             patch('src.services.data_updater.collector.get_session') as mock_session_getter:
-            mock_source = MagicMock()
-            mock_source.get_sector_daily_data.return_value = []
-            mock_source.get_daily_data.return_value = [mock_quote]
-            mock_source_class.return_value = mock_source
+        data_collector._data_source.get_sector_daily_data.return_value = []
+        data_collector._data_source.get_daily_data.return_value = [mock_quote]
 
+        with patch('src.services.data_updater.collector.get_session') as mock_session_getter:
             mock_session = AsyncMock()
             sector_result = MagicMock()
             sector_result.scalars.return_value.all.return_value = [mock_sector]

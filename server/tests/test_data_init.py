@@ -26,10 +26,10 @@ def mock_session():
 
 @pytest.fixture
 def mock_ak_share(mock_session):
-    """模拟 AkShareDataSource"""
-    with patch('src.services.data_init.AkShareDataSource') as mock_class:
-        mock_source = MagicMock()
-        mock_class.return_value = mock_source
+    """模拟 DataSourceFactory.create() 返回的数据源"""
+    mock_source = MagicMock()
+    with patch('src.services.data_init.DataSourceFactory') as mock_factory:
+        mock_factory.create.return_value = mock_source
         yield mock_source
 
 

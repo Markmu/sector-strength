@@ -20,7 +20,7 @@ from src.models.sector import Sector
 from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
 from src.models.update_history import UpdateHistory
-from src.services.data_acquisition.akshare_client import AkShareDataSource
+from src.services.data_acquisition import DataSourceFactory
 from src.services.data_acquisition.models import DailyQuote
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class DataUpdateService:
             session: 数据库会话
         """
         self.session = session
-        self.ak_source = AkShareDataSource()
+        self.ak_source = DataSourceFactory.create()
         self._progress_callback: Optional[Callable] = None
         self._cancelled = False
 

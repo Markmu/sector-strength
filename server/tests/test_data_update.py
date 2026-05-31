@@ -26,12 +26,12 @@ def mock_session():
 
 @pytest.fixture
 def mock_ak_share(mock_session):
-    """模拟 AkShareDataSource"""
+    """模拟 DataSourceFactory.create() 返回的数据源"""
     from unittest.mock import patch
 
-    with patch('src.services.data_update.AkShareDataSource') as mock_class:
-        mock_source = MagicMock()
-        mock_class.return_value = mock_source
+    mock_source = MagicMock()
+    with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+        mock_factory.create.return_value = mock_source
         yield mock_source
 
 
@@ -212,7 +212,8 @@ class TestDataUpdateService:
         """测试有效的日线数据验证"""
         from unittest.mock import patch
 
-        with patch('src.services.data_update.AkShareDataSource'):
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
             mock_session = AsyncMock()
             service = DataUpdateService(mock_session)
 
@@ -235,7 +236,8 @@ class TestDataUpdateService:
         """测试价格超出范围"""
         from unittest.mock import patch
 
-        with patch('src.services.data_update.AkShareDataSource'):
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
             mock_session = AsyncMock()
             service = DataUpdateService(mock_session)
 
@@ -258,7 +260,8 @@ class TestDataUpdateService:
         """测试无效的价格关系"""
         from unittest.mock import patch
 
-        with patch('src.services.data_update.AkShareDataSource'):
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
             mock_session = AsyncMock()
             service = DataUpdateService(mock_session)
 
@@ -282,7 +285,8 @@ class TestDataUpdateService:
         """测试涨跌幅过大"""
         from unittest.mock import patch
 
-        with patch('src.services.data_update.AkShareDataSource'):
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
             mock_session = AsyncMock()
             service = DataUpdateService(mock_session)
 
@@ -314,7 +318,8 @@ class TestDataUpdateService:
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
         from unittest.mock import patch
-        with patch('src.services.data_update.AkShareDataSource'):
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
             service = DataUpdateService(mock_session)
             result = await service.fetch_missing_dates(
                 stock_symbol="000001",
@@ -374,7 +379,8 @@ class TestDataUpdateService:
         """测试 close 为 0 时的验证"""
         from unittest.mock import patch
 
-        with patch('src.services.data_update.AkShareDataSource'):
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
             mock_session = AsyncMock()
             service = DataUpdateService(mock_session)
 
@@ -398,7 +404,8 @@ class TestDataUpdateService:
         """测试正好 20% 涨跌幅的边界情况"""
         from unittest.mock import patch
 
-        with patch('src.services.data_update.AkShareDataSource'):
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
             mock_session = AsyncMock()
             service = DataUpdateService(mock_session)
 
@@ -421,7 +428,8 @@ class TestDataUpdateService:
         """测试略超过 20% 涨跌幅的情况"""
         from unittest.mock import patch
 
-        with patch('src.services.data_update.AkShareDataSource'):
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
             mock_session = AsyncMock()
             service = DataUpdateService(mock_session)
 

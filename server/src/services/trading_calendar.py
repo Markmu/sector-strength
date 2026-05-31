@@ -2,7 +2,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 
-from src.services.data_acquisition.akshare_client import AkShareDataSource
+from src.services.data_acquisition import DataSourceFactory
 from src.services.data_acquisition.exceptions import DataFetchError, RetryExhaustedError
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class TradingCalendar:
         if self._is_cache_valid():
             return self._cache
 
-        source = AkShareDataSource()
+        source = DataSourceFactory.create()
         trading_days = source.get_trading_calendar()
 
         self._cache = trading_days

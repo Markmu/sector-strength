@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.sector import Sector
 from src.models.stock import Stock
 from src.models.daily_market_data import DailyMarketData
-from src.services.data_acquisition.akshare_client import AkShareDataSource
+from src.services.data_acquisition import DataSourceFactory
 from src.services.data_acquisition.models import StockInfo, SectorInfo, DailyQuote
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class DataInitService:
             session: 数据库会话
         """
         self.session = session
-        self.ak_source = AkShareDataSource()
+        self.ak_source = DataSourceFactory.create()
         self._progress_callback: Optional[callable] = None
         self._cancelled = False
 

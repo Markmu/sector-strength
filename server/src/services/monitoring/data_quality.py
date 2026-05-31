@@ -18,7 +18,7 @@ from src.models.stock import Stock
 from src.models.sector import Sector
 from src.models.strength_score import StrengthScore
 from src.services.trading_calendar import TradingCalendar
-from src.services.data_acquisition.akshare_client import AkShareDataSource
+from src.services.data_acquisition import DataSourceFactory
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class DataQualityChecker:
 
     def __init__(self):
         self._trading_calendar = TradingCalendar()
-        self._data_source = AkShareDataSource()
+        self._data_source = DataSourceFactory.create()
 
     async def run_full_check(self) -> Dict[str, Any]:
         """执行完整质检：检测缺失 → 检测日期缺口 → 自动补齐 → 返回报告"""

@@ -19,7 +19,7 @@ from src.models.update_log import DataUpdateLog
 from src.models.sector import Sector
 from src.models.stock import Stock
 from src.models.daily_market_data import DailyMarketData
-from src.services.data_acquisition.akshare_client import AkShareDataSource
+from src.services.data_acquisition import DataSourceFactory
 from src.services.trading_calendar import TradingCalendar
 from src.services.cache.cache_manager import get_cache_manager
 
@@ -47,6 +47,7 @@ class DataCollector:
 
     def __init__(self):
         self._trading_calendar = TradingCalendar()
+        self._data_source = DataSourceFactory.create()
 
     async def run_daily_update(self) -> Dict[str, Any]:
         """
@@ -129,7 +130,7 @@ class DataCollector:
         """更新板块数据到数据库"""
         logger.info("[数据更新] 开始更新板块数据")
 
-        data_source = AkShareDataSource()
+        data_source = self._data_source
         sectors = data_source.get_sector_list()
 
         async with get_session() as session:
@@ -159,7 +160,7 @@ class DataCollector:
         """更新股票数据到数据库"""
         logger.info("[数据更新] 开始更新股票数据")
 
-        data_source = AkShareDataSource()
+        data_source = self._data_source
         stocks = data_source.get_stock_list()
 
         async with get_session() as session:
@@ -188,7 +189,7 @@ class DataCollector:
         """更新行情数据到数据库"""
         logger.info("[数据更新] 开始更新行情数据")
 
-        data_source = AkShareDataSource()
+        data_source = self._data_source
         today = datetime.now().date()
         total_count = 0
 
