@@ -4,7 +4,6 @@
 覆盖 plan-01：BaseDataSource 新增 get_trading_calendar 抽象方法，
 DataSourceFactory 基于 DATA_SOURCE_TYPE 环境变量创建数据源实例。
 覆盖 plan-02：TushareDataSource 字段映射、重试机制、参数校验。
-覆盖 plan-03：服务层解耦，确认无残留 AkShareDataSource 直接导入。
 """
 
 import os
@@ -55,81 +54,55 @@ class TestBaseDataSourceAbstractMethods:
 class TestDataSourceFactory:
     """验证 DataSourceFactory 根据环境变量创建正确的数据源实例"""
 
-    def test_default_is_akshare(self):
-        """DATA_SOURCE_TYPE 未设置时默认使用 AkShare"""
-        from src.services.data_acquisition import DataSourceFactory, AkShareDataSource
+    def test_default_is_tushare(self):
+        """DATA_SOURCE_TYPE 未设置时默认使用 Tushare"""
+        from src.services.data_acquisition import DataSourceFactory, TushareDataSource
 
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("DATA_SOURCE_TYPE", None)
-            ds = DataSourceFactory.create()
-            assert isinstance(ds, AkShareDataSource)
-            assert ds.source_name == "AkShare"
-
-    def test_akshare_explicit(self):
-        """DATA_SOURCE_TYPE=akshare 时返回 AkShareDataSource"""
-        from src.services.data_acquisition import DataSourceFactory, AkShareDataSource
-
-        with patch.dict(os.environ, {"DATA_SOURCE_TYPE": "akshare"}):
-            ds = DataSourceFactory.create()
-            assert isinstance(ds, AkShareDataSource)
-
-    def test_tushare_returns_tushare_data_source(self):
-        """DATA_SOURCE_TYPE=tushare 时返回 TushareDataSource"""
-        from src.services.data_acquisition import DataSourceFactory, TushareDataSource
-
-        with patch.dict(os.environ, {"DATA_SOURCE_TYPE": "tushare"}):
-            # Mock _get_pro_api 避免真正连接 Tushare
             with patch.object(TushareDataSource, "_get_pro_api", return_value=None):
                 ds = DataSourceFactory.create()
                 assert isinstance(ds, TushareDataSource)
                 assert ds.source_name == "Tushare"
 
+    def test_tushare_explicit(self):
+        """DATA_SOURCE_TYPE=tushare 时返回 TushareDataSource"""
+        from src.services.data_acquisition import DataSourceFactory, TushareDataSource
+
+        with patch.dict(os.environ, {"DATA_SOURCE_TYPE": "tushare"}):
+            with patch.object(TushareDataSource, "_get_pro_api", return_value=None):
+                ds = DataSourceFactory.create()
+                assert isinstance(ds, TushareDataSource)
+
     def test_invalid_type_raises_value_error(self):
         """非法 DATA_SOURCE_TYPE 抛出 ValueError"""
         from src.services.data_acquisition import DataSourceFactory
 
-        for invalid_val in ["invalid", "UNKNOWN", "foo", ""]:
+        for invalid_val in ["invalid", "UNKNOWN", "foo", "akshare", ""]:
             with patch.dict(os.environ, {"DATA_SOURCE_TYPE": invalid_val}):
                 with pytest.raises(ValueError, match="无效的数据源类型"):
                     DataSourceFactory.create()
 
     def test_case_insensitive(self):
         """DATA_SOURCE_TYPE 大小写不敏感"""
-        from src.services.data_acquisition import DataSourceFactory, AkShareDataSource
+        from src.services.data_acquisition import DataSourceFactory, TushareDataSource
 
-        with patch.dict(os.environ, {"DATA_SOURCE_TYPE": "AKSHARE"}):
-            ds = DataSourceFactory.create()
-            assert isinstance(ds, AkShareDataSource)
+        with patch.dict(os.environ, {"DATA_SOURCE_TYPE": "TUSHARE"}):
+            with patch.object(TushareDataSource, "_get_pro_api", return_value=None):
+                ds = DataSourceFactory.create()
+                assert isinstance(ds, TushareDataSource)
 
-        with patch.dict(os.environ, {"DATA_SOURCE_TYPE": "  AkShare  "}):
-            ds = DataSourceFactory.create()
-            assert isinstance(ds, AkShareDataSource)
+        with patch.dict(os.environ, {"DATA_SOURCE_TYPE": "  Tushare  "}):
+            with patch.object(TushareDataSource, "_get_pro_api", return_value=None):
+                ds = DataSourceFactory.create()
+                assert isinstance(ds, TushareDataSource)
 
     def test_valid_types_constant(self):
-        """VALID_TYPES 应包含 tushare 和 akshare"""
+        """VALID_TYPES 应只包含 tushare"""
         from src.services.data_acquisition import DataSourceFactory
 
         assert "tushare" in DataSourceFactory.VALID_TYPES
-        assert "akshare" in DataSourceFactory.VALID_TYPES
-        assert len(DataSourceFactory.VALID_TYPES) == 2
-
-
-class TestAkShareCompatibility:
-    """验证新增抽象方法后 AkShareDataSource 不受影响"""
-
-    def test_akshare_has_get_trading_calendar(self):
-        """AkShareDataSource 应已实现 get_trading_calendar"""
-        from src.services.data_acquisition import AkShareDataSource
-
-        ds = AkShareDataSource()
-        assert hasattr(ds, "get_trading_calendar")
-        assert callable(ds.get_trading_calendar)
-
-    def test_akshare_is_base_data_source(self):
-        """AkShareDataSource 应是 BaseDataSource 的子类"""
-        from src.services.data_acquisition import AkShareDataSource, BaseDataSource
-
-        assert issubclass(AkShareDataSource, BaseDataSource)
+        assert DataSourceFactory.VALID_TYPES == ("tushare",)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -489,7 +462,7 @@ class TestTushareHealthCheck:
 
 
 class TestServiceLayerDecoupling:
-    """验证 5 个服务文件已移除 AkShareDataSource 直接导入"""
+    """验证服务文件已移除旧数据源直接导入"""
 
     FILES_TO_CHECK = [
         "src/services/trading_calendar.py",
@@ -499,16 +472,16 @@ class TestServiceLayerDecoupling:
         "src/services/monitoring/data_quality.py",
     ]
 
-    def test_no_akshare_import_in_service_files(self):
-        """5 个服务文件中不应有 from ...akshare_client import AkShareDataSource"""
+    def test_no_old_datasource_import_in_service_files(self):
+        """5 个服务文件中不应有直接导入旧数据源客户端"""
         import re
 
-        pattern = re.compile(r"from\s+.*akshare_client\s+import\s+AkShareDataSource")
+        pattern = re.compile(r"from\s+.*(?:akshare_client)\s+import")
         for filepath in self.FILES_TO_CHECK:
             with open(filepath) as f:
                 content = f.read()
             matches = pattern.findall(content)
-            assert matches == [], f"{filepath} 仍包含 AkShareDataSource 直接导入"
+            assert matches == [], f"{filepath} 仍包含旧数据源直接导入"
 
     def test_datasource_factory_used(self):
         """5 个服务文件应使用 DataSourceFactory"""

@@ -18,7 +18,7 @@ interface InitTask {
 /**
  * 数据初始化面板
  *
- * 允许管理员从 AkShare 初始化板块、股票和历史数据。
+ * 允许管理员从数据源初始化板块、股票和历史数据。
  */
 export default function DataInitPanel() {
   useRequireAdmin();
@@ -186,7 +186,7 @@ export default function DataInitPanel() {
       <div>
         <h2 className="text-2xl font-bold text-foreground mb-2">数据初始化</h2>
         <p className="text-muted-foreground">
-          从 AkShare 拉取板块、股票和历史数据，初始化系统数据库。
+          从数据源拉取板块、股票和历史数据，初始化系统数据库。
         </p>
       </div>
 
@@ -533,7 +533,7 @@ export default function DataInitPanel() {
             <div className="mt-1 text-sm text-yellow-700">
               <ul className="list-disc list-inside space-y-1">
                 <li>数据初始化可能需要较长时间，取决于数据量和网络状况</li>
-                <li>请确保网络连接稳定，AkShare API 有请求频率限制</li>
+                <li>请确保网络连接稳定，数据源 API 有请求频率限制</li>
                 <li>建议先初始化板块，再初始化股票，最后初始化历史数据</li>
                 <li>历史数据越多，初始化时间越长（100 只股票约需 5-10 分钟）</li>
               </ul>

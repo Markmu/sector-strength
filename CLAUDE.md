@@ -26,7 +26,7 @@ Sector Strength — 股票市场板块强弱指标系统。基于多周期均线
 - **数据库**: PostgreSQL，**SQLAlchemy async**（asyncpg），双引擎架构：
   - 主引擎：API 请求用（`src/db/database.py` 的 `AsyncSessionLocal`）
   - 任务引擎：后台任务执行器用（`get_task_executor_engine()`），独立 event loop 避免冲突
-- **数据源**: AkShare（中国股票市场数据）
+- **数据源**: Tushare（中国股票市场数据）
 - **后台任务**: `src/services/task_executor.py`（轮询 AsyncTask 表）+ `src/services/scheduler/job_manager.py`（APScheduler 定时任务）
 - **认证**: JWT（`src/core/auth_service.py`），RBAC 管理员权限（`src/api/admin/rbac.py`）
 - **迁移**: Alembic（`server/alembic/`）
@@ -40,7 +40,7 @@ API routes (src/api/) → Services (src/services/) → Repositories (src/reposit
 - `src/api/v1/` — 业务路由（sectors, stocks, strength, rankings, heatmap, analysis）
 - `src/api/auth/` — 认证路由（login, registration, password reset, profile）
 - `src/api/admin/` — 管理路由（数据初始化、任务管理、RBAC）
-- `src/services/data_acquisition/` — AkShare 数据获取
+- `src/services/data_acquisition/` — Tushare 数据获取
 - `src/services/calculation/` — 均线计算、强度计算、趋势分析
 - `src/services/cache/` — 缓存管理（含 backends）
 - `src/services/scheduler/` — APScheduler 定时任务

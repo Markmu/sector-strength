@@ -38,8 +38,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "DEBUG"
     LOG_FILE: str = "logs/app.log"
 
-    # 数据源配置
-    AKSHARE_TIMEOUT: int = 30
+    # 缓存配置
     CACHE_TTL: int = 300
 
     # 邮件服务配置

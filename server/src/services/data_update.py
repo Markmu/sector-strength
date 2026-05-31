@@ -69,7 +69,7 @@ class DataUpdateService:
             session: 数据库会话
         """
         self.session = session
-        self.ak_source = DataSourceFactory.create()
+        self.data_source = DataSourceFactory.create()
         self._progress_callback: Optional[Callable] = None
         self._cancelled = False
 
@@ -223,8 +223,8 @@ class DataUpdateService:
                                 skipped += 1
                                 continue
 
-                        # 从 AkShare 获取数据
-                        quotes = self.ak_source.get_daily_data(symbol, target_date, target_date)
+                        # 从数据源获取数据
+                        quotes = self.data_source.get_daily_data(symbol, target_date, target_date)
 
                         if not quotes:
                             logger.warning(f"未获取到数据: {symbol} @ {target_date}")
@@ -394,8 +394,8 @@ class DataUpdateService:
                             current_operation += days
                             continue
 
-                        # 从 AkShare 获取数据
-                        quotes = self.ak_source.get_daily_data(symbol, start_date, end_date)
+                        # 从数据源获取数据
+                        quotes = self.data_source.get_daily_data(symbol, start_date, end_date)
 
                         if not quotes:
                             logger.warning(f"未获取到数据: {symbol} ({start_date} - {end_date})")

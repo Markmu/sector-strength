@@ -25,7 +25,7 @@ def mock_session():
 
 
 @pytest.fixture
-def mock_ak_share(mock_session):
+def mock_data_source(mock_session):
     """模拟 DataSourceFactory.create() 返回的数据源"""
     from unittest.mock import patch
 
@@ -39,10 +39,10 @@ def mock_ak_share(mock_session):
 class TestDataUpdateService:
     """数据更新服务测试"""
 
-    async def test_backfill_by_date_success(self, mock_session, mock_ak_share):
+    async def test_backfill_by_date_success(self, mock_session, mock_data_source):
         """测试成功按日期补齐数据"""
         # 设置模拟数据
-        mock_ak_share.get_daily_data.return_value = [
+        mock_data_source.get_daily_data.return_value = [
             DailyQuote(
                 symbol="000001",
                 trade_date=date.today(),
@@ -75,9 +75,9 @@ class TestDataUpdateService:
         assert result["updated"] == 0
         mock_session.add.assert_called_once()
 
-    async def test_backfill_by_date_skip_existing(self, mock_session, mock_ak_share):
+    async def test_backfill_by_date_skip_existing(self, mock_session, mock_data_source):
         """测试跳过已有数据"""
-        mock_ak_share.get_daily_data.return_value = [
+        mock_data_source.get_daily_data.return_value = [
             DailyQuote(
                 symbol="000001",
                 trade_date=date.today(),
@@ -111,9 +111,9 @@ class TestDataUpdateService:
         assert result["skipped"] == 1
         mock_session.add.assert_not_called()
 
-    async def test_backfill_by_date_overwrite(self, mock_session, mock_ak_share):
+    async def test_backfill_by_date_overwrite(self, mock_session, mock_data_source):
         """测试覆盖已有数据"""
-        mock_ak_share.get_daily_data.return_value = [
+        mock_data_source.get_daily_data.return_value = [
             DailyQuote(
                 symbol="000001",
                 trade_date=date.today(),
@@ -148,12 +148,12 @@ class TestDataUpdateService:
         # 验证更新了字段
         assert mock_existing.close == 10.8
 
-    async def test_backfill_by_range_success(self, mock_session, mock_ak_share):
+    async def test_backfill_by_range_success(self, mock_session, mock_data_source):
         """测试成功按时间段补齐数据"""
         start_date = date.today() - timedelta(days=3)
         end_date = date.today()
 
-        mock_ak_share.get_daily_data.return_value = [
+        mock_data_source.get_daily_data.return_value = [
             DailyQuote(
                 symbol="000001",
                 trade_date=start_date,
@@ -184,7 +184,7 @@ class TestDataUpdateService:
         assert result["created"] == 1
         assert result["days"] == 4
 
-    async def test_backfill_by_range_invalid_date_range(self, mock_session, mock_ak_share):
+    async def test_backfill_by_range_invalid_date_range(self, mock_session, mock_data_source):
         """测试无效的日期范围"""
         service = DataUpdateService(mock_session)
         result = await service.backfill_by_range(
@@ -196,7 +196,7 @@ class TestDataUpdateService:
         assert result["success"] is False
         assert "开始日期不能晚于结束日期" in result["error"]
 
-    async def test_backfill_by_range_too_many_days(self, mock_session, mock_ak_share):
+    async def test_backfill_by_range_too_many_days(self, mock_session, mock_data_source):
         """测试日期范围过大"""
         service = DataUpdateService(mock_session)
         result = await service.backfill_by_range(
@@ -305,7 +305,7 @@ class TestDataUpdateService:
             assert is_valid is False
             assert "涨跌幅" in error
 
-    async def test_fetch_missing_dates(self, mock_session, mock_ak_share):
+    async def test_fetch_missing_dates(self, mock_session, mock_data_source):
         """测试查找缺失日期"""
         # 模拟股票列表
         mock_result1 = MagicMock()
@@ -330,9 +330,9 @@ class TestDataUpdateService:
             assert result["success"] is True
             assert "missing_dates" in result
 
-    async def test_progress_callback(self, mock_session, mock_ak_share):
+    async def test_progress_callback(self, mock_session, mock_data_source):
         """测试进度回调"""
-        mock_ak_share.get_daily_data.return_value = []
+        mock_data_source.get_daily_data.return_value = []
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = MagicMock(id="stock-1")
@@ -354,9 +354,9 @@ class TestDataUpdateService:
         # 验证进度回调被调用
         assert len(progress_updates) >= 2
 
-    async def test_cancel_task(self, mock_session, mock_ak_share):
+    async def test_cancel_task(self, mock_session, mock_data_source):
         """测试任务取消"""
-        mock_ak_share.get_daily_data.return_value = []
+        mock_data_source.get_daily_data.return_value = []
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = MagicMock(id="stock-1")
@@ -448,14 +448,14 @@ class TestDataUpdateService:
             assert is_valid is False
             assert "涨跌幅" in error
 
-    async def test_backfill_by_range_exactly_365_days(self, mock_session, mock_ak_share):
+    async def test_backfill_by_range_exactly_365_days(self, mock_session, mock_data_source):
         """测试正好 365 天的边界条件"""
         service = DataUpdateService(mock_session)
         start_date = date.today() - timedelta(days=364)
         end_date = date.today()
 
         # 模拟成功
-        mock_ak_share.get_daily_data.return_value = []
+        mock_data_source.get_daily_data.return_value = []
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = MagicMock(id="stock-1")
         mock_session.execute.return_value = mock_result
@@ -469,7 +469,7 @@ class TestDataUpdateService:
         # 365 天应该通过
         assert result["success"] is True
 
-    async def test_backfill_by_range_366_days_should_fail(self, mock_session, mock_ak_share):
+    async def test_backfill_by_range_366_days_should_fail(self, mock_session, mock_data_source):
         """测试 366 天应该失败"""
         service = DataUpdateService(mock_session)
         start_date = date.today() - timedelta(days=365)
@@ -484,12 +484,12 @@ class TestDataUpdateService:
         assert result["success"] is False
         assert "不能超过 365 天" in result["error"]
 
-    async def test_akshare_api_failure_handling(self, mock_session, mock_ak_share):
-        """测试 AkShare API 调用失败时的处理"""
+    async def test_data_source_api_failure_handling(self, mock_session, mock_data_source):
+        """测试数据源 API 调用失败时的处理"""
         from unittest.mock import patch
 
-        # 模拟 AkShare API 抛出异常
-        mock_ak_share.get_daily_data.side_effect = Exception("API connection failed")
+        # 模拟数据源 API 抛出异常
+        mock_data_source.get_daily_data.side_effect = Exception("API connection failed")
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = MagicMock(id="stock-1")
@@ -502,9 +502,9 @@ class TestDataUpdateService:
         assert result["success"] is False
         assert "failed" in result or result.get("failed", 0) > 0
 
-    async def test_stock_not_found_handling(self, mock_session, mock_ak_share):
+    async def test_stock_not_found_handling(self, mock_session, mock_data_source):
         """测试股票不存在时的处理"""
-        mock_ak_share.get_daily_data.return_value = []
+        mock_data_source.get_daily_data.return_value = []
 
         # 模拟股票不存在
         mock_result = MagicMock()

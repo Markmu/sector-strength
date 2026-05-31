@@ -50,7 +50,7 @@ class DataInitService:
     """
     数据初始化服务
 
-    负责从 AkShare 获取初始数据并填充数据库。
+    负责从数据源获取初始数据并填充数据库。
     """
 
     def __init__(self, session: AsyncSession):
@@ -61,7 +61,7 @@ class DataInitService:
             session: 数据库会话
         """
         self.session = session
-        self.ak_source = DataSourceFactory.create()
+        self.data_source = DataSourceFactory.create()
         self._progress_callback: Optional[callable] = None
         self._cancelled = False
 
@@ -108,7 +108,7 @@ class DataInitService:
         初始化板块数据
 
         此方法会：
-        1. 从 AkShare 获取板块列表
+        1. 从数据源获取板块列表
         2. 创建板块记录
 
         Args:
@@ -121,8 +121,8 @@ class DataInitService:
         logger.info(f"开始初始化板块数据 (类型: {sector_type or '全部'})")
 
         try:
-            # 从 AkShare 获取板块列表
-            sectors = self.ak_source.get_sector_list(sector_type)
+            # 从数据源获取板块列表
+            sectors = self.data_source.get_sector_list(sector_type)
             self._check_cancelled()
 
             created = 0
@@ -151,7 +151,7 @@ class DataInitService:
                                 code=sector_info.code,
                                 name=sector_info.name,
                                 type=sector_info.type,
-                                description=f"{sector_info.type} sector from AkShare"
+                                description=f"{sector_info.type} sector from data source"
                             )
                             self.session.add(sector)
                             created += 1
@@ -196,8 +196,8 @@ class DataInitService:
         logger.info("开始初始化股票数据")
 
         try:
-            # 从 AkShare 获取股票列表
-            stocks = self.ak_source.get_stock_list()
+            # 从数据源获取股票列表
+            stocks = self.data_source.get_stock_list()
             self._check_cancelled()
 
             created = 0
@@ -318,8 +318,8 @@ class DataInitService:
                             skipped += 1
                             continue
 
-                        # 从 AkShare 获取历史数据
-                        quotes = self.ak_source.get_daily_data(symbol, start_date, end_date)
+                        # 从数据源获取历史数据
+                        quotes = self.data_source.get_daily_data(symbol, start_date, end_date)
 
                         for quote in quotes:
                             # 检查数据是否已存在
@@ -464,8 +464,8 @@ class DataInitService:
                         processed_symbols.append(symbol)
                         continue
 
-                    # 从 AkShare 获取历史数据
-                    quotes = self.ak_source.get_daily_data(symbol, start_date, end_date)
+                    # 从数据源获取历史数据
+                    quotes = self.data_source.get_daily_data(symbol, start_date, end_date)
 
                     symbol_created = 0
                     for quote in quotes:
@@ -546,7 +546,7 @@ class DataInitService:
         """
         初始化板块历史行情数据
 
-        使用 AkShare 的同花顺板块日线接口直接获取板块历史数据。
+        使用数据源接口直接获取板块历史数据。
 
         Args:
             days: 回溯天数（1-365），如果提供 start_date/end_date 则忽略此参数
@@ -601,8 +601,8 @@ class DataInitService:
                 try:
                     # 使用 savepoint 隔离每个板块的操作
                     async with _safe_nested_tx(self.session):
-                        # 从 AkShare 直接获取板块历史数据
-                        quotes = self.ak_source.get_sector_daily_data(
+                        # 从数据源直接获取板块历史数据
+                        quotes = self.data_source.get_sector_daily_data(
                             sector.name,
                             sector.type,
                             start_date,

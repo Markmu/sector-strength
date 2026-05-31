@@ -23,7 +23,7 @@
 - **框架**: FastAPI + Python 3.11
 - **数据库**: PostgreSQL
 - **ORM**: SQLAlchemy + asyncpg
-- **数据源**: AkShare
+- **数据源**: Tushare
 
 ### 部署
 - **容器化**: Docker + Docker Compose
@@ -97,6 +97,6 @@ sector-strength/
 
 ## 🙏 致谢
 
-- 数据来源: [AkShare](https://github.com/akfamily/akshare)
+- 数据来源: [Tushare](https://tushare.pro)
 - UI组件: [shadcn/ui](https://ui.shadcn.com/)
 - 图表库: [ECharts](https://echarts.apache.org/)

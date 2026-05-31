@@ -66,7 +66,7 @@ async def init_sectors(
     """
     初始化板块数据
 
-    从 AkShare 获取板块列表并填充数据库。
+    从数据源获取板块列表并填充数据库。
     """
     # 并发保护
     if _check_if_task_running():
@@ -117,7 +117,7 @@ async def init_stocks(
     """
     初始化股票数据
 
-    从 AkShare 获取股票列表并填充数据库。
+    从数据源获取股票列表并填充数据库。
     """
     # 并发保护
     if _check_if_task_running():
@@ -158,7 +158,7 @@ async def init_sector_historical(
     """
     初始化板块历史行情数据
 
-    从 AkShare 获取指定天数的板块历史数据。
+    从数据源获取指定天数的板块历史数据。
     """
     # 并发保护
     if _check_if_task_running():
@@ -199,7 +199,7 @@ async def init_historical(
     """
     初始化历史行情数据
 
-    从 AkShare 获取指定天数的历史数据。
+    从数据源获取指定天数的历史数据。
 
     Args:
         request: 初始化请求，包含回溯天数

@@ -1,13 +1,12 @@
 """
 数据获取服务模块
 
-提供统一的数据源接口，支持 AkShare、Tushare 等多个数据源。
+提供统一的数据源接口，基于 Tushare 数据源。
 """
 
 import os
 import logging
 
-from .akshare_client import AkShareDataSource
 from .base import BaseDataSource
 from .tushare_client import TushareDataSource
 from .exceptions import (
@@ -33,7 +32,7 @@ logger = logging.getLogger(__name__)
 class DataSourceFactory:
     """数据源工厂，根据环境变量创建对应的数据源实例"""
 
-    VALID_TYPES = ("tushare", "akshare")
+    VALID_TYPES = ("tushare",)
 
     @staticmethod
     def create() -> BaseDataSource:
@@ -46,19 +45,14 @@ class DataSourceFactory:
         Raises:
             ValueError: 环境变量值无效
         """
-        source_type = os.getenv("DATA_SOURCE_TYPE", "akshare").strip().lower()
+        source_type = os.getenv("DATA_SOURCE_TYPE", "tushare").strip().lower()
 
         if source_type not in DataSourceFactory.VALID_TYPES:
             raise ValueError(
                 f"无效的数据源类型: '{source_type}'，可选值: {', '.join(DataSourceFactory.VALID_TYPES)}"
             )
 
-        if source_type == "tushare":
-            from .tushare_client import TushareDataSource
-            instance = TushareDataSource()
-        else:
-            instance = AkShareDataSource()
-
+        instance = TushareDataSource()
         logger.info(f"数据源切换为: {instance.source_name}")
         return instance
 
@@ -66,7 +60,6 @@ class DataSourceFactory:
 __all__ = [
     # 数据源
     "BaseDataSource",
-    "AkShareDataSource",
     "TushareDataSource",
     "DataSourceFactory",
     # 异常

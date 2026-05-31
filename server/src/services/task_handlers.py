@@ -85,7 +85,7 @@ async def init_sectors_task(
     板块初始化任务
 
     此任务会：
-    1. 从 AkShare 获取板块列表
+    1. 从数据源获取板块列表
     2. 创建板块记录
 
     Args:
@@ -228,7 +228,7 @@ async def init_sector_historical_data_task(
     """
     板块历史数据初始化任务
 
-    使用 AkShare 同花顺接口按板块类型路由获取历史数据。
+    使用数据源接口按板块类型路由获取历史数据。
 
     Args:
         task_id: 任务ID

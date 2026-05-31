@@ -16,7 +16,7 @@ class DataSourceError(Exception):
 
         Args:
             message: 错误消息
-            source: 数据源名称（如 "AkShare"）
+            source: 数据源名称（如 "Tushare"）
             original_error: 原始异常对象
         """
         self.message = message

@@ -25,7 +25,7 @@ def mock_session():
 
 
 @pytest.fixture
-def mock_ak_share(mock_session):
+def mock_data_source(mock_session):
     """模拟 DataSourceFactory.create() 返回的数据源"""
     mock_source = MagicMock()
     with patch('src.services.data_init.DataSourceFactory') as mock_factory:
@@ -37,10 +37,10 @@ def mock_ak_share(mock_session):
 class TestDataInitService:
     """数据初始化服务测试"""
 
-    async def test_init_sectors_success(self, mock_session, mock_ak_share):
+    async def test_init_sectors_success(self, mock_session, mock_data_source):
         """测试成功初始化板块数据"""
         # 设置模拟数据
-        mock_ak_share.get_sector_list.return_value = [
+        mock_data_source.get_sector_list.return_value = [
             SectorInfo(code="sector1", name="板块1", type="industry"),
             SectorInfo(code="sector2", name="板块2", type="concept"),
         ]
@@ -57,14 +57,14 @@ class TestDataInitService:
         assert result["created"] == 2
         assert result["skipped"] == 0
         assert result["total"] == 2
-        mock_ak_share.get_sector_list.assert_called_once()
+        mock_data_source.get_sector_list.assert_called_once()
         assert mock_session.add.call_count == 2
         mock_session.commit.assert_called_once()
 
-    async def test_init_sectors_skip_existing(self, mock_session, mock_ak_share):
+    async def test_init_sectors_skip_existing(self, mock_session, mock_data_source):
         """测试跳过已存在的板块"""
         # 设置模拟数据
-        mock_ak_share.get_sector_list.return_value = [
+        mock_data_source.get_sector_list.return_value = [
             SectorInfo(code="sector1", name="板块1", type="industry"),
         ]
 
@@ -82,9 +82,9 @@ class TestDataInitService:
         assert result["skipped"] == 1
         mock_session.add.assert_not_called()
 
-    async def test_init_sectors_with_type_filter(self, mock_session, mock_ak_share):
+    async def test_init_sectors_with_type_filter(self, mock_session, mock_data_source):
         """测试按类型过滤板块"""
-        mock_ak_share.get_sector_list.return_value = [
+        mock_data_source.get_sector_list.return_value = [
             SectorInfo(code="sector1", name="板块1", type="industry"),
         ]
 
@@ -95,11 +95,11 @@ class TestDataInitService:
         service = DataInitService(mock_session)
         await service.init_sectors(sector_type="industry")
 
-        mock_ak_share.get_sector_list.assert_called_once_with("industry")
+        mock_data_source.get_sector_list.assert_called_once_with("industry")
 
-    async def test_init_stocks_success(self, mock_session, mock_ak_share):
+    async def test_init_stocks_success(self, mock_session, mock_data_source):
         """测试成功初始化股票数据"""
-        mock_ak_share.get_stock_list.return_value = [
+        mock_data_source.get_stock_list.return_value = [
             StockInfo(symbol="000001", name="股票1", market="SZ"),
             StockInfo(symbol="600000", name="股票2", market="SH"),
         ]
@@ -114,11 +114,11 @@ class TestDataInitService:
         assert result["success"] is True
         assert result["created"] == 2
         assert result["skipped"] == 0
-        mock_ak_share.get_stock_list.assert_called_once()
+        mock_data_source.get_stock_list.assert_called_once()
 
-    async def test_init_stocks_skip_existing(self, mock_session, mock_ak_share):
+    async def test_init_stocks_skip_existing(self, mock_session, mock_data_source):
         """测试跳过已存在的股票"""
-        mock_ak_share.get_stock_list.return_value = [
+        mock_data_source.get_stock_list.return_value = [
             StockInfo(symbol="000001", name="股票1", market="SZ"),
         ]
 
@@ -134,7 +134,7 @@ class TestDataInitService:
         assert result["created"] == 0
         assert result["skipped"] == 1
 
-    async def test_init_historical_data_success(self, mock_session, mock_ak_share):
+    async def test_init_historical_data_success(self, mock_session, mock_data_source):
         """测试成功初始化历史数据"""
         # 模拟股票存在
         mock_stock = MagicMock()
@@ -150,7 +150,7 @@ class TestDataInitService:
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
         # 设置模拟数据
-        mock_ak_share.get_daily_data.return_value = [
+        mock_data_source.get_daily_data.return_value = [
             DailyQuote(
                 symbol="000001",
                 trade_date=date.today(),
@@ -168,9 +168,9 @@ class TestDataInitService:
 
         assert result["success"] is True
         assert result["total_symbols"] == 1
-        mock_ak_share.get_daily_data.assert_called_once()
+        mock_data_source.get_daily_data.assert_called_once()
 
-    async def test_init_sector_historical_data_passes_sector_type(self, mock_session, mock_ak_share):
+    async def test_init_sector_historical_data_passes_sector_type(self, mock_session, mock_data_source):
         """测试板块历史初始化时按 sector.type 调用数据源"""
         mock_sector = MagicMock()
         mock_sector.id = "sector-id-1"
@@ -187,7 +187,7 @@ class TestDataInitService:
         mock_result2.scalar_one_or_none.return_value = None
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
-        mock_ak_share.get_sector_daily_data.return_value = [
+        mock_data_source.get_sector_daily_data.return_value = [
             DailyQuote(
                 symbol="885001",
                 trade_date=date.today(),
@@ -204,14 +204,14 @@ class TestDataInitService:
         result = await service.init_sector_historical_data(days=1)
 
         assert result["success"] is True
-        assert mock_ak_share.get_sector_daily_data.call_count == 1
-        call = mock_ak_share.get_sector_daily_data.call_args
+        assert mock_data_source.get_sector_daily_data.call_count == 1
+        call = mock_data_source.get_sector_daily_data.call_args
         assert call.args[0] == "测试行业"
         assert call.args[1] == "industry"
 
-    async def test_progress_callback(self, mock_session, mock_ak_share):
+    async def test_progress_callback(self, mock_session, mock_data_source):
         """测试进度回调"""
-        mock_ak_share.get_sector_list.return_value = [
+        mock_data_source.get_sector_list.return_value = [
             SectorInfo(code="sector1", name="板块1", type="industry"),
         ]
 
@@ -233,12 +233,12 @@ class TestDataInitService:
         assert progress_updates[0][0] == 1  # current
         assert progress_updates[0][1] == 1  # total
 
-    async def test_cancel_task(self, mock_session, mock_ak_share):
+    async def test_cancel_task(self, mock_session, mock_data_source):
         """测试任务取消"""
         import asyncio
 
         # 设置多个板块以延长处理时间
-        mock_ak_share.get_sector_list.return_value = [
+        mock_data_source.get_sector_list.return_value = [
             SectorInfo(code=f"sector{i}", name=f"板块{i}", type="industry")
             for i in range(10)
         ]

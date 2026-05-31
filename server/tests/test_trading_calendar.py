@@ -1,7 +1,7 @@
 """
 交易日历服务测试
 
-测试 TradingCalendar 和 AkShareDataSource.get_trading_calendar()。
+测试 TradingCalendar 和 .get_trading_calendar()。
 """
 
 import pytest
@@ -72,8 +72,8 @@ class TestTradingCalendar:
 
     @pytest.mark.asyncio
     async def test_is_trading_day_fallback_on_error(self, trading_calendar):
-        """测试交易日判断 - AkShare 不可用时降级为周末判断"""
-        with patch.object(trading_calendar, '_get_trading_days', side_effect=DataFetchError("timeout", source="AkShare", endpoint="test")):
+        """测试交易日判断 - 数据源不可用时降级为周末判断"""
+        with patch.object(trading_calendar, '_get_trading_days', side_effect=DataFetchError("timeout", source="Tushare", endpoint="test")):
             # 降级：工作日视为交易日
             is_trading, reason = await trading_calendar.is_trading_day(date(2024, 1, 10))
             assert is_trading is True
@@ -136,33 +136,3 @@ class TestTradingCalendar:
             await trading_calendar.is_trading_day(date(2024, 1, 2))
             # 缓存日期不匹配今天，应重新获取
             assert mock_get.call_count == 1
-
-
-class TestAkShareGetTradingCalendar:
-    """AkShareDataSource.get_trading_calendar() 测试"""
-
-    def test_get_trading_calendar_success(self):
-        """测试获取交易日历 - 成功"""
-        from src.services.data_acquisition.akshare_client import AkShareDataSource
-
-        df = pd.DataFrame({
-            'trade_date': [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
-        })
-
-        with patch.object(AkShareDataSource, '_get_akshare') as mock_ak, \
-             patch.object(AkShareDataSource, '_execute_with_retry', return_value=df):
-            source = AkShareDataSource()
-            result = source.get_trading_calendar()
-
-            assert len(result) == 3
-            assert all(isinstance(d, date) for d in result)
-            assert result == sorted(result)
-
-    def test_get_trading_calendar_empty_raises(self):
-        """测试获取交易日历 - 空数据抛异常"""
-        from src.services.data_acquisition.akshare_client import AkShareDataSource
-
-        with patch.object(AkShareDataSource, '_execute_with_retry', return_value=pd.DataFrame()):
-            source = AkShareDataSource()
-            with pytest.raises(DataFetchError):
-                source.get_trading_calendar()
