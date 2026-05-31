@@ -36,7 +36,9 @@ class TushareDataSource(BaseDataSource):
     def __init__(self):
         super().__init__("Tushare")
         self._token = os.getenv("TUSHARE_TOKEN", "").strip()
-        self._api_url = os.getenv("TUSHARE_API_URL", "api.tushare.pro").strip()
+        self._api_url = os.getenv(
+            "TUSHARE_API_URL", "https://ts.gyzcloud.top/api"
+        ).strip()
         self._api_interval = float(
             os.getenv("TUSHARE_API_INTERVAL", str(self.DEFAULT_API_INTERVAL))
         )
@@ -55,9 +57,11 @@ class TushareDataSource(BaseDataSource):
                     source=self.source_name,
                 )
             try:
-                import tushare as ts
+                from tushare.pro.client import DataApi
 
-                self._pro_api = ts.pro_api(self._token, api_url=self._api_url)
+                self._pro_api = DataApi(token=self._token)
+                # DataApi 的 __http_url 是类属性，通过 _DataApi__http_url 修改
+                self._pro_api._DataApi__http_url = self._api_url
                 logger.info(f"[Tushare] 初始化成功，服务地址: {self._api_url}")
             except ImportError as e:
                 raise ImportError("tushare 未安装，请运行: pip install tushare") from e
