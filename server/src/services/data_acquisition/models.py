@@ -11,13 +11,28 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class StockInfo(BaseModel):
-    """股票基本信息"""
+    """股票基本信息 — 与 Tushare stock_basic 输出字段对齐"""
 
+    # 必填字段
     symbol: str = Field(..., description="股票代码")
     name: str = Field(..., description="股票名称")
-    market: Optional[str] = Field(None, description="市场类型: SH/SZ")
-    industry: Optional[str] = Field(None, description="所属行业")
+
+    # Tushare stock_basic 基础字段
+    ts_code: Optional[str] = Field(None, description="TS 代码（如 000001.SZ）")
+    area: Optional[str] = Field(None, description="地域（如 深圳）")
+    industry: Optional[str] = Field(None, description="所属行业（如 银行）")
+    fullname: Optional[str] = Field(None, description="股票全称")
+    enname: Optional[str] = Field(None, description="英文全称")
+    cnspell: Optional[str] = Field(None, description="拼音缩写")
+    market: Optional[str] = Field(None, description="市场类型（主板/创业板/科创板/CDR）")
+    exchange: Optional[str] = Field(None, description="交易所（SSE/SZSE/BSE）")
+    curr_type: Optional[str] = Field(None, description="交易货币")
+    list_status: Optional[str] = Field(None, description="上市状态: L 上市 D 退市 P 暂停 G 过会")
     list_date: Optional[date] = Field(None, description="上市日期")
+    delist_date: Optional[date] = Field(None, description="退市日期")
+    is_hs: Optional[str] = Field(None, description="是否沪深港通标的: N 否 H 沪股通 S 深股通")
+    act_name: Optional[str] = Field(None, description="实控人名称")
+    act_ent_type: Optional[str] = Field(None, description="实控人企业性质")
 
     @field_validator("symbol")
     @classmethod
@@ -28,14 +43,34 @@ class StockInfo(BaseModel):
             raise ValueError("股票代码不能为空")
         return v
 
-    @field_validator("market")
+    @field_validator("exchange")
     @classmethod
-    def validate_market(cls, v: Optional[str]) -> Optional[str]:
-        """验证市场类型"""
+    def validate_exchange(cls, v: Optional[str]) -> Optional[str]:
+        """验证交易所代码"""
         if v is not None:
             v = v.strip().upper()
-            if v not in ("SH", "SZ", "BJ"):
-                raise ValueError(f"无效的市场类型: {v}")
+            if v not in ("SSE", "SZSE", "BSE", ""):
+                raise ValueError(f"无效的交易所代码: {v}")
+        return v
+
+    @field_validator("list_status")
+    @classmethod
+    def validate_list_status(cls, v: Optional[str]) -> Optional[str]:
+        """验证上市状态"""
+        if v is not None:
+            v = v.strip().upper()
+            if v not in ("L", "D", "P", "G", ""):
+                raise ValueError(f"无效的上市状态: {v}")
+        return v
+
+    @field_validator("is_hs")
+    @classmethod
+    def validate_is_hs(cls, v: Optional[str]) -> Optional[str]:
+        """验证沪深港通标的标识"""
+        if v is not None:
+            v = v.strip().upper()
+            if v not in ("N", "H", "S", ""):
+                raise ValueError(f"无效的沪深港通标识: {v}")
         return v
 
 

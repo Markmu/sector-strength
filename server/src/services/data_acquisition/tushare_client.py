@@ -144,7 +144,7 @@ class TushareDataSource(BaseDataSource):
         return dates
 
     def get_stock_list(self) -> List[StockInfo]:
-        """获取 A 股股票列表"""
+        """获取 A 股股票列表 — 提取 stock_basic 全部字段"""
         pro = self._get_pro_api()
 
         def _fetch():
@@ -163,19 +163,51 @@ class TushareDataSource(BaseDataSource):
                 symbol = ts_code.split(".")[0]
                 name = str(row["name"])
                 suffix = ts_code.split(".")[1] if "." in ts_code else ""
-                market_map = {"SH": "SH", "SZ": "SZ", "BJ": "BJ"}
-                market = market_map.get(suffix)
-                industry = str(row.get("industry", "")) or None
+
+                # 交易所映射：ts_code 后缀 → Tushare exchange 字段
+                exchange_map = {"SH": "SSE", "SZ": "SZSE", "BJ": "BSE"}
+                exchange = exchange_map.get(suffix)
+
+                # Tushare market 字段（主板/创业板/科创板/CDR）
+                market = str(row.get("market", "")) or None if pd.notna(row.get("market")) else None
+                industry = str(row.get("industry", "")) or None if pd.notna(row.get("industry")) else None
+                area = str(row.get("area", "")) or None if pd.notna(row.get("area")) else None
+                fullname = str(row.get("fullname", "")) or None if pd.notna(row.get("fullname")) else None
+                enname = str(row.get("enname", "")) or None if pd.notna(row.get("enname")) else None
+                cnspell = str(row.get("cnspell", "")) or None if pd.notna(row.get("cnspell")) else None
+                curr_type = str(row.get("curr_type", "")) or None if pd.notna(row.get("curr_type")) else None
+                list_status = str(row.get("list_status", "")) or None if pd.notna(row.get("list_status")) else None
+                is_hs = str(row.get("is_hs", "")) or None if pd.notna(row.get("is_hs")) else None
+                act_name = str(row.get("act_name", "")) or None if pd.notna(row.get("act_name")) else None
+                act_ent_type = str(row.get("act_ent_type", "")) or None if pd.notna(row.get("act_ent_type")) else None
+
                 list_date = None
                 if pd.notna(row.get("list_date")):
                     list_date = datetime.strptime(str(row["list_date"]), "%Y%m%d").date()
+
+                delist_date = None
+                if pd.notna(row.get("delist_date")):
+                    delist_date = datetime.strptime(str(row["delist_date"]), "%Y%m%d").date()
+
                 stocks.append(
                     StockInfo(
                         symbol=symbol,
                         name=name,
-                        market=market,
+                        ts_code=ts_code,
+                        area=area,
                         industry=industry,
+                        fullname=fullname,
+                        enname=enname,
+                        cnspell=cnspell,
+                        market=market,
+                        exchange=exchange,
+                        curr_type=curr_type,
+                        list_status=list_status,
                         list_date=list_date,
+                        delist_date=delist_date,
+                        is_hs=is_hs,
+                        act_name=act_name,
+                        act_ent_type=act_ent_type,
                     )
                 )
             except (ValidationError, ValueError):
@@ -196,19 +228,25 @@ class TushareDataSource(BaseDataSource):
         sectors: List[SectorInfo] = []
 
         if normalized is None or normalized == "industry":
-            sectors.extend(self._fetch_sectors_by_type(pro, "行业", "industry"))
+            sectors.extend(self._fetch_sectors_by_type(pro, "I", "industry"))
         if normalized is None or normalized == "concept":
-            sectors.extend(self._fetch_sectors_by_type(pro, "概念", "concept"))
+            sectors.extend(self._fetch_sectors_by_type(pro, "N", "concept"))
 
         logger.info(f"[Tushare] 获取到 {len(sectors)} 个板块")
         return sectors
+
+    # API type 参数映射：内部标签 → Tushare API 缩写
+    _THS_TYPE_MAP = {"industry": "I", "concept": "N"}
+    _THS_TYPE_LABEL = {"I": "行业", "N": "概念"}
 
     def _fetch_sectors_by_type(
         self, pro, is_type: str, type_label: str
     ) -> List[SectorInfo]:
         """按类型获取板块列表"""
+        label = self._THS_TYPE_LABEL.get(is_type, is_type)
+
         def _fetch():
-            logger.info(f"[Tushare] 正在获取{is_type}板块列表...")
+            logger.info(f"[Tushare] 正在获取{label}板块列表...")
             return pro.ths_index(exchange="A", type=is_type)
 
         df = self._execute_with_retry(_fetch)
@@ -309,7 +347,7 @@ class TushareDataSource(BaseDataSource):
         pro = self._get_pro_api()
 
         # 通过板块名称查找 ts_code
-        is_type = "行业" if normalized == "industry" else "概念"
+        is_type = self._THS_TYPE_MAP.get(normalized, "I")
         sectors = self._fetch_sectors_by_type(pro, is_type, normalized)
         ts_code = None
         for s in sectors:

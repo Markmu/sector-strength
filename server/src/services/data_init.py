@@ -201,8 +201,16 @@ class DataInitService:
             self._check_cancelled()
 
             created = 0
+            updated = 0
             skipped = 0
             errors = []
+
+            # 需要同步的基础字段列表
+            _basic_fields = [
+                "name", "ts_code", "area", "industry", "fullname", "enname",
+                "cnspell", "market", "exchange", "curr_type", "list_status",
+                "list_date", "delist_date", "is_hs", "act_name", "act_ent_type",
+            ]
 
             for i, stock_info in enumerate(stocks, 1):
                 self._check_cancelled()
@@ -218,15 +226,44 @@ class DataInitService:
                         existing = result.scalar_one_or_none()
 
                         if existing:
-                            skipped += 1
-                            logger.debug(f"股票已存在，跳过: {stock_info.symbol}")
+                            # 已存在则更新基础字段
+                            updated_fields = []
+                            for field in _basic_fields:
+                                new_val = getattr(stock_info, field, None)
+                                old_val = getattr(existing, field, None)
+                                if new_val != old_val:
+                                    setattr(existing, field, new_val)
+                                    updated_fields.append(field)
+                            if updated_fields:
+                                updated += 1
+                                logger.debug(
+                                    f"更新股票: {stock_info.symbol} - "
+                                    f"变更字段: {', '.join(updated_fields)}"
+                                )
+                            else:
+                                skipped += 1
                         else:
-                            # 创建新股票
+                            # 创建新股票，保存全部基础字段
                             stock = Stock(
                                 symbol=stock_info.symbol,
                                 name=stock_info.name,
+                                ts_code=stock_info.ts_code,
+                                area=stock_info.area,
+                                industry=stock_info.industry,
+                                fullname=stock_info.fullname,
+                                enname=stock_info.enname,
+                                cnspell=stock_info.cnspell,
+                                market=stock_info.market,
+                                exchange=stock_info.exchange,
+                                curr_type=stock_info.curr_type,
+                                list_status=stock_info.list_status,
+                                list_date=stock_info.list_date,
+                                delist_date=stock_info.delist_date,
+                                is_hs=stock_info.is_hs,
+                                act_name=stock_info.act_name,
+                                act_ent_type=stock_info.act_ent_type,
                                 current_price=None,
-                                market_cap=None
+                                market_cap=None,
                             )
                             self.session.add(stock)
                             created += 1
@@ -243,12 +280,13 @@ class DataInitService:
             result = {
                 "success": True,
                 "created": created,
+                "updated": updated,
                 "skipped": skipped,
                 "errors": errors,
                 "total": len(stocks)
             }
 
-            logger.info(f"股票初始化完成: 创建 {created}, 跳过 {skipped}, 错误 {len(errors)}")
+            logger.info(f"股票初始化完成: 创建 {created}, 更新 {updated}, 跳过 {skipped}, 错误 {len(errors)}")
             return result
 
         except InterruptedError:

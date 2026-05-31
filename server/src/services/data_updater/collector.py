@@ -163,6 +163,13 @@ class DataCollector:
         data_source = self._data_source
         stocks = data_source.get_stock_list()
 
+        # 需要增量同步的基础字段列表
+        _basic_fields = [
+            "name", "ts_code", "area", "industry", "fullname", "enname",
+            "cnspell", "market", "exchange", "curr_type", "list_status",
+            "list_date", "delist_date", "is_hs", "act_name", "act_ent_type",
+        ]
+
         async with get_session() as session:
             result = await session.execute(select(Stock))
             existing_map = {s.symbol: s for s in result.scalars().all()}
@@ -170,13 +177,35 @@ class DataCollector:
             count = 0
             for stock_info in stocks:
                 if stock_info.symbol in existing_map:
-                    if existing_map[stock_info.symbol].name != stock_info.name:
-                        existing_map[stock_info.symbol].name = stock_info.name
+                    existing = existing_map[stock_info.symbol]
+                    changed = False
+                    for field in _basic_fields:
+                        new_val = getattr(stock_info, field, None)
+                        old_val = getattr(existing, field, None)
+                        if new_val != old_val:
+                            setattr(existing, field, new_val)
+                            changed = True
+                    if changed:
                         count += 1
                 else:
                     session.add(Stock(
                         symbol=stock_info.symbol,
                         name=stock_info.name,
+                        ts_code=stock_info.ts_code,
+                        area=stock_info.area,
+                        industry=stock_info.industry,
+                        fullname=stock_info.fullname,
+                        enname=stock_info.enname,
+                        cnspell=stock_info.cnspell,
+                        market=stock_info.market,
+                        exchange=stock_info.exchange,
+                        curr_type=stock_info.curr_type,
+                        list_status=stock_info.list_status,
+                        list_date=stock_info.list_date,
+                        delist_date=stock_info.delist_date,
+                        is_hs=stock_info.is_hs,
+                        act_name=stock_info.act_name,
+                        act_ent_type=stock_info.act_ent_type,
                     ))
                     count += 1
 

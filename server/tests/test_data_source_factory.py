@@ -257,29 +257,46 @@ class TestTushareGetStockList:
             return ds
 
     def test_field_mapping(self):
-        """ts_code → symbol, suffix → market, industry 映射正确"""
+        """ts_code → symbol, exchange 映射正确，全字段提取"""
         mock_pro = MagicMock()
         mock_pro.stock_basic.return_value = pd.DataFrame({
             "ts_code": ["000001.SZ", "600000.SH", "830001.BJ"],
             "name": ["平安银行", "浦发银行", "测试北交所"],
             "industry": ["银行", None, "其他"],
+            "market": ["主板", "主板", "北交所"],
+            "exchange": ["SZSE", "SSE", "BSE"],
+            "area": ["深圳", "上海", "北京"],
+            "fullname": ["平安银行股份有限公司", None, None],
+            "enname": ["Ping An Bank Co., Ltd.", None, None],
+            "cnspell": ["PAYH", "PFYH", "CSBJS"],
+            "curr_type": ["CNY", "CNY", "CNY"],
+            "list_status": ["L", "L", "L"],
             "list_date": [pd.NaT, "19991110", "20200101"],
+            "delist_date": [None, None, None],
+            "is_hs": ["S", "H", "N"],
+            "act_name": ["中国平安", None, None],
+            "act_ent_type": ["中央国企", None, None],
         })
 
         ds = self._make_ds(mock_pro)
         stocks = ds.get_stock_list()
 
         assert len(stocks) == 3
-        # 验证 SZ
+        # 验证 SZ → SZSE
         assert stocks[0].symbol == "000001"
-        assert stocks[0].market == "SZ"
+        assert stocks[0].exchange == "SZSE"
+        assert stocks[0].market == "主板"
         assert stocks[0].industry == "银行"
-        # 验证 SH
+        assert stocks[0].area == "深圳"
+        assert stocks[0].is_hs == "S"
+        # 验证 SH → SSE
         assert stocks[1].symbol == "600000"
-        assert stocks[1].market == "SH"
+        assert stocks[1].exchange == "SSE"
+        assert stocks[1].market == "主板"
         assert stocks[1].list_date == date(1999, 11, 10)
-        # 验证 BJ
-        assert stocks[2].market == "BJ"
+        # 验证 BJ → BSE
+        assert stocks[2].exchange == "BSE"
+        assert stocks[2].market == "北交所"
 
 
 class TestTushareGetSectorList:

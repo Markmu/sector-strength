@@ -100,8 +100,8 @@ class TestDataInitService:
     async def test_init_stocks_success(self, mock_session, mock_data_source):
         """测试成功初始化股票数据"""
         mock_data_source.get_stock_list.return_value = [
-            StockInfo(symbol="000001", name="股票1", market="SZ"),
-            StockInfo(symbol="600000", name="股票2", market="SH"),
+            StockInfo(symbol="000001", name="股票1", exchange="SZSE"),
+            StockInfo(symbol="600000", name="股票2", exchange="SSE"),
         ]
 
         mock_result = MagicMock()
@@ -117,13 +117,30 @@ class TestDataInitService:
         mock_data_source.get_stock_list.assert_called_once()
 
     async def test_init_stocks_skip_existing(self, mock_session, mock_data_source):
-        """测试跳过已存在的股票"""
-        mock_data_source.get_stock_list.return_value = [
-            StockInfo(symbol="000001", name="股票1", market="SZ"),
-        ]
+        """测试已存在且无变更的股票被跳过"""
+        stock_info = StockInfo(symbol="000001", name="股票1", exchange="SZSE")
+        mock_data_source.get_stock_list.return_value = [stock_info]
+
+        # 构造已有记录，字段值与 StockInfo 一致，确保无变更
+        existing_stock = MagicMock()
+        existing_stock.name = stock_info.name
+        existing_stock.ts_code = stock_info.ts_code
+        existing_stock.area = stock_info.area
+        existing_stock.industry = stock_info.industry
+        existing_stock.fullname = stock_info.fullname
+        existing_stock.enname = stock_info.enname
+        existing_stock.cnspell = stock_info.cnspell
+        existing_stock.market = stock_info.market
+        existing_stock.exchange = stock_info.exchange
+        existing_stock.curr_type = stock_info.curr_type
+        existing_stock.list_status = stock_info.list_status
+        existing_stock.list_date = stock_info.list_date
+        existing_stock.delist_date = stock_info.delist_date
+        existing_stock.is_hs = stock_info.is_hs
+        existing_stock.act_name = stock_info.act_name
+        existing_stock.act_ent_type = stock_info.act_ent_type
 
         mock_result = MagicMock()
-        existing_stock = MagicMock()
         mock_result.scalar_one_or_none.return_value = existing_stock
         mock_session.execute.return_value = mock_result
 
@@ -132,7 +149,45 @@ class TestDataInitService:
 
         assert result["success"] is True
         assert result["created"] == 0
+        assert result["updated"] == 0
         assert result["skipped"] == 1
+
+    async def test_init_stocks_update_existing(self, mock_session, mock_data_source):
+        """测试已存在但有字段变更的股票被更新"""
+        mock_data_source.get_stock_list.return_value = [
+            StockInfo(symbol="000001", name="新名称", industry="银行", exchange="SZSE"),
+        ]
+
+        # 构造已有记录，name 不同，其余新增字段为 None
+        existing_stock = MagicMock()
+        existing_stock.name = "旧名称"
+        existing_stock.ts_code = None
+        existing_stock.area = None
+        existing_stock.industry = None
+        existing_stock.fullname = None
+        existing_stock.enname = None
+        existing_stock.cnspell = None
+        existing_stock.market = None
+        existing_stock.exchange = None
+        existing_stock.curr_type = None
+        existing_stock.list_status = None
+        existing_stock.list_date = None
+        existing_stock.delist_date = None
+        existing_stock.is_hs = None
+        existing_stock.act_name = None
+        existing_stock.act_ent_type = None
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing_stock
+        mock_session.execute.return_value = mock_result
+
+        service = DataInitService(mock_session)
+        result = await service.init_stocks()
+
+        assert result["success"] is True
+        assert result["created"] == 0
+        assert result["updated"] == 1
+        assert result["skipped"] == 0
 
     async def test_init_historical_data_success(self, mock_session, mock_data_source):
         """测试成功初始化历史数据"""
