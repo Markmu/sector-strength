@@ -1,15 +1,10 @@
 """注册功能的集成测试"""
 
 import pytest
-import sys
-import os
-import asyncio
-from httpx import AsyncClient
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
 from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock, Mock
-
-# 添加 src 目录到 Python 路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from src.main import app
 from src.core.settings import settings
@@ -18,9 +13,9 @@ from src.core.settings import settings
 class TestRegistrationAPI:
     """测试注册 API 端点"""
 
-    @pytest.fixture
-    async def client(self):
-        """创建测试客户端"""
+    @pytest_asyncio.fixture
+    async def client(self, test_session):
+        """创建测试客户端（使用隔离 schema）"""
         async with AsyncClient(app=app, base_url="http://test") as ac:
             yield ac
 
@@ -162,7 +157,7 @@ class TestRegistrationAPI:
 
 
 @pytest.mark.asyncio
-async def test_health_check(client):
+async def test_health_check(test_session):
     """测试健康检查端点"""
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.get("/health")

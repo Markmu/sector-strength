@@ -2,47 +2,32 @@ import pytest
 import asyncio
 from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
-import sys
-import os
-
-# 添加src目录到Python路径
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from sqlalchemy import text
 
 from main import app
-from src.models.database import async_session
 from src.models.user import User
 from src.core.auth_service import AuthService
 from src.core.config import settings
 
 
-@pytest.fixture(scope="module")
-def client():
-    """创建测试客户端"""
+@pytest.fixture
+def client(test_session):
+    """创建测试客户端（使用隔离 schema）"""
     with TestClient(app) as c:
         yield c
-
-
-@pytest.fixture(scope="module")
-async def db_session():
-    """创建测试数据库会话"""
-    async with async_session() as session:
-        yield session
 
 
 @pytest.fixture
 async def test_user(db_session):
     """创建测试用户"""
     # 清理可能存在的测试用户
-    existing_user = await db_session.execute(
-        "SELECT id FROM users WHERE email = 'test@example.com'"
-    )
-    if existing_user.fetchone():
-        await db_session.execute(
-            "DELETE FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE email = 'test@example.com')"
-        )
-        await db_session.execute(
-            "DELETE FROM users WHERE email = 'test@example.com'"
-        )
+    await db_session.execute(text(
+        "DELETE FROM refresh_tokens WHERE user_id IN "
+        "(SELECT id FROM users WHERE email = 'test@example.com')"
+    ))
+    await db_session.execute(text(
+        "DELETE FROM users WHERE email = 'test@example.com'"
+    ))
 
     # 创建新用户
     user_data = {
@@ -66,16 +51,13 @@ async def test_user(db_session):
 async def locked_test_user(db_session):
     """创建被锁定的测试用户"""
     # 清理可能存在的测试用户
-    existing_user = await db_session.execute(
-        "SELECT id FROM users WHERE email = 'locked@example.com'"
-    )
-    if existing_user.fetchone():
-        await db_session.execute(
-            "DELETE FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE email = 'locked@example.com')"
-        )
-        await db_session.execute(
-            "DELETE FROM users WHERE email = 'locked@example.com'"
-        )
+    await db_session.execute(text(
+        "DELETE FROM refresh_tokens WHERE user_id IN "
+        "(SELECT id FROM users WHERE email = 'locked@example.com')"
+    ))
+    await db_session.execute(text(
+        "DELETE FROM users WHERE email = 'locked@example.com'"
+    ))
 
     # 创建新用户并锁定
     user_data = {

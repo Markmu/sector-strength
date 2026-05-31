@@ -14,7 +14,7 @@ from src.core.email import send_verification_email, send_password_reset_email
 from src.core.settings import settings
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))
 logger = logging.getLogger(__name__)
 
 

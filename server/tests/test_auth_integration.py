@@ -1,22 +1,18 @@
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from datetime import datetime, timedelta
 from httpx import ASGITransport
-import sys
-import os
-
-# 添加src目录到Python路径
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from sqlalchemy import text
 
 from main import app
-from src.models.database import async_session
 from src.models.user import User
 from src.core.auth_service import AuthService
 
 
-@pytest.fixture
-async def test_client():
-    """创建HTTP测试客户端"""
+@pytest_asyncio.fixture
+async def test_client(test_session):
+    """创建HTTP测试客户端（使用隔离 schema）"""
     async with AsyncClient(
         transport=ASGITransport(app=app, raise_app_exceptions=False),
         base_url="http://test"
@@ -24,33 +20,33 @@ async def test_client():
         yield ac
 
 
-@pytest.fixture
-async def test_db():
-    """创建测试数据库"""
-    async with async_session() as session:
-        yield session
+@pytest_asyncio.fixture
+async def test_db(test_session):
+    """使用隔离 schema 的测试数据库会话"""
+    yield test_session
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_user(test_db):
     """创建测试用户"""
     # 清理可能存在的测试用户
-    await test_db.execute(
-        "DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test%@example.com')"
-    )
-    await test_db.execute(
-        "DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test%@example.com')"
-    )
-    await test_db.execute(
+    await test_db.execute(text(
+        "DELETE FROM refresh_tokens WHERE user_id IN "
+        "(SELECT id FROM users WHERE email LIKE 'test%@example.com')"
+    ))
+    await test_db.execute(text(
+        "DELETE FROM email_verification_tokens WHERE user_id IN "
+        "(SELECT id FROM users WHERE email LIKE 'test%@example.com')"
+    ))
+    await test_db.execute(text(
         "DELETE FROM users WHERE email LIKE 'test%@example.com'"
-    )
+    ))
 
     # 创建测试用户
     user_data = {
         'username': 'testuser',
         'email': 'test@example.com',
-        'hashed_password': AuthService.hash_password('TestPassword123!'),
-        'full_name': 'Test User',
+        'password_hash': AuthService.hash_password('TestPassword123!'),
         'is_active': True
     }
     user = User(**user_data)
@@ -156,9 +152,6 @@ class TestAuthenticationIntegration:
         # 验证返回了token
         assert "access_token" in login_data
         assert "refresh_token" in login_data
-
-        # 验证refresh token有较长的过期时间
-        # （这个验证取决于实际的实现）
 
     @pytest.mark.asyncio
     async def test_multiple_login_attempts(self, test_client: AsyncClient):
@@ -319,14 +312,6 @@ class TestAuthenticationIntegration:
         assert me1_data["email"] != me2_data["email"]
         assert me1_data["id"] != me2_data["id"]
 
-        # 验证token不能互换使用
-        me1_response_wrong = await test_client.get(
-            "/api/v1/auth/me",
-            headers={"Authorization": f"Bearer {token2}"}
-        )
-        # 这里应该返回第二个用户的信息，而不是错误
-        # 这个测试可能需要根据实际的业务逻辑调整
-
 
 class TestSecurityIntegration:
     """安全机制集成测试"""
@@ -427,14 +412,13 @@ class TestDatabaseIntegration:
     @pytest.mark.asyncio
     async def test_user_creation_in_database(self, test_db):
         """测试用户创建到数据库"""
-        await test_db.execute("DELETE FROM users WHERE email = 'dbtest@example.com'")
+        await test_db.execute(text("DELETE FROM users WHERE email = 'dbtest@example.com'"))
         await test_db.commit()
 
         user_data = {
             'username': 'dbtestuser',
             'email': 'dbtest@example.com',
-            'hashed_password': AuthService.hash_password('DBTestPassword123!'),
-            'full_name': 'DB Test User',
+            'password_hash': AuthService.hash_password('DBTestPassword123!'),
             'is_active': True
         }
         user = User(**user_data)
@@ -452,15 +436,14 @@ class TestDatabaseIntegration:
         """测试refresh token存储"""
         from src.models.user import RefreshToken
 
-        await test_db.execute("DELETE FROM refresh_tokens WHERE token = 'test_refresh_token_12345'")
-        await test_db.execute("DELETE FROM users WHERE email = 'token@example.com'")
+        await test_db.execute(text("DELETE FROM refresh_tokens WHERE token = 'test_refresh_token_12345'"))
+        await test_db.execute(text("DELETE FROM users WHERE email = 'token@example.com'"))
         await test_db.commit()
 
         user_data = {
             'username': 'tokenuser',
             'email': 'token@example.com',
-            'hashed_password': AuthService.hash_password('TokenTestPassword123!'),
-            'full_name': 'Token User',
+            'password_hash': AuthService.hash_password('TokenTestPassword123!'),
             'is_active': True
         }
         user = User(**user_data)

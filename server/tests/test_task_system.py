@@ -21,20 +21,6 @@ from src.services.task_handlers import (
     backfill_by_date_task,
     backfill_by_range_task,
 )
-from src.db.database import AsyncSessionLocal
-
-
-@pytest_asyncio.fixture
-async def db_session():
-    """创建测试数据库会话"""
-    async with AsyncSessionLocal() as session:
-        yield session
-        # 清理：回滚测试创建的数据
-        try:
-            await session.rollback()
-        except RuntimeError as exc:
-            if "Event loop is closed" not in str(exc):
-                raise
 
 
 @pytest.mark.asyncio
