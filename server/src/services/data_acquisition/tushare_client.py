@@ -14,7 +14,13 @@ from pydantic import ValidationError
 
 from .base import BaseDataSource
 from .exceptions import DataFetchError, RetryExhaustedError
-from .models import DailyQuote, SectorInfo, StockInfo
+from .models import DailyQuote, SectorInfo, SectorMemberInfo, StockInfo
+from .sector_types import (
+    SECTOR_TYPES,
+    THS_TYPE_LABEL,
+    THS_TYPE_MAP,
+    is_valid_sector_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +37,8 @@ class TushareDataSource(BaseDataSource):
     DEFAULT_MAX_RETRIES = 3
     DEFAULT_RETRY_DELAY = 1.0
     DEFAULT_BACKOFF_FACTOR = 2.0
-    DEFAULT_API_INTERVAL = 0.5
+    # 速率限制：每分钟 200 次 → 间隔 = 60 / 200 = 0.3 秒
+    DEFAULT_API_INTERVAL = 0.3
 
     def __init__(self):
         super().__init__("Tushare")
@@ -222,28 +229,24 @@ class TushareDataSource(BaseDataSource):
         """获取板块列表"""
         pro = self._get_pro_api()
         normalized = sector_type.strip().lower() if sector_type else None
-        if normalized and normalized not in ("industry", "concept"):
+        if normalized and not is_valid_sector_type(normalized):
             raise ValueError(f"无效的板块类型过滤: {sector_type}")
 
         sectors: List[SectorInfo] = []
+        types_to_fetch = [normalized] if normalized else list(SECTOR_TYPES)
 
-        if normalized is None or normalized == "industry":
-            sectors.extend(self._fetch_sectors_by_type(pro, "I", "industry"))
-        if normalized is None or normalized == "concept":
-            sectors.extend(self._fetch_sectors_by_type(pro, "N", "concept"))
+        for t in types_to_fetch:
+            is_code = THS_TYPE_MAP[t]
+            sectors.extend(self._fetch_sectors_by_type(pro, is_code, t))
 
         logger.info(f"[Tushare] 获取到 {len(sectors)} 个板块")
         return sectors
-
-    # API type 参数映射：内部标签 → Tushare API 缩写
-    _THS_TYPE_MAP = {"industry": "I", "concept": "N"}
-    _THS_TYPE_LABEL = {"I": "行业", "N": "概念"}
 
     def _fetch_sectors_by_type(
         self, pro, is_type: str, type_label: str
     ) -> List[SectorInfo]:
         """按类型获取板块列表"""
-        label = self._THS_TYPE_LABEL.get(is_type, is_type)
+        label = THS_TYPE_LABEL.get(is_type, is_type)
 
         def _fetch():
             logger.info(f"[Tushare] 正在获取{label}板块列表...")
@@ -326,6 +329,47 @@ class TushareDataSource(BaseDataSource):
         )
         return quotes
 
+    def get_sector_members(self, ts_code: str) -> SectorMemberInfo:
+        """
+        获取板块成分股列表
+
+        通过同花顺板块代码调用 ths_member 接口获取成分股，
+        返回的 stock_codes 为短码格式（与 stocks.symbol 对齐）。
+
+        Args:
+            ts_code: 板块代码 (如 "850121.SI")
+
+        Returns:
+            SectorMemberInfo: 板块代码 + 成分股代码列表
+        """
+        if not ts_code:
+            raise ValueError("板块代码不能为空")
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(f"[Tushare] 正在获取板块 {ts_code} 的成分股...")
+            return pro.ths_member(ts_code=ts_code)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(f"[Tushare] 板块 {ts_code} 无成分股数据")
+            return SectorMemberInfo(sector_code=ts_code, stock_codes=[])
+
+        stock_codes: List[str] = []
+        for _, row in df.iterrows():
+            try:
+                con_code = str(row["con_code"])
+                # con_code 格式为 "000001.SZ"，提取短码部分以对齐 stocks.symbol
+                symbol = con_code.split(".")[0] if "." in con_code else con_code
+                if symbol:
+                    stock_codes.append(symbol)
+            except (KeyError, ValueError):
+                pass
+
+        logger.info(f"[Tushare] 板块 {ts_code} 获取到 {len(stock_codes)} 只成分股")
+        return SectorMemberInfo(sector_code=ts_code, stock_codes=stock_codes)
+
     def get_sector_daily_data(
         self,
         sector_name: str,
@@ -339,7 +383,7 @@ class TushareDataSource(BaseDataSource):
         if not sector_type:
             raise ValueError("板块类型不能为空")
         normalized = sector_type.strip().lower()
-        if normalized not in ("industry", "concept"):
+        if not is_valid_sector_type(normalized):
             raise ValueError(f"无效的板块类型: {sector_type}")
         if start_date > end_date:
             raise ValueError("开始日期不能晚于结束日期")
@@ -347,7 +391,7 @@ class TushareDataSource(BaseDataSource):
         pro = self._get_pro_api()
 
         # 通过板块名称查找 ts_code
-        is_type = self._THS_TYPE_MAP.get(normalized, "I")
+        is_type = THS_TYPE_MAP.get(normalized, "I")
         sectors = self._fetch_sectors_by_type(pro, is_type, normalized)
         ts_code = None
         for s in sectors:

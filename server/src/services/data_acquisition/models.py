@@ -9,6 +9,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from .sector_types import SECTOR_TYPES
+
 
 class StockInfo(BaseModel):
     """股票基本信息 — 与 Tushare stock_basic 输出字段对齐"""
@@ -79,7 +81,7 @@ class SectorInfo(BaseModel):
 
     code: str = Field(..., description="板块代码")
     name: str = Field(..., description="板块名称")
-    type: str = Field(..., description="板块类型: industry/concept")
+    type: str = Field(..., description="板块类型: industry/concept/region/feature/style/theme")
     description: Optional[str] = Field(None, description="板块描述")
 
     @field_validator("code")
@@ -96,9 +98,19 @@ class SectorInfo(BaseModel):
     def validate_type(cls, v: str) -> str:
         """验证板块类型"""
         v = v.strip().lower()
-        if v not in ("industry", "concept"):
+        if v not in SECTOR_TYPES:
             raise ValueError(f"无效的板块类型: {v}")
         return v
+
+
+class SectorMemberInfo(BaseModel):
+    """板块成分股信息"""
+
+    sector_code: str = Field(..., description="板块代码 (ts_code 格式，如 850121.SI)")
+    stock_codes: List[str] = Field(
+        default_factory=list,
+        description="成分股 symbol 列表 (短码格式，如 000001)",
+    )
 
 
 class DailyQuote(BaseModel):

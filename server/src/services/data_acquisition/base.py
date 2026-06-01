@@ -11,6 +11,7 @@ from typing import List, Optional
 from .models import (
     DailyQuote,
     SectorInfo,
+    SectorMemberInfo,
     StockInfo,
 )
 
@@ -58,7 +59,7 @@ class BaseDataSource(ABC):
         获取行业板块或概念板块的信息。
 
         Args:
-            sector_type: 板块类型过滤 (industry/concept)，None 表示获取所有
+            sector_type: 板块类型过滤 (industry/concept/region/feature/style/theme)，None 表示获取所有
 
         Returns:
             板块信息列表，包含板块代码、名称、类型等
@@ -109,6 +110,24 @@ class BaseDataSource(ABC):
         pass
 
     @abstractmethod
+    def get_sector_members(self, ts_code: str) -> SectorMemberInfo:
+        """
+        获取板块成分股列表
+
+        通过同花顺板块代码获取该板块下的所有成分股。
+
+        Args:
+            ts_code: 板块代码 (如 "850121.SI")
+
+        Returns:
+            SectorMemberInfo: 包含板块代码和成分股代码列表
+
+        Raises:
+            DataFetchError: 数据获取失败
+        """
+        pass
+
+    @abstractmethod
     def get_sector_daily_data(
         self,
         sector_name: str,
@@ -123,7 +142,7 @@ class BaseDataSource(ABC):
 
         Args:
             sector_name: 板块名称
-            sector_type: 板块类型（industry/concept）
+            sector_type: 板块类型（industry/concept/region/feature/style/theme）
             start_date: 开始日期
             end_date: 结束日期
 

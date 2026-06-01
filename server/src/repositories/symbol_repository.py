@@ -277,3 +277,94 @@ class SectorStockRepository(BaseRepository[SectorStock]):
             for sc, st in relations
         ]
         return await self.bulk_create(data_list)
+
+    async def bulk_upsert_relations(
+        self,
+        relations: list[tuple[str, str]],
+    ) -> int:
+        """
+        批量添加板块-股票关联，忽略已存在的重复记录。
+
+        使用 PostgreSQL INSERT ... ON CONFLICT DO NOTHING 实现，
+        无需先查询再过滤，一条 SQL 完成。
+
+        Args:
+            relations: (sector_code, stock_code) 元组列表
+
+        Returns:
+            实际新增的关联数量
+        """
+        if not relations:
+            return 0
+
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        values = [
+            {"sector_code": sc, "stock_code": st}
+            for sc, st in relations
+        ]
+        stmt = pg_insert(SectorStock).values(values).on_conflict_do_nothing(
+            constraint="uq_sector_stock"
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.rowcount
+
+    async def delete_relations_for_sectors(
+        self,
+        sector_codes: list[str],
+    ) -> int:
+        """
+        按 sector_code 列表批量删除关联（板块级联清理时使用）
+
+        Args:
+            sector_codes: 待清理的板块代码列表
+
+        Returns:
+            实际删除的关联数量
+        """
+        if not sector_codes:
+            return 0
+
+        from sqlalchemy import delete
+
+        stmt = delete(SectorStock).where(
+            SectorStock.sector_code.in_(sector_codes)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.rowcount
+
+    async def delete_relations_except(
+        self,
+        sector_code: str,
+        keep_stock_codes: set[str],
+    ) -> int:
+        """
+        删除某板块中不在 keep_stock_codes 集合内的关联（set diff 清理）
+
+        当 keep_stock_codes 为空时，等价于删除该板块的全部关联。
+
+        Args:
+            sector_code: 板块代码
+            keep_stock_codes: 需要保留的 stock_code 集合
+
+        Returns:
+            实际删除的关联数量
+        """
+        from sqlalchemy import delete
+
+        if not keep_stock_codes:
+            stmt = delete(SectorStock).where(
+                SectorStock.sector_code == sector_code
+            )
+        else:
+            stmt = delete(SectorStock).where(
+                and_(
+                    SectorStock.sector_code == sector_code,
+                    SectorStock.stock_code.notin_(keep_stock_codes),
+                )
+            )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.rowcount
