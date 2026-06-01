@@ -6,7 +6,7 @@ import { HeatmapResponseSchema } from '@/types'
 const HEATMAP_REFRESH_INTERVAL = 5000 // 5秒自动刷新
 
 interface UseSectorHeatmapDataParams {
-  sectorType?: 'industry' | 'concept'
+  sectorType?: string
   enabled?: boolean
 }
 

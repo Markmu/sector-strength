@@ -2,7 +2,7 @@
  * 板块等级表格类型定义
  */
 
-export type SectorType = 'industry' | 'concept'
+import type { SectorType } from './sectorTypes'
 
 export type GradeType = 'S+' | 'S' | 'A+' | 'A' | 'B+' | 'B' | 'C' | 'D'
 
@@ -10,7 +10,7 @@ export interface SectorTableItem {
   id: number
   code: string
   name: string
-  sector_type: SectorType  // 后端返回的字段名
+  sector_type: string
   score: number | null
   short_term_score: number | null
   medium_term_score: number | null
@@ -22,25 +22,22 @@ export interface SectorTableItem {
 
 export interface GradeSectorStats {
   grade: GradeType
-  industry_count: number
-  concept_count: number
+  type_counts: Record<string, number>
   total_count: number
   sectors: SectorTableItem[]
 }
 
 export interface SectorGradeTableResponse {
   date: string
-  stats: GradeSectorStats[]  // 后端返回字段名是 stats
-  total_industry: number
-  total_concept: number
+  stats: GradeSectorStats[]
+  type_totals: Record<string, number>
   total_sectors: number
   cache_status: 'hit' | 'miss'
 }
 
 export interface SectorDistributionResponse {
   date: string
-  industry_count: number
-  concept_count: number
+  type_counts: Record<string, number>
   total_count: number
 }
 

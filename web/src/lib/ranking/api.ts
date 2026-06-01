@@ -5,7 +5,7 @@ import type { RankingResponse, SortOrder } from './types'
 export interface RankingParams {
   top_n?: number
   order?: SortOrder
-  sector_type?: 'industry' | 'concept'
+  sector_type?: string
   sector_id?: string
 }
 

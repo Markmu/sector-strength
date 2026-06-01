@@ -4,7 +4,8 @@
 
 export type AxisType = 'short' | 'medium' | 'long' | 'composite'
 
-export type SectorType = 'industry' | 'concept'
+// 从集中定义导入 SectorType
+export type { SectorType } from './sectorTypes'
 
 export interface DataCompleteness {
   has_strong_ratio: boolean
@@ -24,7 +25,7 @@ export interface SectorFullData {
 export interface ScatterDataPoint {
   symbol: string
   name: string
-  sector_type: SectorType
+  sector_type: string
   x: number
   y: number
   size: number
@@ -34,8 +35,7 @@ export interface ScatterDataPoint {
 }
 
 export interface ScatterDataset {
-  industry: ScatterDataPoint[]
-  concept: ScatterDataPoint[]
+  items: Record<string, ScatterDataPoint[]>
 }
 
 export interface PaginationInfo {
@@ -44,7 +44,7 @@ export interface PaginationInfo {
 }
 
 export interface FiltersApplied {
-  sector_type?: SectorType
+  sector_type?: string
   grade_range?: [string, string] | null
   axes: [AxisType, AxisType]
   pagination?: PaginationInfo

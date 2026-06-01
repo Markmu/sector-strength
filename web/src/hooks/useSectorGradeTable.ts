@@ -6,13 +6,13 @@
 
 import useSWR from 'swr'
 import { useMemo } from 'react'
-import type { SectorType, SectorGradeTableResponse } from '@/types/gradeTable'
+import type { SectorGradeTableResponse } from '@/types/gradeTable'
 import { fetcher } from '@/lib/fetcher'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 interface UseSectorGradeTableParams {
-  sectorType?: SectorType | null
+  sectorType?: string | null
   calcDate?: string | null
   enabled?: boolean
 }

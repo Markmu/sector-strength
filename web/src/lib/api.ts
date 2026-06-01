@@ -269,7 +269,7 @@ export const userApi = {
 
 // 热力图 API
 export const heatmapApi = {
-  getHeatmap: (params?: { sector_type?: 'industry' | 'concept' }) =>
+  getHeatmap: (params?: { sector_type?: string }) =>
     apiClient.get<any>('/heatmap', params),
 }
 

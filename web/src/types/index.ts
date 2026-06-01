@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { SectorType } from './sectorTypes'
 
 // 热力图 Zod Schema 用于输入验证
 export const HeatmapSectorSchema = z.object({
@@ -57,7 +58,7 @@ export interface StockFilter {
 export interface Sector extends BaseEntity {
   code: string
   name: string
-  type: 'industry' | 'concept'
+  type: SectorType
   parent_code?: string
   level?: number
   description?: string

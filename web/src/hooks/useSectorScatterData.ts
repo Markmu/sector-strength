@@ -6,7 +6,7 @@
 
 import useSWR from 'swr'
 import { useMemo } from 'react'
-import type { AxisType, SectorType, SectorScatterResponse } from '@/types/scatter'
+import type { AxisType, SectorScatterResponse } from '@/types/scatter'
 import { fetcher } from '@/lib/fetcher'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -14,7 +14,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 interface UseSectorScatterDataParams {
   xAxis?: AxisType
   yAxis?: AxisType
-  sectorType?: SectorType
+  sectorType?: string
   minGrade?: string | null
   maxGrade?: string | null
   offset?: number

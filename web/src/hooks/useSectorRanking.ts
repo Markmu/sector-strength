@@ -9,7 +9,7 @@ export interface UseSectorRankingParams {
   topN?: number
   order?: SortOrder
   sortBy?: 'strength' | 'trend'
-  sectorType?: 'industry' | 'concept'
+  sectorType?: string
   refreshInterval?: number
 }
 
