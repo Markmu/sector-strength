@@ -11,14 +11,16 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select
+from sqlalchemy import select, delete, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.sector import Sector
 from src.models.stock import Stock
+from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
 from src.services.data_acquisition import DataSourceFactory
 from src.services.data_acquisition.models import StockInfo, SectorInfo, DailyQuote
+from src.repositories.symbol_repository import SectorStockRepository
 
 logger = logging.getLogger(__name__)
 
@@ -103,87 +105,369 @@ class DataInitService:
         if self._cancelled:
             raise InterruptedError("数据初始化任务已被取消")
 
+    async def _cleanup_sector_cascade(self, sector_id: int) -> None:
+        """
+        级联删除一个 sector 的所有衍生数据。
+
+        删除顺序按依赖从子到父：
+          1. sector_classification（用 sector_id FK，与其他多态 entity 表不同）
+          2. strength_scores (entity_type='sector')
+          3. moving_average_data (entity_type='sector')
+          4. daily_market_data (entity_type='sector')
+          5. sectors 本身
+        sector_stocks 关联在调用方按 sector_code 批量清理。
+        """
+        from src.models.sector_classification import SectorClassification
+        from src.models.strength_score import StrengthScore
+        from src.models.moving_average_data import MovingAverageData
+
+        # sector_classification 用 sector_id 列，没有 entity_type
+        await self.session.execute(
+            delete(SectorClassification).where(
+                SectorClassification.sector_id == sector_id
+            )
+        )
+
+        # 通用多态 entity 表
+        for model in (StrengthScore, MovingAverageData, DailyMarketData):
+            await self.session.execute(
+                delete(model).where(
+                    and_(
+                        model.entity_type == "sector",
+                        model.entity_id == sector_id,
+                    )
+                )
+            )
+        await self.session.execute(
+            delete(Sector).where(Sector.id == sector_id)
+        )
+        await self.session.flush()
+
+    async def _invalidate_sector_caches(self) -> None:
+        """删除/更新板块后清理 sectors 和 strength 相关缓存"""
+        try:
+            from src.services.cache.cache_manager import get_cache_manager
+            cache = get_cache_manager()
+            await cache.clear_pattern("sectors:%")
+            await cache.clear_pattern("strength:sector:%")
+            await cache.clear_pattern("strength:list:sector:%")
+            await cache.clear_pattern("heatmap:sectors:%")
+        except Exception as e:
+            # 缓存清理失败不应该阻塞同步流程
+            logger.warning(f"清理板块缓存失败（忽略）: {e}")
+
     async def init_sectors(self, sector_type: Optional[str] = None) -> dict:
         """
-        初始化板块数据
+        同步板块数据（幂等模式）
 
         此方法会：
-        1. 从数据源获取板块列表
-        2. 创建板块记录
+        1. 从数据源获取板块列表，与数据库中已有板块做集合差集
+           - 新增：直接创建
+           - 已有：逐字段 diff，更新 name/type/description
+           - 数据源已消失：级联删除（包含分类/强度/行情/均线/关联表）
+        2. 对每个保留的板块，按 set diff 同步 sector_stocks 关联
+           - 数据源新增的成分股 → INSERT
+           - 数据源已移除的成分股 → DELETE
 
         Args:
-            sector_type: 板块类型过滤 (industry/concept)，None 表示获取所有
+            sector_type: 板块类型过滤 (industry/concept/region/feature/style/theme)，None 表示获取所有
 
         Returns:
-            初始化结果字典: {"success": bool, "created": int, "skipped": int, "errors": list}
+            初始化结果字典: {
+                "success": bool, "created": int, "updated": int,
+                "deleted": int, "skipped": int, "errors": list, "total": int,
+                "members_total": int, "members_added": int,
+                "members_removed": int, "member_errors": list,
+            }
         """
         self._cancelled = False
-        logger.info(f"开始初始化板块数据 (类型: {sector_type or '全部'})")
+        logger.info(f"开始同步板块数据 (类型: {sector_type or '全部'})")
 
         try:
-            # 从数据源获取板块列表
+            # ============ Phase 1: 板块实体集合差集同步 ============
             sectors = self.data_source.get_sector_list(sector_type)
             self._check_cancelled()
 
+            source_map: dict[str, SectorInfo] = {s.code: s for s in sectors}
+            source_codes = set(source_map.keys())
+
+            # 加载数据库中匹配过滤条件的板块（按 type 对齐快照）
+            stmt = select(Sector)
+            if sector_type:
+                stmt = stmt.where(Sector.type == sector_type)
+            db_sectors = list((await self.session.execute(stmt)).scalars().all())
+            db_map: dict[str, Sector] = {s.code: s for s in db_sectors}
+            db_codes = set(db_map.keys())
+
+            to_insert = source_codes - db_codes
+            to_update = source_codes & db_codes
+            to_delete = db_codes - source_codes
+
             created = 0
+            updated = 0
+            deleted = 0
             skipped = 0
-            errors = []
+            errors: list[str] = []
+            basic_fields = ["name", "type", "description"]
 
-            for i, sector_info in enumerate(sectors, 1):
+            total_steps = len(sectors) + len(to_delete)
+            step = 0
+
+            # --- 1.1 新增 ---
+            for code in to_insert:
                 self._check_cancelled()
-                await self._update_progress(i, len(sectors), f"正在处理板块: {sector_info.name}")
-
+                step += 1
+                info = source_map[code]
+                await self._update_progress(
+                    step, total_steps, f"新增板块: {info.name} ({info.code})"
+                )
                 try:
-                    # 使用 savepoint 隔离每个板块的操作，防止单个失败影响整个事务
                     async with _safe_nested_tx(self.session):
-                        # 检查板块是否已存在
-                        result = await self.session.execute(
-                            select(Sector).where(Sector.code == sector_info.code)
-                        )
-                        existing = result.scalar_one_or_none()
-
-                        if existing:
-                            skipped += 1
-                            logger.debug(f"板块已存在，跳过: {sector_info.code} - {sector_info.name}")
-                        else:
-                            # 创建新板块
-                            sector = Sector(
-                                code=sector_info.code,
-                                name=sector_info.name,
-                                type=sector_info.type,
-                                description=f"{sector_info.type} sector from data source"
-                            )
-                            self.session.add(sector)
-                            created += 1
-                            logger.debug(f"创建板块: {sector_info.code} - {sector_info.name}")
-
+                        self.session.add(Sector(
+                            code=info.code,
+                            name=info.name,
+                            type=info.type,
+                            # 与旧实现保持一致：SectorInfo.description 默认 None 时用 type 生成占位
+                            description=info.description
+                            or f"{info.type} sector from data source",
+                        ))
+                        created += 1
+                        logger.debug(f"新增板块: {info.code} - {info.name}")
                 except Exception as e:
-                    error_msg = f"处理板块失败 {sector_info.code}: {e}"
+                    error_msg = f"新增板块失败 {info.code}: {e}"
                     errors.append(error_msg)
                     logger.error(error_msg)
 
-            # 提交事务
+            # --- 1.2 更新（逐字段 diff）---
+            for code in to_update:
+                self._check_cancelled()
+                step += 1
+                info = source_map[code]
+                existing = db_map[code]
+                await self._update_progress(
+                    step, total_steps, f"校验板块: {info.name} ({info.code})"
+                )
+                try:
+                    async with _safe_nested_tx(self.session):
+                        changed: list[str] = []
+                        for field in basic_fields:
+                            # description 字段特殊处理：None 时按 type 生成默认值
+                            # 这样旧库中的硬编码占位不会被 None 覆盖
+                            if field == "description":
+                                new_val = (
+                                    info.description
+                                    or f"{info.type} sector from data source"
+                                )
+                                old_val = getattr(existing, field, None)
+                                if new_val != old_val:
+                                    setattr(existing, field, new_val)
+                                    changed.append(field)
+                                continue
+                            new_val = getattr(info, field, None)
+                            old_val = getattr(existing, field, None)
+                            if new_val != old_val:
+                                setattr(existing, field, new_val)
+                                changed.append(field)
+                        if changed:
+                            updated += 1
+                            logger.debug(
+                                f"更新板块: {info.code} - "
+                                f"变更字段: {', '.join(changed)}"
+                            )
+                        else:
+                            skipped += 1
+                except Exception as e:
+                    error_msg = f"更新板块失败 {info.code}: {e}"
+                    errors.append(error_msg)
+                    logger.error(error_msg)
+
+            # --- 1.3 删除（级联清理）---
+            for code in to_delete:
+                self._check_cancelled()
+                step += 1
+                sector = db_map[code]
+                await self._update_progress(
+                    step, total_steps, f"下线板块: {sector.name} ({sector.code})"
+                )
+                try:
+                    async with _safe_nested_tx(self.session):
+                        await self._cleanup_sector_cascade(sector.id)
+                        deleted += 1
+                        logger.info(
+                            f"下线板块: {sector.code} - {sector.name} "
+                            f"(级联清理已执行)"
+                        )
+                except Exception as e:
+                    error_msg = f"级联删除板块失败 {sector.code}: {e}"
+                    errors.append(error_msg)
+                    logger.error(error_msg)
+
+            # --- 1.4 清理 sector_stocks 中已下线板块的关联 ---
+            if to_delete:
+                try:
+                    async with _safe_nested_tx(self.session):
+                        repo = SectorStockRepository(self.session)
+                        removed_relations = await repo.delete_relations_for_sectors(
+                            list(to_delete)
+                        )
+                        logger.info(
+                            f"清理 {len(to_delete)} 个下线板块的 "
+                            f"{removed_relations} 条成分股关联"
+                        )
+                except Exception as e:
+                    error_msg = f"清理下线板块的成分股关联失败: {e}"
+                    errors.append(error_msg)
+                    logger.error(error_msg)
+
             await self.session.commit()
+            logger.info(
+                f"板块实体同步完成: 新增 {created}, 更新 {updated}, "
+                f"跳过 {skipped}, 下线 {deleted}, 错误 {len(errors)}"
+            )
+
+            # ============ Phase 2: 成分股 set diff 同步 ============
+            member_result = await self._init_sector_members(sector_type)
+
+            # ============ 缓存失效 ============
+            if created or updated or deleted or member_result.get(
+                "members_added"
+            ) or member_result.get("members_removed"):
+                await self._invalidate_sector_caches()
 
             result = {
                 "success": True,
                 "created": created,
+                "updated": updated,
+                "deleted": deleted,
                 "skipped": skipped,
                 "errors": errors,
-                "total": len(sectors)
+                "total": len(sectors),
+                "members_total": member_result.get("members_total", 0),
+                "members_added": member_result.get("members_added", 0),
+                "members_removed": member_result.get("members_removed", 0),
+                "member_errors": member_result.get("member_errors", []),
             }
 
-            logger.info(f"板块初始化完成: 创建 {created}, 跳过 {skipped}, 错误 {len(errors)}")
+            logger.info(
+                f"板块同步完成: 新增 {created}, 更新 {updated}, "
+                f"下线 {deleted}, 跳过 {skipped}, "
+                f"成分股 {member_result.get('members_total', 0)} 只, "
+                f"新增关联 {member_result.get('members_added', 0)} 条, "
+                f"移除关联 {member_result.get('members_removed', 0)} 条, "
+                f"错误 {len(errors)}"
+            )
             return result
 
         except InterruptedError:
             await self.session.rollback()
-            logger.warning("板块初始化已取消")
+            logger.warning("板块同步已取消")
             return {"success": False, "cancelled": True, "message": "任务已取消"}
         except Exception as e:
             await self.session.rollback()
-            logger.error(f"板块初始化失败: {e}")
+            logger.error(f"板块同步失败: {e}")
             return {"success": False, "error": str(e)}
+
+    async def _init_sector_members(self, sector_type: Optional[str] = None) -> dict:
+        """
+        同步板块成分股（set diff 模式）
+
+        遍历数据库中已存在的板块（含本次同步后新插入的），
+        与数据源返回的成分股做 set diff：
+          - 数据源新增的成分股 → INSERT（ON CONFLICT DO NOTHING）
+          - 数据源已移除的成分股 → DELETE
+
+        Args:
+            sector_type: 板块类型过滤，None 表示全部
+
+        Returns:
+            {"members_total": int, "members_added": int,
+             "members_removed": int, "member_errors": list}
+        """
+        # 查询数据库中的板块（同步后的最新状态）
+        stmt = select(Sector)
+        if sector_type:
+            stmt = stmt.where(Sector.type == sector_type)
+        result = await self.session.execute(stmt)
+        db_sectors = list(result.scalars().all())
+
+        if not db_sectors:
+            logger.info("数据库中无板块记录，跳过成分股同步")
+            return {
+                "members_total": 0,
+                "members_added": 0,
+                "members_removed": 0,
+                "member_errors": [],
+            }
+
+        logger.info(f"开始同步 {len(db_sectors)} 个板块的成分股")
+        repo = SectorStockRepository(self.session)
+
+        members_total = 0
+        members_added = 0
+        members_removed = 0
+        member_errors: list[str] = []
+
+        for i, sector in enumerate(db_sectors, 1):
+            self._check_cancelled()
+            await self._update_progress(
+                i, len(db_sectors),
+                f"同步成分股: {sector.name} ({sector.type})"
+            )
+
+            try:
+                # 从数据源获取当前成分股
+                member_info = self.data_source.get_sector_members(sector.code)
+                source_codes = set(member_info.stock_codes)
+
+                # 查询数据库中已有成分股
+                db_stock_codes = set(
+                    await repo.get_stock_codes_by_sector(sector.code)
+                )
+
+                # set diff: 已下线的成员 → DELETE
+                stale = db_stock_codes - source_codes
+                if stale:
+                    async with _safe_nested_tx(self.session):
+                        await repo.delete_relations_except(
+                            sector.code, source_codes
+                        )
+                    members_removed += len(stale)
+
+                # set diff: 新增的成员 → INSERT
+                new = source_codes - db_stock_codes
+                if new:
+                    async with _safe_nested_tx(self.session):
+                        relations = [(sector.code, code) for code in new]
+                        added = await repo.bulk_upsert_relations(relations)
+                    members_added += added
+
+                members_total += len(source_codes)
+                logger.debug(
+                    f"板块 {sector.code} ({sector.name}): "
+                    f"数据源 {len(source_codes)} 只, "
+                    f"新增 {len(new)} 只, 移除 {len(stale)} 只"
+                )
+
+            except Exception as e:
+                error_msg = f"同步成分股失败 {sector.code} ({sector.name}): {e}"
+                member_errors.append(error_msg)
+                logger.error(error_msg)
+
+        # 提交成分股关联变更
+        await self.session.commit()
+
+        logger.info(
+            f"成分股同步完成: 共 {members_total} 只, "
+            f"新增 {members_added} 条关联, "
+            f"移除 {members_removed} 条关联, "
+            f"错误 {len(member_errors)}"
+        )
+        return {
+            "members_total": members_total,
+            "members_added": members_added,
+            "members_removed": members_removed,
+            "member_errors": member_errors,
+        }
 
     async def init_stocks(self) -> dict:
         """

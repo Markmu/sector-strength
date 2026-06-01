@@ -38,23 +38,33 @@ class TestDataInitService:
     """数据初始化服务测试"""
 
     async def test_init_sectors_success(self, mock_session, mock_data_source):
-        """测试成功初始化板块数据"""
-        # 设置模拟数据
+        """测试成功初始化板块数据（数据源返回的板块全部为新增）"""
+        # 数据源返回 2 个板块
         mock_data_source.get_sector_list.return_value = [
             SectorInfo(code="sector1", name="板块1", type="industry"),
             SectorInfo(code="sector2", name="板块2", type="concept"),
         ]
+        # 数据源无成分股（Phase 2 get_sector_members 返回空 SectorMemberInfo）
+        from src.services.data_acquisition.models import SectorMemberInfo
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="sector1", stock_codes=[]
+        )
 
-        # 模拟数据库查询返回空（板块不存在）
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        # DB 查询（Phase 1 一次性 select、Phase 2 一次性 select）→ 都返回空
+        empty_scalars = MagicMock()
+        empty_scalars.all.return_value = []
+        empty_result = MagicMock()
+        empty_result.scalars.return_value = empty_scalars
+        empty_result.rowcount = 0
+        mock_session.execute.return_value = empty_result
 
         service = DataInitService(mock_session)
         result = await service.init_sectors()
 
         assert result["success"] is True
         assert result["created"] == 2
+        assert result["updated"] == 0
+        assert result["deleted"] == 0
         assert result["skipped"] == 0
         assert result["total"] == 2
         mock_data_source.get_sector_list.assert_called_once()
@@ -62,40 +72,262 @@ class TestDataInitService:
         mock_session.commit.assert_called_once()
 
     async def test_init_sectors_skip_existing(self, mock_session, mock_data_source):
-        """测试跳过已存在的板块"""
-        # 设置模拟数据
+        """测试数据源中已存在且字段无变更的板块被跳过（无 update）"""
+        from src.services.data_acquisition.models import SectorMemberInfo
+        from src.models.sector import Sector
+
+        # 数据源 1 个板块
         mock_data_source.get_sector_list.return_value = [
             SectorInfo(code="sector1", name="板块1", type="industry"),
         ]
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="sector1", stock_codes=[]
+        )
 
-        # 模拟板块已存在
-        mock_result = MagicMock()
-        existing_sector = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing_sector
-        mock_session.execute.return_value = mock_result
+        # DB 中存在同名同 type 同 description 的板块（field 都一致）
+        existing_sector = MagicMock(spec=Sector)
+        existing_sector.id = 1
+        existing_sector.code = "sector1"
+        existing_sector.name = "板块1"
+        existing_sector.type = "industry"
+        existing_sector.description = "industry sector from data source"
+
+        # Phase 1 + Phase 2 都用同一个 select，scalars.all 返回 [existing]
+        scalars_mock = MagicMock()
+        scalars_mock.all.return_value = [existing_sector]
+        result_mock = MagicMock()
+        result_mock.scalars.return_value = scalars_mock
+        result_mock.rowcount = 0
+        mock_session.execute.return_value = result_mock
 
         service = DataInitService(mock_session)
         result = await service.init_sectors()
 
         assert result["success"] is True
         assert result["created"] == 0
+        assert result["updated"] == 0
+        assert result["deleted"] == 0
         assert result["skipped"] == 1
+        mock_session.add.assert_not_called()
+
+    async def test_init_sectors_update_existing(self, mock_session, mock_data_source):
+        """测试已存在但字段变更的板块被更新（diff update 模式）"""
+        from src.services.data_acquisition.models import SectorMemberInfo
+        from src.models.sector import Sector
+
+        # 数据源返回 name 已变更
+        mock_data_source.get_sector_list.return_value = [
+            SectorInfo(
+                code="sector1",
+                name="新名称",
+                type="industry",
+                description="industry sector from data source",
+            ),
+        ]
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="sector1", stock_codes=[]
+        )
+
+        # DB 中板块 name 为旧值
+        existing_sector = MagicMock(spec=Sector)
+        existing_sector.id = 1
+        existing_sector.code = "sector1"
+        existing_sector.name = "旧名称"
+        existing_sector.type = "industry"
+        existing_sector.description = "industry sector from data source"
+
+        scalars_mock = MagicMock()
+        scalars_mock.all.return_value = [existing_sector]
+        result_mock = MagicMock()
+        result_mock.scalars.return_value = scalars_mock
+        result_mock.rowcount = 0
+        mock_session.execute.return_value = result_mock
+
+        service = DataInitService(mock_session)
+        result = await service.init_sectors()
+
+        assert result["success"] is True
+        assert result["created"] == 0
+        assert result["updated"] == 1
+        assert result["deleted"] == 0
+        assert result["skipped"] == 0
+        # name 被改为新值
+        assert existing_sector.name == "新名称"
+        mock_session.add.assert_not_called()
+
+    async def test_init_sectors_delete_offline(self, mock_session, mock_data_source):
+        """测试数据源中已消失的板块被级联删除"""
+        from src.services.data_acquisition.models import SectorMemberInfo
+        from src.models.sector import Sector
+
+        # 数据源返回空 → 没有任何板块
+        mock_data_source.get_sector_list.return_value = []
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="any", stock_codes=[]
+        )
+
+        # DB 中有 1 个需要下线的板块
+        offline_sector = MagicMock(spec=Sector)
+        offline_sector.id = 99
+        offline_sector.code = "offline1"
+        offline_sector.name = "下线板块"
+        offline_sector.type = "concept"
+        offline_sector.description = None
+
+        scalars_mock = MagicMock()
+        scalars_mock.all.return_value = [offline_sector]
+        result_mock = MagicMock()
+        result_mock.scalars.return_value = scalars_mock
+        result_mock.rowcount = 1
+        mock_session.execute.return_value = result_mock
+
+        service = DataInitService(mock_session)
+        result = await service.init_sectors()
+
+        assert result["success"] is True
+        assert result["created"] == 0
+        assert result["updated"] == 0
+        assert result["deleted"] == 1
+        # 没有任何 add 调用
         mock_session.add.assert_not_called()
 
     async def test_init_sectors_with_type_filter(self, mock_session, mock_data_source):
         """测试按类型过滤板块"""
+        from src.services.data_acquisition.models import SectorMemberInfo
+
         mock_data_source.get_sector_list.return_value = [
             SectorInfo(code="sector1", name="板块1", type="industry"),
         ]
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="sector1", stock_codes=[]
+        )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        empty_scalars = MagicMock()
+        empty_scalars.all.return_value = []
+        empty_result = MagicMock()
+        empty_result.scalars.return_value = empty_scalars
+        empty_result.rowcount = 0
+        mock_session.execute.return_value = empty_result
 
         service = DataInitService(mock_session)
         await service.init_sectors(sector_type="industry")
 
         mock_data_source.get_sector_list.assert_called_once_with("industry")
+
+    async def test_init_sector_members_diff(self, mock_session, mock_data_source):
+        """测试成分股 set diff：新增的 INSERT、移除的 DELETE"""
+        from src.services.data_acquisition.models import SectorMemberInfo
+        from src.models.sector import Sector
+
+        # 数据源：1 个板块
+        mock_data_source.get_sector_list.return_value = [
+            SectorInfo(code="sector1", name="板块1", type="industry"),
+        ]
+        # 数据源成分股：A、B、C（其中 C 是数据源新增）
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="sector1",
+            stock_codes=["A", "B", "C"],
+        )
+
+        existing_sector = MagicMock(spec=Sector)
+        existing_sector.id = 1
+        existing_sector.code = "sector1"
+        existing_sector.name = "板块1"
+        existing_sector.type = "industry"
+        existing_sector.description = "industry sector from data source"
+
+        # mock 多次 execute：
+        #   1) Phase 1 select(Sector) → [existing]
+        #   2) Phase 2 select(Sector) → [existing]
+        #   3) get_stock_codes_by_sector → ["A", "B"]
+        # 后续 delete/insert 由 repo 内部调用 session.execute
+        call_count = {"n": 0}
+
+        def make_result(values=None, rowcount=0):
+            r = MagicMock()
+            r.rowcount = rowcount
+            scalars_mock = MagicMock()
+            scalars_mock.all.return_value = values or []
+            r.scalars.return_value = scalars_mock
+            return r
+
+        def execute_side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return make_result([existing_sector])  # Phase 1
+            if call_count["n"] == 2:
+                return make_result([existing_sector])  # Phase 2
+            if call_count["n"] == 3:
+                return make_result(["A", "B"])  # get_stock_codes_by_sector
+            return make_result(rowcount=1)
+
+        mock_session.execute.side_effect = execute_side_effect
+
+        service = DataInitService(mock_session)
+        result = await service.init_sectors()
+
+        assert result["success"] is True
+        assert result["created"] == 0
+        assert result["updated"] == 0
+        # set diff: source={A,B,C} - db={A,B} = new={C}
+        # db={A,B} - source={A,B,C} = stale=∅
+        assert result["members_total"] == 3
+        assert result["members_added"] == 1   # C
+        assert result["members_removed"] == 0
+        assert result["member_errors"] == []
+
+    async def test_init_sector_members_remove_stale(self, mock_session, mock_data_source):
+        """测试成分股 set diff：数据源移除成分股时 DELETE"""
+        from src.services.data_acquisition.models import SectorMemberInfo
+        from src.models.sector import Sector
+
+        mock_data_source.get_sector_list.return_value = [
+            SectorInfo(code="sector1", name="板块1", type="industry"),
+        ]
+        # 数据源成分股只剩 A，B 已被移出
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="sector1",
+            stock_codes=["A"],
+        )
+
+        existing_sector = MagicMock(spec=Sector)
+        existing_sector.id = 1
+        existing_sector.code = "sector1"
+        existing_sector.name = "板块1"
+        existing_sector.type = "industry"
+        existing_sector.description = "industry sector from data source"
+
+        call_count = {"n": 0}
+
+        def make_result(values=None, rowcount=0):
+            r = MagicMock()
+            r.rowcount = rowcount
+            scalars_mock = MagicMock()
+            scalars_mock.all.return_value = values or []
+            r.scalars.return_value = scalars_mock
+            return r
+
+        def execute_side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return make_result([existing_sector])
+            if call_count["n"] == 2:
+                return make_result([existing_sector])
+            if call_count["n"] == 3:
+                return make_result(["A", "B"])  # DB 里有 A、B
+            return make_result(rowcount=1)
+
+        mock_session.execute.side_effect = execute_side_effect
+
+        service = DataInitService(mock_session)
+        result = await service.init_sectors()
+
+        assert result["success"] is True
+        # set diff: source={A} - db={A,B} = new=∅
+        # db={A,B} - source={A} = stale={B}
+        assert result["members_total"] == 1
+        assert result["members_added"] == 0
+        assert result["members_removed"] == 1   # B 被移除
 
     async def test_init_stocks_success(self, mock_session, mock_data_source):
         """测试成功初始化股票数据"""
@@ -266,13 +498,21 @@ class TestDataInitService:
 
     async def test_progress_callback(self, mock_session, mock_data_source):
         """测试进度回调"""
+        from src.services.data_acquisition.models import SectorMemberInfo
+
         mock_data_source.get_sector_list.return_value = [
             SectorInfo(code="sector1", name="板块1", type="industry"),
         ]
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="sector1", stock_codes=[]
+        )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        empty_scalars = MagicMock()
+        empty_scalars.all.return_value = []
+        empty_result = MagicMock()
+        empty_result.scalars.return_value = empty_scalars
+        empty_result.rowcount = 0
+        mock_session.execute.return_value = empty_result
 
         progress_updates = []
 
@@ -291,16 +531,23 @@ class TestDataInitService:
     async def test_cancel_task(self, mock_session, mock_data_source):
         """测试任务取消"""
         import asyncio
+        from src.services.data_acquisition.models import SectorMemberInfo
 
         # 设置多个板块以延长处理时间
         mock_data_source.get_sector_list.return_value = [
             SectorInfo(code=f"sector{i}", name=f"板块{i}", type="industry")
             for i in range(10)
         ]
+        mock_data_source.get_sector_members.return_value = SectorMemberInfo(
+            sector_code="any", stock_codes=[]
+        )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        empty_scalars = MagicMock()
+        empty_scalars.all.return_value = []
+        empty_result = MagicMock()
+        empty_result.scalars.return_value = empty_scalars
+        empty_result.rowcount = 0
+        mock_session.execute.return_value = empty_result
 
         service = DataInitService(mock_session)
 
