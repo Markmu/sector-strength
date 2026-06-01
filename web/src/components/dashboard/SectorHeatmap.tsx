@@ -18,7 +18,7 @@ const ReactECharts = dynamic(
 )
 
 interface SectorHeatmapProps {
-  sectorType?: 'industry' | 'concept'
+  sectorType?: string
   className?: string
 }
 

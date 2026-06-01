@@ -12,6 +12,7 @@ import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
 import { Disclaimer } from '@/components/ui/Disclaimer'
 import { sectorsApi } from '@/lib/api'
 import type { Sector } from '@/types'
+import { SECTOR_TYPE_DISPLAY, SECTOR_TYPE_LABELS, type SectorType } from '@/types/sectorTypes'
 import {
   LineChartIcon,
   TrendingUpIcon,
@@ -25,7 +26,7 @@ import {
 const PAGE_SIZE = 20
 
 // 板块类型选项
-type SectorTypeFilter = 'all' | 'industry' | 'concept'
+type SectorTypeFilter = 'all' | SectorType
 
 export default function SectorAnalysisListPage() {
   const router = useRouter()
@@ -188,14 +189,15 @@ export default function SectorAnalysisListPage() {
 
   // 获取板块类型显示名称
   const getTypeDisplayName = (type: string) => {
-    return type === 'industry' ? '行业' : '概念'
+    return SECTOR_TYPE_LABELS[type as SectorType] || SECTOR_TYPE_DISPLAY[type as SectorType] || type
   }
 
   // 获取板块类型颜色
   const getTypeColor = (type: string) => {
+    const baseStyles = 'px-2 py-0.5 text-xs font-medium rounded border'
     return type === 'industry'
-      ? 'bg-primary-light text-primary border-primary/30'
-      : 'bg-secondary text-muted-foreground border-border'
+      ? `${baseStyles} bg-primary-light text-primary border-primary/30`
+      : `${baseStyles} bg-secondary text-muted-foreground border-border`
   }
 
   // 获取趋势图标
@@ -269,11 +271,11 @@ export default function SectorAnalysisListPage() {
               <label className="block text-sm font-medium text-foreground mb-2">
                 板块类型
               </label>
-              <div className="inline-flex rounded-md shadow-sm" role="group">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => handleTypeFilterChange('all')}
-                  className={`px-4 py-2 text-sm font-medium rounded-l-lg border border-r-0 ${
+                  className={`px-4 py-2 text-sm font-medium rounded-lg border ${
                     sectorTypeFilter === 'all'
                       ? 'bg-primary text-primary-foreground border-primary z-10'
                       : 'bg-card text-foreground border-border hover:bg-secondary relative'
@@ -281,28 +283,20 @@ export default function SectorAnalysisListPage() {
                 >
                   全部
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleTypeFilterChange('industry')}
-                  className={`px-4 py-2 text-sm font-medium border border-r-0 ${
-                    sectorTypeFilter === 'industry'
-                      ? 'bg-primary text-primary-foreground border-primary z-10'
-                      : 'bg-card text-foreground border-border hover:bg-secondary relative'
-                  }`}
-                >
-                  行业
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTypeFilterChange('concept')}
-                  className={`px-4 py-2 text-sm font-medium rounded-r-lg border ${
-                    sectorTypeFilter === 'concept'
-                      ? 'bg-primary text-primary-foreground border-primary z-10'
-                      : 'bg-card text-foreground border-border hover:bg-secondary relative'
-                  }`}
-                >
-                  概念
-                </button>
+                {(['industry', 'concept', 'region', 'feature', 'style', 'theme'] as const).map((t, i, arr) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => handleTypeFilterChange(t)}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg border ${
+                      sectorTypeFilter === t
+                        ? 'bg-primary text-primary-foreground border-primary z-10'
+                        : 'bg-card text-foreground border-border hover:bg-secondary relative'
+                    }`}
+                  >
+                    {SECTOR_TYPE_LABELS[t]}
+                  </button>
+                ))}
               </div>
             </div>
 

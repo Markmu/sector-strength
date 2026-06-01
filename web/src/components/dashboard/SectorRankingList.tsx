@@ -11,7 +11,7 @@ interface SectorRankingListProps {
   topN?: number
   order?: SortOrder
   sortBy?: 'strength' | 'trend'
-  sectorType?: 'industry' | 'concept'
+  sectorType?: string
   onSortChange?: (order: SortOrder) => void
 }
 

@@ -212,7 +212,7 @@ export default function SectorStrengthCalculationPanel() {
     const styles = {
       pending: 'bg-secondary text-foreground',
       running: 'bg-primary-light text-primary',
-      completed: 'bg-rise/10 text-rise',
+      completed: 'bg-green-100 text-green-700',
       failed: 'bg-destructive/10 text-destructive',
       cancelled: 'bg-secondary text-muted-foreground'
     };

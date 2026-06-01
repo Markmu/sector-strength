@@ -12,6 +12,15 @@ import { LoadingState } from '@/components/dashboard/LoadingState'
 import { ErrorState } from '@/components/dashboard/ErrorState'
 import type { ScatterPlotProps, ScatterDataPoint, AxisType } from '@/types/scatter'
 import { AXIS_CONFIG } from '@/types/scatter'
+import { SECTOR_TYPE_DISPLAY, type SectorType } from '@/types/sectorTypes'
+
+// ECharts 系列颜色（按类型索引）
+const SERIES_COLORS = [
+  '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272',
+]
+
+// 系列形状（按类型索引循环）
+const SERIES_SYMBOLS = ['circle', 'diamond', 'triangle', 'rect', 'pin', 'arrow']
 
 // 动态导入 ECharts 组件（优化性能，禁用 SSR）
 const ReactECharts = dynamic(
@@ -32,25 +41,22 @@ function SectorScatterPlotComponent({
   className = '',
 }: ScatterPlotProps) {
   // 转换为 ECharts 格式的数据
-  const { industryData, conceptData, allPoints } = useMemo(() => {
-    const industry: number[][] = []
-    const concept: number[][] = []
+  const { seriesDataMap, allPoints } = useMemo(() => {
+    const dataMap: Record<string, number[][]> = {}
     const all: ScatterDataPoint[] = []
 
     if (data) {
-      data.industry.forEach((point) => {
-        // [x, y, size, color_value, ...]
-        industry.push([point.x, point.y, point.size, point.color_value])
-        all.push(point)
-      })
-
-      data.concept.forEach((point) => {
-        concept.push([point.x, point.y, point.size, point.color_value])
-        all.push(point)
-      })
+      for (const [type, points] of Object.entries(data.items)) {
+        const coords: number[][] = []
+        for (const point of points) {
+          coords.push([point.x, point.y, point.size, point.color_value, point.symbol])
+          all.push(point)
+        }
+        dataMap[type] = coords
+      }
     }
 
-    return { industryData: industry, conceptData: concept, allPoints: all }
+    return { seriesDataMap: dataMap, allPoints: all }
   }, [data])
 
   // 处理点击事件
@@ -68,6 +74,41 @@ function SectorScatterPlotComponent({
   const option = useMemo(() => {
     const xConfig = AXIS_CONFIG[xAxis]
     const yConfig = AXIS_CONFIG[yAxis]
+
+    // 动态生成 series 和 legend data
+    const legendData: string[] = []
+    const series: any[] = []
+
+    let idx = 0
+    for (const [type, coords] of Object.entries(seriesDataMap)) {
+      const displayName = SECTOR_TYPE_DISPLAY[type as SectorType] || type
+      legendData.push(displayName)
+
+      series.push({
+        name: displayName,
+        type: 'scatter',
+        symbol: SERIES_SYMBOLS[idx % SERIES_SYMBOLS.length],
+        symbolSize: (data: number[]) => Math.max(data[2], 10), // 基于 size
+        data: coords,
+        label: {
+          show: false,
+        },
+        itemStyle: {
+          color: SERIES_COLORS[idx % SERIES_COLORS.length],
+          opacity: 0.8,
+        },
+        emphasis: {
+          itemStyle: {
+            opacity: 1,
+            borderColor: '#fff',
+            borderWidth: 2,
+            shadowBlur: 10,
+            shadowColor: 'rgba(0, 0, 0, 0.3)',
+          },
+        },
+      })
+      idx++
+    }
 
     return {
       // 全局配置
@@ -156,65 +197,16 @@ function SectorScatterPlotComponent({
 
       // 图例
       legend: {
-        data: ['行业板块', '概念板块'],
+        data: legendData,
         top: 10,
         right: 10,
         textStyle: { color: '#666' },
       },
 
-      // 两个系列：行业板块和概念板块
-      series: [
-        {
-          name: '行业板块',
-          type: 'scatter',
-          symbol: 'circle',
-          symbolSize: (data: number[]) => Math.max(data[2], 10), // 基于 size
-          data: industryData,
-          label: {
-            show: false, // 数据点太多时不显示标签
-          },
-          itemStyle: {
-            opacity: 0.8,
-          },
-          emphasis: {
-            itemStyle: {
-              opacity: 1,
-              borderColor: '#fff',
-              borderWidth: 2,
-              shadowBlur: 10,
-              shadowColor: 'rgba(0, 0, 0, 0.3)',
-            },
-          },
-          markArea: {
-            silent: true,
-            itemStyle: { color: 'transparent' },
-          },
-        },
-        {
-          name: '概念板块',
-          type: 'scatter',
-          symbol: 'diamond',
-          symbolSize: (data: number[]) => Math.max(data[2], 10), // 基于 size
-          data: conceptData,
-          label: {
-            show: false,
-          },
-          itemStyle: {
-            opacity: 0.8,
-          },
-          emphasis: {
-            itemStyle: {
-              opacity: 1,
-              borderColor: '#fff',
-              borderWidth: 2,
-              shadowBlur: 10,
-              shadowColor: 'rgba(0, 0, 0, 0.3)',
-            },
-          },
-        },
-      ],
+      // 动态系列
+      series,
     }
-  }, [xAxis, yAxis, industryData, conceptData, allPoints])
+  }, [xAxis, yAxis, seriesDataMap, allPoints])
 
   // 加载状态
   if (isLoading) {

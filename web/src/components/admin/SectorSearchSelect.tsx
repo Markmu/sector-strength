@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, ChevronDown, Loader2 } from 'lucide-react';
 import { sectorsApi } from '@/lib/api';
+import { SECTOR_TYPE_DISPLAY, type SectorType } from '@/types/sectorTypes';
 
 interface SectorOption {
   id: number;
@@ -18,7 +19,7 @@ interface SectorSearchSelectProps {
   onChange: (value: number | null) => void;
   disabled?: boolean;
   placeholder?: string;
-  sectorType?: 'industry' | 'concept';
+  sectorType?: string;
 }
 
 /**
@@ -217,7 +218,7 @@ export default function SectorSearchSelect({
                     <span className="text-sm text-muted-foreground ml-2">({sector.code})</span>
                   </div>
                   <div className="text-xs text-faint mt-0.5">
-                    {sector.type === 'industry' ? '行业板块' : '概念板块'}
+                    {SECTOR_TYPE_DISPLAY[sector.type as SectorType] || sector.type}
                   </div>
                 </li>
               ))}

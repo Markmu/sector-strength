@@ -7,9 +7,17 @@
 'use client'
 
 import { memo } from 'react'
-import { BuildingOfficeIcon, LightBulbIcon } from '@heroicons/react/24/outline'
-import type { SectorType, AxisType } from '@/types/scatter'
+import {
+  BuildingOfficeIcon,
+  LightBulbIcon,
+  MapIcon,
+  SparklesIcon,
+  AdjustmentsHorizontalIcon,
+  TagIcon,
+} from '@heroicons/react/24/outline'
+import type { AxisType } from '@/types/scatter'
 import { AXIS_CONFIG, GRADE_RANGE_MAP } from '@/types/scatter'
+import { SECTOR_TYPE_DISPLAY, type SectorType } from '@/types/sectorTypes'
 
 export interface AnalysisControlsProps {
   xAxis: AxisType
@@ -24,10 +32,18 @@ export interface AnalysisControlsProps {
   className?: string
 }
 
-// 板块类型选项（移除"全部"，只保留行业和概念）
-const SECTOR_TYPE_OPTIONS = [
-  { value: 'industry' as const, label: '行业板块', icon: BuildingOfficeIcon },
-  { value: 'concept' as const, label: '概念板块', icon: LightBulbIcon },
+// 板块类型选项
+const SECTOR_TYPE_OPTIONS: {
+  value: SectorType
+  label: string
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
+}[] = [
+  { value: 'industry', label: '行业板块', icon: BuildingOfficeIcon },
+  { value: 'concept', label: '概念板块', icon: LightBulbIcon },
+  { value: 'region', label: '地域板块', icon: MapIcon },
+  { value: 'feature', label: '特色板块', icon: SparklesIcon },
+  { value: 'style', label: '风格板块', icon: AdjustmentsHorizontalIcon },
+  { value: 'theme', label: '主题板块', icon: TagIcon },
 ]
 
 // 维度选项
@@ -178,7 +194,7 @@ function AnalysisControlsComponent({
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="font-medium">当前筛选:</span>
           <span className="px-2 py-1 bg-secondary rounded">
-            {SECTOR_TYPE_OPTIONS.find(o => o.value === sectorType)?.label}
+            {SECTOR_TYPE_DISPLAY[sectorType]}
           </span>
           <span>→</span>
           <span className="px-2 py-1 bg-secondary rounded">

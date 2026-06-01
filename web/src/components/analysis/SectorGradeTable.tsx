@@ -18,10 +18,9 @@ import {
   MinusIcon,
   ArrowTrendingDownIcon,
   ExclamationTriangleIcon,
-  BuildingOfficeIcon,
-  LightBulbIcon,
 } from '@heroicons/react/24/outline'
-import type { GradeSectorStats, SectorTableItem, SectorType, SectorDistributionResponse } from '@/types/gradeTable'
+import type { GradeSectorStats, SectorTableItem, SectorDistributionResponse } from '@/types/gradeTable'
+import { SECTOR_TYPE_LABELS, SECTOR_TYPE_DISPLAY, type SectorType } from '@/types/sectorTypes'
 
 export interface SectorGradeTableProps {
   data: GradeSectorStats[]
@@ -204,14 +203,12 @@ export function SectorGradeTable({
                 {/* 统计数字 */}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3 text-sm">
-                    <div className="px-3 py-1.5 bg-secondary rounded-lg border border-border">
-                      <BuildingOfficeIcon className="w-4 h-4 text-muted-foreground mr-1 inline" />
-                      <span className="font-semibold text-foreground">{gradeStat.industry_count}</span>
-                    </div>
-                    <div className="px-3 py-1.5 bg-secondary rounded-lg border border-border">
-                      <LightBulbIcon className="w-4 h-4 text-muted-foreground mr-1 inline" />
-                      <span className="font-semibold text-foreground">{gradeStat.concept_count}</span>
-                    </div>
+                    {Object.entries(gradeStat.type_counts).map(([type, count]) => (
+                      <div key={type} className="px-3 py-1.5 bg-secondary rounded-lg border border-border">
+                        <span className="font-semibold text-foreground">{count}</span>
+                        <span className="text-muted-foreground ml-1">{SECTOR_TYPE_LABELS[type as SectorType] || type}</span>
+                      </div>
+                    ))}
                     <div className="px-4 py-1.5 bg-secondary rounded-lg border border-border font-bold text-foreground">
                       总计: {gradeStat.total_count}
                     </div>
@@ -254,22 +251,8 @@ export function SectorGradeTable({
                               {sector.name}
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${
-                                sector.sector_type === 'industry'
-                                  ? 'bg-secondary text-foreground border border-border'
-                                  : 'bg-secondary text-foreground border border-border'
-                              }`}>
-                                {sector.sector_type === 'industry' ? (
-                                  <>
-                                    <BuildingOfficeIcon className="w-3.5 h-3.5 mr-1" />
-                                    行业
-                                  </>
-                                ) : (
-                                  <>
-                                    <LightBulbIcon className="w-3.5 h-3.5 mr-1" />
-                                    概念
-                                  </>
-                                )}
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-secondary text-foreground border border-border">
+                                {SECTOR_TYPE_LABELS[sector.sector_type as SectorType] || sector.sector_type}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right text-sm font-bold text-foreground">

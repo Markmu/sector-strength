@@ -9,13 +9,35 @@
 import { useState, useCallback } from 'react'
 import { useSWRConfig } from 'swr'
 import { useRouter } from 'next/navigation'
-import { BuildingOfficeIcon, LightBulbIcon } from '@heroicons/react/24/outline'
+import {
+  BuildingOfficeIcon,
+  LightBulbIcon,
+  MapIcon,
+  SparklesIcon,
+  AdjustmentsHorizontalIcon,
+  TagIcon,
+} from '@heroicons/react/24/outline'
 import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
 import { Disclaimer } from '@/components/ui/Disclaimer'
 import { SectorGradeTable } from '@/components/analysis/SectorGradeTable'
 import { useSectorGradeTable } from '@/hooks/useSectorGradeTable'
 import { useSectorDistribution } from '@/hooks/useSectorDistribution'
-import type { SectorType, SectorTableItem } from '@/types/gradeTable'
+import type { SectorTableItem } from '@/types/gradeTable'
+import { SECTOR_TYPE_DISPLAY, SECTOR_TYPE_OPTIONS, type SectorType } from '@/types/sectorTypes'
+
+// 板块类型选项（含图标和标签）
+const TYPE_BUTTON_CONFIG: {
+  value: SectorType
+  label: string
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
+}[] = [
+  { value: 'industry', label: '行业板块', icon: BuildingOfficeIcon },
+  { value: 'concept', label: '概念板块', icon: LightBulbIcon },
+  { value: 'region', label: '地域板块', icon: MapIcon },
+  { value: 'feature', label: '特色板块', icon: SparklesIcon },
+  { value: 'style', label: '风格板块', icon: AdjustmentsHorizontalIcon },
+  { value: 'theme', label: '主题板块', icon: TagIcon },
+]
 
 export default function SectorAnalysisPage() {
   const router = useRouter()
@@ -54,22 +76,6 @@ export default function SectorAnalysisPage() {
         {/* 统计卡片 */}
         {distributionData && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* 行业板块 */}
-            <div className="bg-card rounded-xl border border-border shadow-sm p-5">
-              <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">行业板块</div>
-              <div className="text-3xl font-bold text-foreground tabular-nums">
-                {distributionData.industry_count}
-              </div>
-            </div>
-
-            {/* 概念板块 */}
-            <div className="bg-card rounded-xl border border-border shadow-sm p-5">
-              <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">概念板块</div>
-              <div className="text-3xl font-bold text-foreground tabular-nums">
-                {distributionData.concept_count}
-              </div>
-            </div>
-
             {/* 总计 */}
             <div className="bg-card rounded-xl border border-border shadow-sm p-5">
               <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">总计</div>
@@ -77,6 +83,18 @@ export default function SectorAnalysisPage() {
                 {distributionData.total_count}
               </div>
             </div>
+
+            {/* 各类型统计 - 展示前两个类型 */}
+            {Object.entries(distributionData.type_counts).slice(0, 2).map(([type, count]) => (
+              <div key={type} className="bg-card rounded-xl border border-border shadow-sm p-5">
+                <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">
+                  {SECTOR_TYPE_DISPLAY[type as SectorType] || type}
+                </div>
+                <div className="text-3xl font-bold text-foreground tabular-nums">
+                  {count}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -88,7 +106,7 @@ export default function SectorAnalysisPage() {
               <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                 板块类型
               </span>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setSectorType(null)}
                   className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${
@@ -99,32 +117,22 @@ export default function SectorAnalysisPage() {
                 >
                   全部
                 </button>
-                <button
-                  onClick={() => setSectorType('industry')}
-                  className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${
-                    sectorType === 'industry'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary border border-border'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <BuildingOfficeIcon className="w-4 h-4" />
-                    行业板块
-                  </span>
-                </button>
-                <button
-                  onClick={() => setSectorType('concept')}
-                  className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${
-                    sectorType === 'concept'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary border border-border'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <LightBulbIcon className="w-4 h-4" />
-                    概念板块
-                  </span>
-                </button>
+                {TYPE_BUTTON_CONFIG.map((cfg) => (
+                  <button
+                    key={cfg.value}
+                    onClick={() => setSectorType(cfg.value)}
+                    className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${
+                      sectorType === cfg.value
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary border border-border'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <cfg.icon className="w-4 h-4" />
+                      {cfg.label}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
 
