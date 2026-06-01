@@ -37,7 +37,7 @@ router = APIRouter(prefix="/rankings", tags=["rankings"])
 async def get_sector_rankings(
     top_n: int = Query(20, ge=1, le=100, description="返回数量"),
     order: str = Query("desc", description="desc=强势, asc=弱势"),
-    sector_type: Optional[str] = Query(None, description="板块类型筛选"),
+    sector_type: Optional[str] = Query(None, description="板块类型筛选: industry/concept/region/feature/style/theme"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> RankingResponse:

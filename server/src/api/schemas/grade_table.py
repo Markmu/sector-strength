@@ -3,7 +3,7 @@
 """
 
 from datetime import date
-from typing import Optional
+from typing import Dict, Optional
 from pydantic import BaseModel, Field
 
 
@@ -27,8 +27,7 @@ class SectorTableItem(BaseModel):
 class GradeSectorStats(BaseModel):
     """某个等级的板块统计"""
     grade: str
-    industry_count: int = 0
-    concept_count: int = 0
+    type_counts: Dict[str, int] = Field(default_factory=dict, description="各类型板块数量")
     total_count: int = 0
     sectors: list[SectorTableItem] = Field(default_factory=list)
 
@@ -37,8 +36,7 @@ class SectorGradeTableResponse(BaseModel):
     """板块等级表格响应"""
     date: date
     stats: list[GradeSectorStats]
-    total_industry: int = 0
-    total_concept: int = 0
+    type_totals: Dict[str, int] = Field(default_factory=dict, description="各类型板块总数")
     total_sectors: int = 0
     cache_status: str = "miss"
 
@@ -46,6 +44,5 @@ class SectorGradeTableResponse(BaseModel):
 class SectorDistributionResponse(BaseModel):
     """板块类型分布响应"""
     date: date
-    industry_count: int = 0
-    concept_count: int = 0
+    type_counts: Dict[str, int] = Field(default_factory=dict, description="各类型板块数量")
     total_count: int = 0

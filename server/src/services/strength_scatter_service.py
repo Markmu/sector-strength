@@ -5,6 +5,7 @@
 """
 
 import logging
+from collections import defaultdict
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import date, datetime
 from sqlalchemy import select, and_, func, or_
@@ -21,6 +22,7 @@ from src.api.schemas.strength import (
     FiltersApplied,
     PaginationInfo,
 )
+from src.services.data_acquisition.sector_types import is_valid_sector_type
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +118,7 @@ class StrengthScatterService:
             filters = []
 
             # 板块类型筛选
-            if sector_type and sector_type in ('industry', 'concept'):
+            if sector_type and is_valid_sector_type(sector_type):
                 filters.append(Sector.type == sector_type)
 
             # 强度等级筛选
@@ -150,8 +152,7 @@ class StrengthScatterService:
             rows = result.all()
 
             # 处理数据
-            industry_data = []
-            concept_data = []
+            type_data: Dict[str, List[SectorScatterData]] = defaultdict(list)
 
             for row in rows:
                 (
@@ -199,19 +200,13 @@ class StrengthScatterService:
                 )
 
                 # 按类型分组
-                if sector_type == 'industry':
-                    industry_data.append(scatter_data)
-                else:
-                    concept_data.append(scatter_data)
+                type_data[sector_type].append(scatter_data)
 
             # 构建响应
             return SectorScatterResponse(
-                scatter_data=SectorScatterDataset(
-                    industry=industry_data,
-                    concept=concept_data,
-                ),
+                scatter_data=SectorScatterDataset(items=dict(type_data)),
                 total_count=total_count,
-                returned_count=len(industry_data) + len(concept_data),
+                returned_count=sum(len(v) for v in type_data.values()),
                 filters_applied=FiltersApplied(
                     sector_type=sector_type,
                     grade_range=[min_grade, max_grade] if min_grade or max_grade else None,

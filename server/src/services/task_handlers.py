@@ -90,7 +90,7 @@ async def init_sectors_task(
 
     Args:
         task_id: 任务ID
-        params: 任务参数 {"sector_type": "industry" | "concept" | None}
+        params: 任务参数 {"sector_type": "industry"|"concept"|"region"|"feature"|"style"|"theme"|None}
         manager: 任务管理器
     """
     # 使用 TaskManager 的会话，而不是创建新的会话
@@ -107,7 +107,16 @@ async def init_sectors_task(
     result = await service.init_sectors(sector_type)
 
     if result.get("success"):
-        msg = f"Sector initialization completed: {result.get('created')} created, {result.get('skipped')} skipped"
+        msg = (
+            f"Sector initialization completed: "
+            f"{result.get('created')} created, "
+            f"{result.get('updated')} updated, "
+            f"{result.get('skipped')} skipped, "
+            f"{result.get('deleted')} deleted; "
+            f"members: {result.get('members_total')} total, "
+            f"{result.get('members_added')} added, "
+            f"{result.get('members_removed')} removed"
+        )
         await manager.log_message(task_id, "INFO", msg)
     else:
         error_msg = result.get("error", "Unknown error")

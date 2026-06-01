@@ -5,6 +5,7 @@
 """
 
 import logging
+from collections import defaultdict
 from typing import List, Dict, Optional
 from datetime import date
 from sqlalchemy import select, and_, desc
@@ -17,6 +18,7 @@ from src.api.schemas.grade_table import (
     GradeSectorStats,
     SectorTableItem,
 )
+from src.services.data_acquisition.sector_types import is_valid_sector_type
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +93,7 @@ class StrengthGradeTableService:
             filters = []
 
             # 板块类型筛选
-            if sector_type and sector_type in ('industry', 'concept'):
+            if sector_type and is_valid_sector_type(sector_type):
                 filters.append(Sector.type == sector_type)
 
             # 日期筛选：如果指定日期则使用该日期，否则只查询最新日期
@@ -120,8 +122,7 @@ class StrengthGradeTableService:
                 return SectorGradeTableResponse(
                     date=calc_date or date.today(),
                     stats=[],
-                    total_industry=0,
-                    total_concept=0,
+                    type_totals={},
                     total_sectors=0,
                     cache_status='miss',
                 )
@@ -132,10 +133,9 @@ class StrengthGradeTableService:
             # 按等级分组数据
             grade_dict: Dict[str, Dict[str, List]] = {}
             for grade in GRADE_ORDER:
-                grade_dict[grade] = {'industry': [], 'concept': []}
+                grade_dict[grade] = defaultdict(list)
 
-            total_industry = 0
-            total_concept = 0
+            type_totals: Dict[str, int] = defaultdict(int)
 
             for row in rows:
                 (
@@ -180,30 +180,27 @@ class StrengthGradeTableService:
                 )
 
                 # 按类型和等级分组
-                if sectype == 'industry':
-                    grade_dict[grade]['industry'].append(sector_item)
-                    total_industry += 1
-                elif sectype == 'concept':
-                    grade_dict[grade]['concept'].append(sector_item)
-                    total_concept += 1
+                grade_dict[grade][sectype].append(sector_item)
+                type_totals[sectype] += 1
 
             # 构建响应
             grade_stats = []
             for grade in GRADE_ORDER:
-                industry_list = grade_dict[grade]['industry']
-                concept_list = grade_dict[grade]['concept']
+                type_groups = grade_dict[grade]
+
+                # 统计各类型数量
+                tc = {t: len(items) for t, items in type_groups.items()}
 
                 # 合并并排序（按分数降序）
                 all_sectors = sorted(
-                    industry_list + concept_list,
+                    [item for items in type_groups.values() for item in items],
                     key=lambda x: (x.score or 0),
                     reverse=True,
                 )
 
                 grade_stats.append(GradeSectorStats(
                     grade=grade,
-                    industry_count=len(industry_list),
-                    concept_count=len(concept_list),
+                    type_counts=tc,
                     total_count=len(all_sectors),
                     sectors=all_sectors,
                 ))
@@ -211,9 +208,8 @@ class StrengthGradeTableService:
             return SectorGradeTableResponse(
                 date=data_date,
                 stats=grade_stats,
-                total_industry=total_industry,
-                total_concept=total_concept,
-                total_sectors=total_industry + total_concept,
+                type_totals=dict(type_totals),
+                total_sectors=sum(type_totals.values()),
                 cache_status='miss',  # TODO: 添加缓存支持
             )
 

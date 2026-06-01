@@ -211,7 +211,9 @@ class TaskExecutor:
                 logger.warning(f"Task {task.task_id} timed out")
                 await self._handle_task_timeout(manager, task)
 
-        logger.info(f"Found {len(running_tasks)} running tasks")
+        # 空闲轮询时不再刷日志；仅在确有任务时记录
+        if running_tasks:
+            logger.info(f"Found {len(running_tasks)} running tasks")
 
         # 获取待处理任务
         pending = await manager.get_pending_tasks(limit=limit)
@@ -225,7 +227,8 @@ class TaskExecutor:
                         continue
 
             tasks.append(task)
-        logger.info(f"Found {len(tasks)} tasks to execute")
+        if tasks:
+            logger.info(f"Found {len(tasks)} tasks to execute")
 
         return tasks
 

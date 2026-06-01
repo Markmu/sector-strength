@@ -11,7 +11,7 @@ class Sector(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(100), nullable=False, index=True)
     code = Column(String(20), nullable=False, unique=True, index=True)
-    type = Column(String(20), nullable=False, index=True)  # 'industry' or 'concept'
+    type = Column(String(20), nullable=False, index=True)  # industry/concept/region/feature/style/theme
     description = Column(Text)
     strength_score = Column(Numeric(precision=10, scale=4), default=0)
     trend_direction = Column(Numeric(precision=5, scale=2), default=0)

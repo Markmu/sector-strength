@@ -273,7 +273,7 @@ class SectorScatterData(BaseModel):
     """板块散点图数据点"""
     symbol: str = Field(..., description="板块代码")
     name: str = Field(..., description="板块名称")
-    sector_type: str = Field(..., description="板块类型: industry 或 concept")
+    sector_type: str = Field(..., description="板块类型: industry/concept/region/feature/style/theme")
     x: float = Field(..., description="X轴数值")
     y: float = Field(..., description="Y轴数值")
     size: float = Field(default=20.0, description="气泡大小 (strong_stock_ratio，默认20)")
@@ -301,8 +301,10 @@ class FiltersApplied(BaseModel):
 
 class SectorScatterDataset(BaseModel):
     """板块散点图数据集（按类型分组）"""
-    industry: List[SectorScatterData] = Field(default_factory=list, description="行业板块数据")
-    concept: List[SectorScatterData] = Field(default_factory=list, description="概念板块数据")
+    items: Dict[str, List[SectorScatterData]] = Field(
+        default_factory=dict,
+        description="按板块类型分组的数据，key 为类型标识（如 industry/concept/region 等）",
+    )
 
 
 class SectorScatterResponse(BaseModel):

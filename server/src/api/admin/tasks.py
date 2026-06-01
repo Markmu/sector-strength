@@ -87,8 +87,8 @@ def _validate_task_create_request(request: CreateTaskRequest) -> Optional[str]:
 
     if request.task_type == "init_sectors":
         sector_type = params.get("sector_type")
-        if sector_type is not None and sector_type not in {"industry", "concept"}:
-            return "init_sectors 的 sector_type 仅支持 industry/concept。"
+        if sector_type is not None and sector_type not in {"industry", "concept", "region", "feature", "style", "theme"}:
+            return "init_sectors 的 sector_type 仅支持 industry/concept/region/feature/style/theme。"
 
     if request.task_type == "init_sector_historical_data":
         has_days = params.get("days") is not None
