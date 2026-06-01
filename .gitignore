@@ -147,3 +147,6 @@ _bmad
 server/test-results/
 web/test-results/
 web/playwright-report/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
