@@ -25,12 +25,10 @@ async def test_get_sector_scatter_data_default(async_client: AsyncClient):
     assert "filters_applied" in result
     assert "cache_status" in result
 
-    # 验证散点图数据结构
+    # 验证散点图数据结构（items 是字典）
     scatter_data = result["scatter_data"]
-    assert "industry" in scatter_data
-    assert "concept" in scatter_data
-    assert isinstance(scatter_data["industry"], list)
-    assert isinstance(scatter_data["concept"], list)
+    assert "items" in scatter_data
+    assert isinstance(scatter_data["items"], dict)
 
 
 @pytest.mark.asyncio
@@ -62,7 +60,9 @@ async def test_get_sector_scatter_data_with_filters(async_client: AsyncClient):
 
     # 验证返回数量不超过 limit
     scatter_data = result["scatter_data"]
-    assert len(scatter_data["industry"]) + len(scatter_data["concept"]) <= 50
+    items = scatter_data["items"]
+    total_returned = sum(len(v) for v in items.values())
+    assert total_returned <= 50
 
 
 @pytest.mark.asyncio
@@ -119,4 +119,3 @@ async def test_get_sector_scatter_data_grade_filter(async_client: AsyncClient):
 
     # 验证等级筛选被应用
     assert result["filters_applied"]["grade_range"] == ["A", "S"]
-

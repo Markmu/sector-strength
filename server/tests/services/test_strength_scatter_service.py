@@ -11,6 +11,14 @@ from src.models.sector import Sector
 from src.models.strength_score import StrengthScore
 
 
+def _all_items(scatter_data) -> list:
+    """从 ScatterDataset.items 中提取所有数据点"""
+    result = []
+    for points in scatter_data.items.values():
+        result.extend(points)
+    return result
+
+
 @pytest.mark.asyncio
 async def test_get_scatter_data_basic(db_session: AsyncSession, sample_sectors, sample_strength_scores):
     """测试基本散点图数据获取"""
@@ -28,11 +36,9 @@ async def test_get_scatter_data_basic(db_session: AsyncSession, sample_sectors, 
     assert hasattr(result, 'filters_applied')
     assert hasattr(result, 'cache_status')
 
-    # 验证数据集
-    assert hasattr(result.scatter_data, 'industry')
-    assert hasattr(result.scatter_data, 'concept')
-    assert isinstance(result.scatter_data.industry, list)
-    assert isinstance(result.scatter_data.concept, list)
+    # 验证数据集（items 字典）
+    assert hasattr(result.scatter_data, 'items')
+    assert isinstance(result.scatter_data.items, dict)
 
     # 验证筛选器
     assert result.filters_applied.axes == ['short', 'medium']
@@ -52,8 +58,8 @@ async def test_get_scatter_data_with_sector_type_filter(db_session: AsyncSession
     )
 
     # 验证只返回行业板块
-    assert all(point.sector_type == 'industry' for point in result.scatter_data.industry)
-    assert len(result.scatter_data.concept) == 0  # 概念板块应为空
+    all_points = _all_items(result.scatter_data)
+    assert all(point.sector_type == 'industry' for point in all_points)
     assert result.filters_applied.sector_type == 'industry'
 
 
@@ -74,7 +80,7 @@ async def test_get_scatter_data_with_grade_filter(db_session: AsyncSession, samp
     assert result.filters_applied.grade_range == ['A', 'S+']
 
     # 验证返回的数据都匹配等级范围
-    all_points = result.scatter_data.industry + result.scatter_data.concept
+    all_points = _all_items(result.scatter_data)
     for point in all_points:
         if point.full_data.strength_grade is not None:
             # 等级应在 A ~ S+ 范围内
@@ -123,7 +129,7 @@ async def test_get_scatter_data_axis_mapping(db_session: AsyncSession, sample_se
     )
 
     # 验证数据点
-    all_points_short = result_short.scatter_data.industry + result_short.scatter_data.concept
+    all_points_short = _all_items(result_short.scatter_data)
     if all_points_short:
         point = all_points_short[0]
         # X 和 Y 应该相等（都是短期强度）
@@ -149,7 +155,7 @@ async def test_get_scatter_data_missing_values_handling(db_session: AsyncSession
     )
 
     # 验证数据完整度计算
-    all_points = result.scatter_data.industry + result.scatter_data.concept
+    all_points = _all_items(result.scatter_data)
     for point in all_points:
         assert hasattr(point.data_completeness, 'has_strong_ratio')
         assert hasattr(point.data_completeness, 'has_long_term')
@@ -175,8 +181,7 @@ async def test_get_scatter_data_empty_result(db_session: AsyncSession):
     # 验证空数据响应
     assert result.total_count == 0
     assert result.returned_count == 0
-    assert len(result.scatter_data.industry) == 0
-    assert len(result.scatter_data.concept) == 0
+    assert len(result.scatter_data.items) == 0
 
 
 @pytest.mark.asyncio

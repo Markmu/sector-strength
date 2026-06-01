@@ -33,6 +33,7 @@ class TestBaseDataSourceAbstractMethods:
                 def get_sector_list(self, sector_type=None): return []
                 def get_daily_data(self, symbol, start_date, end_date): return []
                 def get_sector_daily_data(self, sector_name, sector_type, start_date, end_date): return []
+                def get_sector_members(self, ts_code): return []
 
             IncompleteSource("test")
 
@@ -45,6 +46,7 @@ class TestBaseDataSourceAbstractMethods:
             def get_sector_list(self, sector_type=None): return []
             def get_daily_data(self, symbol, start_date, end_date): return []
             def get_sector_daily_data(self, sector_name, sector_type, start_date, end_date): return []
+            def get_sector_members(self, ts_code): return []
             def get_trading_calendar(self): return []
 
         instance = CompleteSource("Test")
