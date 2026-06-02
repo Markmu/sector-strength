@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Shield,
   ShieldAlert,
@@ -8,13 +8,14 @@ import {
   ChevronDown,
   ChevronUp,
   Edit2,
-  Trash2,
-  UserPlus,
   RefreshCw,
   CheckCircle2,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { adminApi } from '@/lib/api';
 
 /**
  * 用户角色
@@ -22,22 +23,31 @@ import { useAuth } from '@/contexts/AuthContext';
 type UserRole = 'user' | 'admin';
 
 /**
- * 用户状态
+ * 用户状态（仅二态：active / banned，对应后端 is_active）
  */
-type UserStatus = 'active' | 'inactive' | 'banned';
+type UserStatus = 'active' | 'banned';
 
 /**
- * 用户数据类型
+ * 用户数据类型（驼峰字段，匹配后端 UserListItem）
  */
 interface UserData {
   id: string;
   email: string;
   username?: string;
-  displayName?: string;
   role: UserRole;
+  isActive: boolean;
   status: UserStatus;
   createdAt: string;
   lastLoginAt?: string;
+}
+
+/**
+ * 用户统计
+ */
+interface UserStats {
+  total: number;
+  byRole: { admin: number; user: number };
+  byStatus: { active: number; banned: number };
 }
 
 /**
@@ -65,7 +75,6 @@ function RoleBadge({ role }: { role: UserRole }) {
 function StatusBadge({ status }: { status: UserStatus }) {
   const config = {
     active: { color: 'bg-green-100 text-green-700', label: '活跃' },
-    inactive: { color: 'bg-secondary text-foreground', label: '未激活' },
     banned: { color: 'bg-red-100 text-red-700', label: '已禁用' },
   };
 
@@ -128,14 +137,14 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
         <div className="flex items-center gap-4 flex-1 min-w-0">
           {/* 头像/首字母 */}
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold">
-            {(user.displayName || user.username || user.email || 'U').charAt(0).toUpperCase()}
+            {(user.username || user.email || 'U').charAt(0).toUpperCase()}
           </div>
 
           {/* 用户信息 */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="font-medium text-foreground truncate">
-                {user.displayName || user.username || '未设置'}
+                {user.username || user.email}
               </span>
               {isCurrentUser && (
                 <span className="text-xs text-primary">(当前用户)</span>
@@ -168,7 +177,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
       {expanded && (
         <div className="border-t border-border p-4 bg-secondary space-y-4">
           {/* 用户详情 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">用户ID:</span>
               <span className="ml-2 font-mono text-xs">{user.id}</span>
@@ -176,10 +185,6 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
             <div>
               <span className="text-muted-foreground">用户名:</span>
               <span className="ml-2">{user.username || '-'}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">显示名:</span>
-              <span className="ml-2">{user.displayName || '-'}</span>
             </div>
             <div>
               <span className="text-muted-foreground">最后登录:</span>
@@ -233,18 +238,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
                       : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  活跃
-                </button>
-                <button
-                  onClick={() => handleStatusChange('inactive')}
-                  disabled={isCurrentUser}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    user.status === 'inactive'
-                      ? 'bg-gray-600 text-white'
-                      : 'bg-card text-foreground hover:bg-secondary'
-                  } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  未激活
+                  激活
                 </button>
                 <button
                   onClick={() => handleStatusChange('banned')}
@@ -286,14 +280,12 @@ interface EditUserDialogProps {
 }
 
 function EditUserDialog({ user, open, onClose, onSave }: EditUserDialogProps) {
-  const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
-      setDisplayName(user.displayName || '');
       setUsername(user.username || '');
     }
   }, [user]);
@@ -304,7 +296,7 @@ function EditUserDialog({ user, open, onClose, onSave }: EditUserDialogProps) {
     setSaving(true);
     setError(null);
     try {
-      await onSave(user.id, { displayName, username });
+      await onSave(user.id, { username });
       onClose();
     } catch (err) {
       setError((err as Error).message);
@@ -337,23 +329,11 @@ function EditUserDialog({ user, open, onClose, onSave }: EditUserDialogProps) {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              显示名
-            </label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
-            />
-          </div>
-
           <div className="p-3 bg-secondary rounded-lg text-sm">
             <div className="text-muted-foreground">
               <div>邮箱: {user.email}</div>
-              <div>角色: {user.role}</div>
-              <div>状态: {user.status}</div>
+              <div>角色: {user.role === 'admin' ? '管理员' : '用户'}</div>
+              <div>状态: {user.status === 'active' ? '活跃' : '已禁用'}</div>
             </div>
           </div>
         </div>
@@ -394,189 +374,137 @@ function EditUserDialog({ user, open, onClose, onSave }: EditUserDialogProps) {
  */
 export default function UserManagementPanel() {
   const { accessToken } = useAuth();
+
+  // 列表/分页/搜索
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 统计
+  const [stats, setStats] = useState<UserStats>({
+    total: 0,
+    byRole: { admin: 0, user: 0 },
+    byStatus: { active: 0, banned: 0 },
+  });
+
+  // 编辑对话框
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-  // 获取当前用户邮箱（用于禁止修改自己）
+  // 当前用户邮箱（用于禁止修改自己）
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    // 从localStorage获取当前用户信息
     const userEmail = localStorage.getItem('userEmail');
     setCurrentUserEmail(userEmail);
   }, []);
 
-  // 获取用户列表（使用模拟数据，后端API尚未实现）
-  const fetchUsers = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // TODO: 后端用户管理API尚未实现，使用模拟数据
-      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/users`, {
-      //   headers: {
-      //     'Authorization': `Bearer ${accessToken}`,
-      //   },
-      // });
-      //
-      // if (!response.ok) {
-      //   throw new Error('获取用户列表失败');
-      // }
-      //
-      // const data = await response.json();
-      // setUsers(data.data || []);
-
-      // 模拟数据 - 后端API实现后应移除
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const mockUsers: UserData[] = [
-        {
-          id: '1',
-          email: 'admin@test.com',
-          displayName: '系统管理员',
-          role: 'admin',
-          status: 'active',
-          createdAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-        },
-        {
-          id: '2',
-          email: 'user@test.com',
-          displayName: '测试用户',
-          role: 'user',
-          status: 'active',
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
-          lastLoginAt: new Date(Date.now() - 3600000).toISOString(),
-        },
-      ];
-      setUsers(mockUsers);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // 搜索 debounce：350ms 后提交查询并复位到第 1 页
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    fetchUsers();
-  }, [accessToken]);
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchInput]);
 
-  // 更改用户角色（使用模拟行为，后端API尚未实现）
+  // 加载用户列表 + 统计
+  const loadUsers = useCallback(
+    async (pageToLoad: number, query: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [listRes, statsRes] = await Promise.all([
+          adminApi.listUsers({ q: query || undefined, page: pageToLoad, pageSize }),
+          adminApi.getUserStats(),
+        ]);
+
+        const mapped: UserData[] = (listRes.data?.items || []).map((u) => ({
+          id: u.id,
+          email: u.email,
+          username: u.username ?? undefined,
+          role: u.role,
+          isActive: u.isActive,
+          status: u.isActive ? 'active' : 'banned',
+          createdAt: u.createdAt,
+          lastLoginAt: u.lastLoginAt ?? undefined,
+        }));
+
+        setUsers(mapped);
+        setTotal(listRes.data?.total ?? 0);
+        setTotalPages(listRes.data?.totalPages ?? 0);
+
+        if (statsRes.data) {
+          setStats({
+            total: statsRes.data.total,
+            byRole: statsRes.data.byRole,
+            byStatus: statsRes.data.byStatus,
+          });
+        }
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [pageSize]
+  );
+
+  // 触发加载：page / searchQuery / accessToken 变化时
+  useEffect(() => {
+    if (accessToken) {
+      loadUsers(page, searchQuery);
+    }
+  }, [accessToken, page, searchQuery, loadUsers]);
+
+  // 更改用户角色
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     try {
-      // TODO: 后端用户管理API尚未实现，使用模拟行为
-      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/users/${userId}/role`, {
-      //   method: 'PATCH',
-      //   headers: {
-      //     'Authorization': `Bearer ${accessToken}`,
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({ role: newRole }),
-      // });
-
-      // 模拟行为 - 后端API实现后应移除
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      alert('提示: 用户管理API尚未实现，这是模拟操作。');
-      await fetchUsers();
+      await adminApi.updateUserRole(userId, newRole);
+      await loadUsers(page, searchQuery);
     } catch (err) {
-      alert(`操作失败: ${(err as Error).message}`);
+      alert(`角色修改失败: ${(err as Error).message}`);
     }
   };
 
-  // 更改用户状态（使用模拟行为，后端API尚未实现）
+  // 更改用户状态
   const handleStatusChange = async (userId: string, newStatus: UserStatus) => {
     try {
-      // TODO: 后端用户管理API尚未实现，使用模拟行为
-      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/users/${userId}/status`, {
-      //   method: 'PATCH',
-      //   headers: {
-      //     'Authorization': `Bearer ${accessToken}`,
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({ status: newStatus }),
-      // });
-
-      // 模拟行为 - 后端API实现后应移除
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      alert('提示: 用户管理API尚未实现，这是模拟操作。');
-      await fetchUsers();
+      await adminApi.updateUserStatus(userId, newStatus === 'active');
+      await loadUsers(page, searchQuery);
     } catch (err) {
-      alert(`操作失败: ${(err as Error).message}`);
+      alert(`状态修改失败: ${(err as Error).message}`);
     }
   };
 
-  // 编辑用户（使用模拟行为，后端API尚未实现）
+  // 编辑用户（仅 username）
   const handleEditUser = async (userId: string, data: Partial<UserData>) => {
     try {
-      // TODO: 后端用户管理API尚未实现，使用模拟行为
-      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/users/${userId}`, {
-      //   method: 'PATCH',
-      //   headers: {
-      //     'Authorization': `Bearer ${accessToken}`,
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(data),
-      // });
-
-      // 模拟行为 - 后端API实现后应移除
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      alert('提示: 用户管理API尚未实现，这是模拟操作。');
-      await fetchUsers();
+      await adminApi.updateUser(userId, { username: data.username });
+      await loadUsers(page, searchQuery);
     } catch (err) {
       throw err;
     }
   };
 
-  // 过滤用户
-  const filteredUsers = users.filter((user) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      user.email.toLowerCase().includes(query) ||
-      (user.displayName && user.displayName.toLowerCase().includes(query)) ||
-      (user.username && user.username.toLowerCase().includes(query))
-    );
-  });
-
-  // 统计
-  const stats = {
-    total: users.length,
-    admins: users.filter((u) => u.role === 'admin').length,
-    active: users.filter((u) => u.status === 'active').length,
-    banned: users.filter((u) => u.status === 'banned').length,
-  };
-
   return (
     <div className="space-y-6">
-      {/* 功能未实现提示 */}
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <AlertCircle className="h-5 w-5 text-yellow-400" />
-          </div>
-          <div className="ml-3">
-            <p className="text-sm text-yellow-700">
-              <strong>提示：</strong> 用户管理API后端尚未实现，当前显示为模拟数据。
-              相关操作（角色变更、状态修改等）仅为演示效果。
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* 标题 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">用户管理</h2>
-          <p className="text-muted-foreground mt-1">管理用户账户、角色和权限</p>
-        </div>
-        <button
-          onClick={fetchUsers}
-          className="flex items-center gap-2 px-4 py-2 text-foreground hover:bg-secondary rounded-lg transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          刷新
-        </button>
+      {/* 标题（已移除刷新按钮） */}
+      <div>
+        <h2 className="text-2xl font-bold text-foreground">用户管理</h2>
+        <p className="text-muted-foreground mt-1">管理用户账户、角色和权限</p>
       </div>
 
       {/* 错误提示 */}
@@ -592,22 +520,22 @@ export default function UserManagementPanel() {
         </div>
       )}
 
-      {/* 统计卡片 */}
+      {/* 统计卡片（从 /admin/users/stats 获取） */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-secondary text-foreground rounded-lg p-4">
           <div className="text-2xl font-bold">{stats.total}</div>
           <div className="text-sm opacity-80">全部用户</div>
         </div>
         <div className="bg-purple-100 text-purple-700 rounded-lg p-4">
-          <div className="text-2xl font-bold">{stats.admins}</div>
+          <div className="text-2xl font-bold">{stats.byRole.admin}</div>
           <div className="text-sm opacity-80">管理员</div>
         </div>
         <div className="bg-green-100 text-green-700 rounded-lg p-4">
-          <div className="text-2xl font-bold">{stats.active}</div>
+          <div className="text-2xl font-bold">{stats.byStatus.active}</div>
           <div className="text-sm opacity-80">活跃</div>
         </div>
         <div className="bg-red-100 text-red-700 rounded-lg p-4">
-          <div className="text-2xl font-bold">{stats.banned}</div>
+          <div className="text-2xl font-bold">{stats.byStatus.banned}</div>
           <div className="text-sm opacity-80">已禁用</div>
         </div>
       </div>
@@ -617,9 +545,9 @@ export default function UserManagementPanel() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
         <input
           type="text"
-          placeholder="搜索用户（邮箱、用户名、显示名）..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="搜索用户（邮箱、用户名）..."
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
         />
       </div>
@@ -630,7 +558,7 @@ export default function UserManagementPanel() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           <span className="ml-3 text-muted-foreground">加载中...</span>
         </div>
-      ) : filteredUsers.length === 0 ? (
+      ) : users.length === 0 ? (
         <div className="text-center py-12 bg-card rounded-lg border border-border">
           <AlertCircle className="w-12 h-12 text-faint mx-auto mb-4" />
           <p className="text-muted-foreground">
@@ -638,21 +566,48 @@ export default function UserManagementPanel() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredUsers.map((user) => (
-            <UserRow
-              key={user.id}
-              user={user}
-              currentUserEmail={currentUserEmail}
-              onRoleChange={handleRoleChange}
-              onStatusChange={handleStatusChange}
-              onEdit={(user) => {
-                setEditingUser(user);
-                setEditDialogOpen(true);
-              }}
-            />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {users.map((user) => (
+              <UserRow
+                key={user.id}
+                user={user}
+                currentUserEmail={currentUserEmail}
+                onRoleChange={handleRoleChange}
+                onStatusChange={handleStatusChange}
+                onEdit={(u) => {
+                  setEditingUser(u);
+                  setEditDialogOpen(true);
+                }}
+              />
+            ))}
+          </div>
+
+          {/* 分页 */}
+          <div className="flex items-center justify-between pt-2">
+            <div className="text-sm text-muted-foreground">
+              共 {total} 条 · 第 {page} / {totalPages} 页
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                上一页
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                下一页
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* 编辑对话框 */}

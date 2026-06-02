@@ -352,6 +352,11 @@ class AdminApiClient extends ApiClient {
     return this.request<T>(endpoint, { method: 'POST', body, params })
   }
 
+  // PATCH 请求
+  async patch<T>(endpoint: string, body?: any, params?: Record<string, any>): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'PATCH', body, params })
+  }
+
   // DELETE 请求
   async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'DELETE' })
@@ -387,6 +392,40 @@ export const adminApi = {
     adminApiClient.post<{task_id: string; message: string}>('/admin/sector-classification/update-daily', params),
   getSectorClassificationStatus: () =>
     adminApiClient.get<any>('/admin/sector-classification/status'),
+
+  // 用户管理
+  listUsers: (params?: { q?: string; page?: number; pageSize?: number }) =>
+    adminApiClient.get<{
+      items: Array<{
+        id: string
+        email: string
+        username: string | null
+        role: 'admin' | 'user'
+        isActive: boolean
+        createdAt: string
+        lastLoginAt: string | null
+      }>
+      total: number
+      page: number
+      pageSize: number
+      totalPages: number
+    }>('/admin/users', {
+      q: params?.q || undefined,
+      page: params?.page,
+      pageSize: params?.pageSize,
+    }),
+  getUserStats: () =>
+    adminApiClient.get<{
+      total: number
+      byRole: { admin: number; user: number }
+      byStatus: { active: number; banned: number }
+    }>('/admin/users/stats'),
+  updateUser: (userId: string, data: { username?: string }) =>
+    adminApiClient.patch<any>(`/admin/users/${userId}`, data),
+  updateUserRole: (userId: string, role: 'admin' | 'user') =>
+    adminApiClient.patch<any>(`/admin/users/${userId}/role`, { role }),
+  updateUserStatus: (userId: string, isActive: boolean) =>
+    adminApiClient.patch<any>(`/admin/users/${userId}/status`, { isActive }),
 }
 
 // 导出任务状态类型供组件使用
