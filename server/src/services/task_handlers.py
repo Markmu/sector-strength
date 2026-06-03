@@ -19,10 +19,9 @@ from src.services.sector_ma_service import SectorMAService
 from src.services.sector_strength_service import SectorStrengthService
 from src.services.sector_classification_service import SectorClassificationService
 
-logger = logging.getLogger(__name__)
-
-
 # ============== 任务类型常量 ==============
+
+logger = logging.getLogger(__name__)
 
 class TaskType(str, Enum):
     """任务类型枚举，避免硬编码字符串"""
@@ -55,6 +54,10 @@ class TaskType(str, Enum):
     # 板块分类任务
     INIT_SECTOR_CLASSIFICATIONS = "init_sector_classifications"
     UPDATE_SECTOR_CLASSIFICATION_DAILY = "update_sector_classification_daily"
+
+    # 基金数据同步任务
+    SYNC_FUND_BASIC = "sync_fund_basic"
+    SYNC_FUND_PORTFOLIO = "sync_fund_portfolio"
 
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
@@ -619,6 +622,8 @@ __all__ = [
     "backfill_history_task",
     "backfill_ma_task",
     "backfill_strength_task",
+    "sync_fund_basic_task",
+    "sync_fund_portfolio_task",
 ]
 
 
@@ -1035,3 +1040,95 @@ async def backfill_strength_task(
         error_msg = result.get("error", "Unknown error")
         await manager.log_message(task_id, "ERROR", f"Strength backfill failed: {error_msg}")
         raise Exception(error_msg)
+
+
+# ============== 基金数据同步任务 ==============
+
+@TaskRegistry.register(TaskType.SYNC_FUND_BASIC)
+async def sync_fund_basic_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    基金基本信息同步任务
+
+    从 Tushare 拉取场内+场外基金基本信息，通过 upsert 写入 funds 表。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数（无必需参数）
+        manager: 任务管理器
+    """
+    from src.services.data_init_fund import FundDataInitService
+
+    service = FundDataInitService(manager.db)
+
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    await manager.log_message(task_id, "INFO", "Starting fund basic info sync")
+
+    try:
+        result = await service.sync_fund_basic()
+
+        msg = (
+            f"Fund basic info sync completed: "
+            f"added={result.get('added')}, "
+            f"updated={result.get('updated')}, "
+            f"failed={result.get('failed')}"
+        )
+        await manager.log_message(task_id, "INFO", msg)
+    except Exception as e:
+        error_msg = f"Fund basic info sync failed: {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+@TaskRegistry.register(TaskType.SYNC_FUND_PORTFOLIO)
+async def sync_fund_portfolio_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    基金持仓明细同步任务
+
+    从 Tushare 拉取指定报告期的基金持仓明细，采用"先 INSERT 后 DELETE"策略写入。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数 {"period": "YYYYMMDD"}
+        manager: 任务管理器
+    """
+    from src.services.data_init_fund import FundDataInitService
+
+    period = params.get("period")
+    if not period:
+        error_msg = "Missing required parameter: period"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise ValueError(error_msg)
+
+    service = FundDataInitService(manager.db)
+
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    await manager.log_message(
+        task_id, "INFO", f"Starting fund portfolio sync (period={period})"
+    )
+
+    try:
+        result = await service.sync_fund_portfolio(period)
+
+        msg = (
+            f"Fund portfolio sync completed (period={period}): "
+            f"added={result.get('added')}, "
+            f"updated={result.get('updated')}, "
+            f"failed={result.get('failed')}"
+        )
+        await manager.log_message(task_id, "INFO", msg)
+    except Exception as e:
+        error_msg = f"Fund portfolio sync failed (period={period}): {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise

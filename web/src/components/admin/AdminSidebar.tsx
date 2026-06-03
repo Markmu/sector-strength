@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Activity,
   LogOut,
+  Landmark,
 } from 'lucide-react';
 
 /**
@@ -54,6 +55,13 @@ const navItems: NavItem[] = [
     icon: Users,
     href: '/dashboard/admin/users',
     description: '用户和权限管理',
+  },
+  {
+    id: 'fund-init',
+    label: '基金同步',
+    icon: Landmark,
+    href: '/dashboard/admin/fund-init',
+    description: '基金数据采集和同步',
   },
 ];
 

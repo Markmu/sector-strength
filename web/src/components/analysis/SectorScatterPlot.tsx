@@ -42,12 +42,12 @@ function SectorScatterPlotComponent({
 }: ScatterPlotProps) {
   // 转换为 ECharts 格式的数据
   const { seriesDataMap, allPoints } = useMemo(() => {
-    const dataMap: Record<string, number[][]> = {}
+    const dataMap: Record<string, (number | string)[][]> = {}
     const all: ScatterDataPoint[] = []
 
     if (data) {
       for (const [type, points] of Object.entries(data.items)) {
-        const coords: number[][] = []
+        const coords: (number | string)[][] = []
         for (const point of points) {
           coords.push([point.x, point.y, point.size, point.color_value, point.symbol])
           all.push(point)

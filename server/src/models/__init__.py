@@ -13,6 +13,8 @@ from .cache import CacheEntry
 from .update_log import DataUpdateLog
 from .update_history import UpdateHistory
 from .async_task import AsyncTask, AsyncTaskParam, AsyncTaskLog
+from .fund import Fund
+from .fund_portfolio import FundPortfolio
 
 __all__ = [
     "Base",
@@ -32,4 +34,6 @@ __all__ = [
     "AsyncTask",
     "AsyncTaskParam",
     "AsyncTaskLog",
+    "Fund",
+    "FundPortfolio",
 ]

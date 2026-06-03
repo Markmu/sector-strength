@@ -127,6 +127,23 @@ class DailyQuote(BaseModel):
     turnover: Optional[float] = Field(None, description="换手率")
 
 
+class FundInfo(BaseModel):
+    """基金基本信息 — 与 Tushare fund_basic 输出字段对齐"""
+
+    ts_code: Optional[str] = Field(None, description="TS代码")
+    name: Optional[str] = Field(None, description="基金名称")
+    management: Optional[str] = Field(None, description="管理人")
+    custodian: Optional[str] = Field(None, description="托管人")
+    fund_type: Optional[str] = Field(None, description="基金类型")
+    invest_type: Optional[str] = Field(None, description="投资类型")
+    benchmark: Optional[str] = Field(None, description="业绩比较基准")
+    market: Optional[str] = Field(None, description="市场类型: E 场内 O 场外")
+    found_date: Optional[str] = Field(None, description="成立日期 YYYYMMDD")
+    list_date: Optional[str] = Field(None, description="上市日期 YYYYMMDD")
+    delist_date: Optional[str] = Field(None, description="退市日期 YYYYMMDD")
+    status: Optional[str] = Field(None, description="状态: D 存续 I 发行 E 到期")
+
+
 class DataFetchResult(BaseModel):
     """
     数据获取结果封装

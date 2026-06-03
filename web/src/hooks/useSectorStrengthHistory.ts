@@ -70,7 +70,7 @@ export function useSectorStrengthHistory({
     if (!response.data) {
       throw new Error('Failed to fetch strength history data')
     }
-    return response.data
+    return response.data as unknown as SectorStrengthHistoryResponse
   }
 
   // 构建查询键

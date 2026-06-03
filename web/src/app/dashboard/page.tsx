@@ -4,6 +4,8 @@ import { DashboardLayout, DashboardHeader, DashboardContent, SectorHeatmap, Rank
 import { Card, CardBody } from '@/components/ui';
 import { Disclaimer } from '@/components/ui/Disclaimer';
 import { useSWRConfig } from 'swr';
+import Link from 'next/link';
+import { BarChart3Icon } from 'lucide-react';
 
 /**
  * Dashboard Page
@@ -30,6 +32,25 @@ export default function DashboardPage() {
         onRefresh={handleRefresh}
       />
       <DashboardContent>
+        {/* 快捷入口 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Link href="/dashboard/funds" className="group">
+            <Card variant="outlined" className="hover:shadow-md hover:border-primary/50 transition-all h-full">
+              <CardBody className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <BarChart3Icon className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors">
+                    基金分析
+                  </h3>
+                  <p className="text-xs text-muted-foreground">查看基金列表与持仓明细</p>
+                </div>
+              </CardBody>
+            </Card>
+          </Link>
+        </div>
+
         {/* 市场强度指数 - Story 4-4 实现 */}
         <Card>
           <CardBody className="p-6">

@@ -449,3 +449,117 @@ class TushareDataSource(BaseDataSource):
         except Exception as e:
             logger.warning(f"[Tushare] 健康检查失败: {e}")
             return False
+
+    # ============== 基金数据接口 ==============
+
+    def get_fund_list(self, market: str) -> List[dict]:
+        """
+        获取基金列表（基本信息）
+
+        通过 offset 分页循环获取全部数据（单次最大 15000 条）。
+
+        Args:
+            market: 市场类型，'E' 场内 / 'O' 场外
+
+        Returns:
+            原始字典列表，字段名保持 Tushare 原始键名
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+        all_records: List[dict] = []
+        offset = 0
+        batch_size = 15000
+
+        while True:
+            current_offset = offset
+
+            def _fetch(_offset=current_offset):
+                logger.info(
+                    f"[Tushare] 正在获取基金列表 (market={market}, offset={_offset})..."
+                )
+                return pro.fund_basic(
+                    market=market,
+                    offset=_offset,
+                    limit=batch_size,
+                )
+
+            df = self._execute_with_retry(_fetch)
+            if df is None or (hasattr(df, "empty") and df.empty):
+                break
+
+            for _, row in df.iterrows():
+                record = {}
+                for col in df.columns:
+                    val = row[col]
+                    if pd.isna(val):
+                        record[col] = None
+                    else:
+                        record[col] = val
+                all_records.append(record)
+
+            if len(df) < batch_size:
+                break
+
+            offset += batch_size
+
+        logger.info(
+            f"[Tushare] 获取到 {len(all_records)} 条基金基本信息 (market={market})"
+        )
+        return all_records
+
+    def get_fund_portfolio(self, period: str) -> List[dict]:
+        """
+        获取基金持仓明细
+
+        通过 offset 分页循环获取全部数据（每次 5000 条）。
+
+        Args:
+            period: 报告期，格式 'YYYYMMDD'（如 '20241231'）
+
+        Returns:
+            原始字典列表，字段名保持 Tushare 原始键名
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+        all_records: List[dict] = []
+        offset = 0
+        batch_size = 5000
+
+        while True:
+            current_offset = offset
+
+            def _fetch(_offset=current_offset):
+                logger.info(
+                    f"[Tushare] 正在获取基金持仓 (period={period}, offset={_offset})..."
+                )
+                return pro.fund_portfolio(
+                    period=period,
+                    offset=_offset,
+                    limit=batch_size,
+                )
+
+            df = self._execute_with_retry(_fetch)
+            if df is None or (hasattr(df, "empty") and df.empty):
+                break
+
+            for _, row in df.iterrows():
+                record = {}
+                for col in df.columns:
+                    val = row[col]
+                    if pd.isna(val):
+                        record[col] = None
+                    else:
+                        record[col] = val
+                all_records.append(record)
+
+            if len(df) < batch_size:
+                break
+
+            offset += batch_size
+
+        logger.info(
+            f"[Tushare] 获取到 {len(all_records)} 条基金持仓明细 (period={period})"
+        )
+        return all_records

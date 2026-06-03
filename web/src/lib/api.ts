@@ -273,6 +273,125 @@ export const heatmapApi = {
     apiClient.get<any>('/heatmap', params),
 }
 
+// 基金 API
+export interface FundListParams {
+  search?: string
+  market?: string
+  fundType?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface Fund {
+  tsCode: string
+  name: string
+  management?: string
+  custodian?: string
+  fundType?: string
+  investType?: string
+  benchmark?: string
+  market?: string
+  foundDate?: string
+  listDate?: string
+  delistDate?: string
+  status?: string
+  hasPortfolio?: boolean
+}
+
+export interface FundListResponse {
+  items: Fund[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export interface PortfolioItem {
+  fundTsCode: string
+  reportPeriod: string | null
+  annDate: string | null
+  stockSymbol: string
+  stockName: string | null
+  marketValue: number | null
+  amount: number | null
+  stkMkvRatio: number | null
+  stkFloatRatio: number | null
+}
+
+export interface PortfolioResponse {
+  items: PortfolioItem[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+  isPortfolioEmpty: boolean
+  hasPortfolio: boolean
+  latestReportPeriod: string | null
+  latestAnnDate: string | null
+}
+
+export interface ReverseLookupItem {
+  fundTsCode: string
+  fundName: string | null
+  fundType: string | null
+  management: string | null
+  stockSymbol: string
+  reportPeriod: string | null
+  stkMkvRatio: number | null
+  stkFloatRatio: number | null
+  marketValue: number | null
+  amount: number | null
+}
+
+export interface ReverseLookupResponse {
+  items: ReverseLookupItem[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+  stockName: string | null
+  reportPeriod: string | null
+}
+
+export const fundsApi = {
+  getFunds: (params: FundListParams = {}) =>
+    apiClient.get<{
+      success: boolean
+      data: FundListResponse
+    }>('/funds', {
+      search: params.search || undefined,
+      market: params.market || undefined,
+      fund_type: params.fundType || undefined,
+      page: params.page || 1,
+      page_size: params.pageSize || 20,
+    }),
+
+  getFund: (tsCode: string) =>
+    apiClient.get<{
+      success: boolean
+      data: Fund
+    }>(`/funds/${encodeURIComponent(tsCode)}`),
+
+  getFundPortfolio: (tsCode: string, params?: { page?: number; pageSize?: number }) =>
+    apiClient.get<{
+      success: boolean
+      data: PortfolioResponse
+    }>(`/funds/${encodeURIComponent(tsCode)}/portfolio`, {
+      page: params?.page || 1,
+      page_size: params?.pageSize || 20,
+    }),
+
+  reverseLookup: (symbol: string, params?: { page?: number; pageSize?: number }) =>
+    apiClient.get<{
+      success: boolean
+      data: ReverseLookupResponse
+    }>('/funds/reverse-lookup', {
+      symbol,
+      page: params?.page || 1,
+      page_size: params?.pageSize || 20,
+    }),
+}
+
 // 管理员 API
 // 创建专用的管理员 API 客户端，继承 ApiClient（已自动携带认证令牌）
 class AdminApiClient extends ApiClient {
@@ -426,6 +545,12 @@ export const adminApi = {
     adminApiClient.patch<any>(`/admin/users/${userId}/role`, { role }),
   updateUserStatus: (userId: string, isActive: boolean) =>
     adminApiClient.patch<any>(`/admin/users/${userId}/status`, { isActive }),
+
+  // 基金数据同步
+  initFundBasic: () =>
+    adminApiClient.post<{task_id: string}>('/admin/init/funds'),
+  initFundPortfolio: (period: string) =>
+    adminApiClient.post<{task_id: string}>('/admin/init/fund-portfolio', { period }),
 }
 
 // 导出任务状态类型供组件使用
@@ -444,6 +569,8 @@ export const tasksApi = {
     BACKFILL_BY_RANGE: 'backfill_by_range',
     INIT_SECTOR_CLASSIFICATIONS: 'init_sector_classifications',
     UPDATE_SECTOR_CLASSIFICATION_DAILY: 'update_sector_classification_daily',
+    SYNC_FUND_BASIC: 'sync_fund_basic',
+    SYNC_FUND_PORTFOLIO: 'sync_fund_portfolio',
   } as const,
 
   // 任务状态定义
