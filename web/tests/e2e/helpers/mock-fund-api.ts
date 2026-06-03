@@ -80,25 +80,26 @@ export interface ReverseLookupData {
  *
  * 使用 URL 对象解析，避免 glob pattern 对 query string 中 ? 和 . 的歧义
  */
-function matchApiPath(requestUrl: string, expectedPath: string): boolean {
-  try {
-    const url = new URL(requestUrl)
-    return url.pathname === expectedPath
-  } catch {
-    return false
+function toPathname(requestUrl: URL | string): string {
+  if (typeof requestUrl === 'string') {
+    try {
+      return new URL(requestUrl).pathname
+    } catch {
+      return ''
+    }
   }
+  return requestUrl.pathname
+}
+
+function matchApiPath(requestUrl: URL | string, expectedPath: string): boolean {
+  return toPathname(requestUrl) === expectedPath
 }
 
 /**
  * 判断请求 URL 的 pathname 是否以指定前缀开头
  */
-function matchApiPathPrefix(requestUrl: string, expectedPrefix: string): boolean {
-  try {
-    const url = new URL(requestUrl)
-    return url.pathname.startsWith(expectedPrefix)
-  } catch {
-    return false
-  }
+function matchApiPathPrefix(requestUrl: URL | string, expectedPrefix: string): boolean {
+  return toPathname(requestUrl).startsWith(expectedPrefix)
 }
 
 // ---------- Test Data Factories ----------
