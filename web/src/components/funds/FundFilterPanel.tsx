@@ -29,10 +29,11 @@ const FUND_TYPE_OPTIONS = [
 ] as const
 
 /**
- * 基金过滤面板
+ * 基金过滤面板（水平布局）
  *
  * 复选框组：市场（场内ETF/场外）+ 基金类型（股票型/混合型/债券型/QDII）
  * 状态提升，选中项变化时通知父组件
+ * 水平排列，适合放在表格上方
  */
 export default function FundFilterPanel({
   value,
@@ -56,11 +57,11 @@ export default function FundFilterPanel({
   }
 
   return (
-    <div className={`bg-card rounded-xl border border-border shadow-sm p-4 ${className || ''}`}>
+    <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${className || ''}`}>
       {/* 市场筛选 */}
-      <div className="mb-6">
-        <h3 className="text-sm font-semibold text-foreground mb-3">市场</h3>
-        <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">市场</span>
+        <div className="flex items-center gap-3">
           {MARKET_OPTIONS.map((opt) => (
             <Checkbox
               key={opt.value}
@@ -72,10 +73,13 @@ export default function FundFilterPanel({
         </div>
       </div>
 
+      {/* 分隔线 */}
+      <div className="hidden sm:block w-px h-5 bg-border" />
+
       {/* 基金类型筛选 */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">基金类型</h3>
-        <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">类型</span>
+        <div className="flex items-center gap-3">
           {FUND_TYPE_OPTIONS.map((opt) => (
             <Checkbox
               key={opt.value}

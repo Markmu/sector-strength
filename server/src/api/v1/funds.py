@@ -152,7 +152,9 @@ async def list_funds(
     camel_items = [_dict_to_camel(item) for item in items]
 
     paginated = PaginatedData.create(camel_items, total, page, page_size)
-    return {"success": True, "data": paginated.model_dump()}
+    camel_data = _dict_to_camel(paginated.model_dump())
+    camel_data["items"] = camel_items  # items 已经是 camelCase，避免二次转换
+    return {"success": True, "data": camel_data}
 
 
 @router.get("/reverse-lookup")
@@ -185,11 +187,12 @@ async def reverse_lookup(
     camel_meta = _dict_to_camel(meta)
 
     paginated = PaginatedData.create(camel_items, total, page, page_size)
-    paginated_dict = paginated.model_dump()
+    camel_data = _dict_to_camel(paginated.model_dump())
+    camel_data["items"] = camel_items  # items 已经是 camelCase，避免二次转换
     # 将元信息合并到分页数据中
-    paginated_dict.update(camel_meta)
+    camel_data.update(camel_meta)
 
-    return {"success": True, "data": paginated_dict}
+    return {"success": True, "data": camel_data}
 
 
 @router.get("/{ts_code}")
@@ -261,8 +264,9 @@ async def get_fund_portfolio(
     camel_meta = _dict_to_camel(meta)
 
     paginated = PaginatedData.create(camel_items, total, page, page_size)
-    paginated_dict = paginated.model_dump()
+    camel_data = _dict_to_camel(paginated.model_dump())
+    camel_data["items"] = camel_items  # items 已经是 camelCase，避免二次转换
     # 将元信息合并到分页数据中
-    paginated_dict.update(camel_meta)
+    camel_data.update(camel_meta)
 
-    return {"success": True, "data": paginated_dict}
+    return {"success": True, "data": camel_data}
