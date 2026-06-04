@@ -380,6 +380,7 @@ class FundDataInitService:
                         )
 
                 await self.session.flush()
+                await self.session.commit()
                 added += fund_added
 
             except Exception as e:
@@ -398,12 +399,7 @@ class FundDataInitService:
                     f"已处理 {i}/{total_funds} 只基金 (新增 {added}, 跳过 {skipped}, 失败 {failed})"
                 )
 
-        # 3. 提交所有新数据
-        await self.session.commit()
-
-        # 4. 清理旧数据（删除该报告期不在新数据中的记录）
-        # 因为逐个基金写入，旧数据的清理在每次同步开始时处理
-        # 这里不需要额外清理
+        # 3. 数据已在循环中逐个基金 commit，无需再统一提交
 
         msg = (
             f"基金持仓同步完成 (period={period}): "
