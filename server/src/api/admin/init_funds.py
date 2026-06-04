@@ -113,7 +113,7 @@ async def init_fund_portfolio(
         task_type=TaskType.SYNC_FUND_PORTFOLIO.value,
         params={"period": request.period},
         max_retries=3,
-        timeout_seconds=14400,
+        timeout_seconds=28800,  # 8小时，逐基金拉取约需5-6小时
         created_by=_admin.id,
     )
     await session.commit()

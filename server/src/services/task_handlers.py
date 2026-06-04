@@ -1096,7 +1096,8 @@ async def sync_fund_portfolio_task(
     """
     基金持仓明细同步任务
 
-    从 Tushare 拉取指定报告期的基金持仓明细，采用"先 INSERT 后 DELETE"策略写入。
+    逐个基金从 Tushare 拉取指定报告期的持仓明细并写入数据库。
+    仅处理存续中的股票型和混合型基金。
 
     Args:
         task_id: 任务ID
@@ -1126,11 +1127,16 @@ async def sync_fund_portfolio_task(
         msg = (
             f"Fund portfolio sync completed (period={period}): "
             f"added={result.get('added')}, "
-            f"updated={result.get('updated')}, "
+            f"skipped={result.get('skipped')}, "
             f"failed={result.get('failed')}"
         )
+        failed_funds = result.get("failed_funds", [])
+        if failed_funds:
+            msg += f", failed_funds_count={len(failed_funds)}"
         await manager.log_message(task_id, "INFO", msg)
     except Exception as e:
-        error_msg = f"Fund portfolio sync failed (period={period}): {e}"
+        original_error = getattr(e, "original_error", None)
+        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        error_msg = f"Fund portfolio sync failed (period={period}): {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise

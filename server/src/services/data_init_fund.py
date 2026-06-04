@@ -249,122 +249,154 @@ class FundDataInitService:
         """
         同步基金持仓明细
 
-        采用"先 INSERT 新数据 → 再 DELETE 旧数据"策略：
-        1. 拉取指定报告期全量持仓数据
-        2. 将新数据逐条插入
-        3. 插入全部完成后，删除该报告期中不在新数据 id 集合中的旧记录
+        逐个基金拉取持仓数据，适用于代理不支持按 period 全量查询的场景。
+        仅处理存续中的股票型和混合型基金。
+
+        流程：
+        1. 查询数据库中存续的股票型+混合型基金列表
+        2. 逐个基金调用 Tushare 获取持仓
+        3. 每个基金成功后立即写入数据库
+        4. 全部完成后清理旧数据
 
         Args:
             period: 报告期，格式 'YYYYMMDD'（如 '20241231'）
 
         Returns:
-            {"added": int, "updated": int, "failed": int}
+            {"added": int, "skipped": int, "failed": int, "failed_funds": list}
         """
         tushare = DataSourceFactory.create()
 
-        await self._update_progress(0, 1, f"正在从 Tushare 拉取基金持仓 (period={period})...")
+        # 1. 查询需要同步的基金列表
+        fund_rows = await self.session.execute(
+            select(Fund.ts_code, Fund.name).where(
+                and_(
+                    Fund.fund_type.in_(["股票型", "混合型"]),
+                    Fund.status == "L",
+                )
+            )
+        )
+        funds = fund_rows.all()
+        total_funds = len(funds)
 
-        try:
-            records = tushare.get_fund_portfolio(period)
-        except Exception as e:
-            logger.error(f"拉取基金持仓失败 (period={period}): {e}")
-            raise
-
-        total = len(records)
-
-        if total == 0:
-            await self._update_progress(1, 1, "无持仓数据，同步完成")
-            return {"added": 0, "updated": 0, "failed": 0}
-
-        await self._update_progress(0, total, f"共 {total} 条持仓数据待入库")
-
-        # 将 period 转为 date 用于 report_period 字段
         report_period_date = self._parse_period_to_date(period)
 
+        # 1.5 清理该报告期的旧数据，避免重复
+        del_stmt = delete(FundPortfolio).where(
+            FundPortfolio.report_period == report_period_date,
+        )
+        del_result = await self.session.execute(del_stmt)
+        await self.session.commit()
+        if del_result.rowcount > 0:
+            logger.info(
+                f"清理旧持仓数据: 报告期 {period}, 删除 {del_result.rowcount} 条旧记录"
+            )
+
+        await self._update_progress(
+            0, total_funds,
+            f"共 {total_funds} 只基金待同步持仓 (period={period})"
+        )
+
         added = 0
+        skipped = 0
         failed = 0
-        new_ids = []
+        failed_funds = []
 
-        for i, record in enumerate(records, 1):
+        # 2. 逐个基金拉取并写入
+        for i, (ts_code, fund_name) in enumerate(funds, 1):
             try:
-                fund_ts_code = record.get("ts_code")
-                stock_symbol_raw = record.get("symbol")
+                records = tushare.get_fund_portfolio_by_code(ts_code, period)
 
-                if not fund_ts_code or not stock_symbol_raw:
-                    failed += 1
+                if not records:
+                    skipped += 1
+                    if i % 200 == 0 or i == total_funds:
+                        await self._update_progress(
+                            i, total_funds,
+                            f"已处理 {i}/{total_funds} 只基金 (新增 {added}, 跳过 {skipped}, 失败 {failed})"
+                        )
                     continue
 
-                # 转换股票代码：TS 格式 "000001.SZ" → 短码 "000001"
-                stock_symbol = (
-                    stock_symbol_raw.split(".")[0]
-                    if "." in stock_symbol_raw
-                    else stock_symbol_raw
-                )
+                # 写入该基金的持仓
+                fund_added = 0
+                for record in records:
+                    try:
+                        stock_symbol_raw = record.get("symbol")
+                        if not stock_symbol_raw:
+                            continue
 
-                ann_date = self._parse_date(record.get("ann_date"))
-                market_value = self._parse_float(record.get("mkv"))
-                amount = self._parse_float(record.get("amount"))
-                stk_mkv_ratio = self._parse_float(record.get("stk_mkv_ratio"))
-                stk_float_ratio = self._parse_float(record.get("stk_float_ratio"))
+                        stock_symbol = (
+                            stock_symbol_raw.split(".")[0]
+                            if "." in stock_symbol_raw
+                            else stock_symbol_raw
+                        )
 
-                portfolio = FundPortfolio(
-                    fund_ts_code=fund_ts_code,
-                    report_period=report_period_date,
-                    ann_date=ann_date,
-                    stock_symbol=stock_symbol,
-                    market_value=market_value,
-                    amount=amount,
-                    stk_mkv_ratio=stk_mkv_ratio,
-                    stk_float_ratio=stk_float_ratio,
-                )
-                self.session.add(portfolio)
+                        ann_date = self._parse_date(record.get("ann_date"))
+                        market_value = self._parse_float(record.get("mkv"))
+                        amount = self._parse_float(record.get("amount"))
+                        stk_mkv_ratio = self._parse_float(record.get("stk_mkv_ratio"))
+                        stk_float_ratio = self._parse_float(
+                            record.get("stk_float_ratio")
+                        )
+
+                        portfolio = FundPortfolio(
+                            fund_ts_code=ts_code,
+                            report_period=report_period_date,
+                            ann_date=ann_date,
+                            stock_symbol=stock_symbol,
+                            market_value=market_value,
+                            amount=amount,
+                            stk_mkv_ratio=stk_mkv_ratio,
+                            stk_float_ratio=stk_float_ratio,
+                        )
+                        self.session.add(portfolio)
+                        fund_added += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"写入持仓记录失败 ({ts_code}/{record.get('symbol')}): {e}"
+                        )
+
                 await self.session.flush()
-                new_ids.append(portfolio.id)
-                added += 1
+                added += fund_added
 
             except Exception as e:
                 failed += 1
-                logger.warning(
-                    f"写入基金持仓 {record.get('ts_code')}/{record.get('symbol')} 失败: {e}"
-                )
+                failed_funds.append(ts_code)
+                original = getattr(e, "original_error", None)
+                detail = f"{e}" + (f" (原始错误: {original})" if original else "")
+                logger.warning(f"拉取基金持仓失败 ({ts_code}): {detail}")
+                # 单个基金失败不影响整体，继续处理下一个
                 continue
 
-            if i % 2000 == 0 or i == total:
+            # 进度报告
+            if i % 200 == 0 or i == total_funds:
                 await self._update_progress(
-                    i, total, f"已处理 {i}/{total} 条持仓数据"
+                    i, total_funds,
+                    f"已处理 {i}/{total_funds} 只基金 (新增 {added}, 跳过 {skipped}, 失败 {failed})"
                 )
 
-        # 先提交新数据
+        # 3. 提交所有新数据
         await self.session.commit()
 
-        # 删除该报告期的旧数据（不在新插入 id 集合中的记录）
-        if new_ids:
-            await self._update_progress(total, total, "正在清理旧持仓数据...")
-            del_stmt = delete(FundPortfolio).where(
-                and_(
-                    FundPortfolio.report_period == report_period_date,
-                    FundPortfolio.id.notin_(new_ids),
-                )
-            )
-            del_result = await self.session.execute(del_stmt)
-            await self.session.commit()
+        # 4. 清理旧数据（删除该报告期不在新数据中的记录）
+        # 因为逐个基金写入，旧数据的清理在每次同步开始时处理
+        # 这里不需要额外清理
 
-            deleted_count = del_result.rowcount
-            if deleted_count > 0:
-                logger.info(
-                    f"清理旧持仓数据: 报告期 {period}, 删除 {deleted_count} 条旧记录"
-                )
-
-        await self._update_progress(
-            total, total,
-            f"基金持仓同步完成 (period={period}): 新增 {added}, 失败 {failed}"
+        msg = (
+            f"基金持仓同步完成 (period={period}): "
+            f"新增 {added} 条, 跳过 {skipped} 只基金, "
+            f"失败 {failed} 只基金"
         )
+        if failed_funds:
+            msg += f" (失败基金: {failed_funds[:20]}{'...' if len(failed_funds) > 20 else ''})"
 
-        logger.info(
-            f"基金持仓同步完成 (period={period}): 新增 {added}, 失败 {failed}"
-        )
+        await self._update_progress(total_funds, total_funds, msg)
+        logger.info(msg)
 
-        return {"added": added, "updated": 0, "failed": failed}
+        return {
+            "added": added,
+            "skipped": skipped,
+            "failed": failed,
+            "failed_funds": failed_funds,
+        }
 
     @staticmethod
     def _parse_date(value) -> Optional[date]:

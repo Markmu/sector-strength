@@ -66,7 +66,7 @@ class TushareDataSource(BaseDataSource):
             try:
                 from tushare.pro.client import DataApi
 
-                self._pro_api = DataApi(token=self._token)
+                self._pro_api = DataApi(token=self._token, timeout=60)
                 # DataApi 的 __http_url 是类属性，通过 _DataApi__http_url 修改
                 self._pro_api._DataApi__http_url = self._api_url
                 logger.info(f"[Tushare] 初始化成功，服务地址: {self._api_url}")
@@ -89,8 +89,16 @@ class TushareDataSource(BaseDataSource):
                 logger.debug(f"[Tushare] 速率限制：等待 {sleep_time:.2f} 秒")
                 time.sleep(sleep_time)
 
+    # 不可恢复错误关键词：遇到这些错误时立即失败，不重试
+    _NON_RETRYABLE_KEYWORDS = [
+        "权限不足", "没有足够积分", "forbidden",
+        "参数错误", "invalid parameter",
+        "token不对", "认证失败", "unauthorized",
+        "没有权限",
+    ]
+
     def _execute_with_retry(self, func: Callable[..., T]) -> T:
-        """执行函数并在失败时重试（指数退避）"""
+        """执行函数并在失败时重试（指数退避），对不可恢复错误立即失败"""
         last_exception = None
         current_delay = self._retry_delay
 
@@ -102,6 +110,17 @@ class TushareDataSource(BaseDataSource):
                 return result
             except Exception as e:
                 last_exception = e
+                error_msg = str(e).lower()
+
+                # 检查是否为不可恢复错误
+                if any(kw in error_msg for kw in self._NON_RETRYABLE_KEYWORDS):
+                    logger.error(f"[Tushare] 不可恢复错误，跳过重试: {e}")
+                    raise DataFetchError(
+                        f"不可恢复的API错误: {e}",
+                        source=self.source_name,
+                        original_error=e,
+                    )
+
                 logger.warning(
                     f"[Tushare] 第 {attempt}/{self._max_retries} 次尝试失败: {e}"
                 )
@@ -563,3 +582,45 @@ class TushareDataSource(BaseDataSource):
             f"[Tushare] 获取到 {len(all_records)} 条基金持仓明细 (period={period})"
         )
         return all_records
+
+    def get_fund_portfolio_by_code(
+        self, ts_code: str, period: str
+    ) -> List[dict]:
+        """
+        按单个基金代码获取持仓明细
+
+        当代理不支持按 period 全量查询时，逐个基金拉取。
+
+        Args:
+            ts_code: 基金代码，如 '000001.OF'
+            period: 报告期，格式 'YYYYMMDD'（如 '20241231'）
+
+        Returns:
+            原始字典列表，字段名保持 Tushare 原始键名
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            return pro.fund_portfolio(
+                ts_code=ts_code,
+                period=period,
+            )
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        return records
