@@ -48,12 +48,16 @@ export default function FundListPageContent() {
   const [page, setPage] = useState(initialPage)
   const [pageSize, setPageSize] = useState(initialPageSize)
 
-  // 构建 API 参数
+  // 构建 API 参数（全选等同于不筛选，不传参数）
   const apiParams = useMemo(
     () => ({
       search: search || undefined,
-      market: filters.market.join(',') || undefined,
-      fundType: filters.fundType.join(',') || undefined,
+      market: filters.market.length > 0 && filters.market.length < 2
+        ? filters.market.join(',')
+        : undefined,
+      fundType: filters.fundType.length > 0 && filters.fundType.length < 4
+        ? filters.fundType.join(',')
+        : undefined,
       page,
       pageSize,
     }),
