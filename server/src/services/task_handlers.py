@@ -1117,6 +1117,13 @@ async def sync_fund_portfolio_task(
     callback = await _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
+    # 设置取消检查：查询数据库中的任务状态
+    async def _check_cancelled():
+        task = await manager.get_task(task_id)
+        return task is not None and task.status == "cancelled"
+
+    service.set_cancel_check(_check_cancelled)
+
     await manager.log_message(
         task_id, "INFO", f"Starting fund portfolio sync (period={period})"
     )

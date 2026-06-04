@@ -35,6 +35,7 @@ class FundDataInitService:
         """
         self.session = session
         self._progress_callback: Optional[callable] = None
+        self._cancel_check: Optional[callable] = None
 
     def set_progress_callback(self, callback: callable):
         """
@@ -44,6 +45,26 @@ class FundDataInitService:
             callback: 回调函数，签名为 (current: int, total: int, message: str)
         """
         self._progress_callback = callback
+
+    def set_cancel_check(self, check: callable):
+        """
+        设置取消检查回调函数
+
+        Args:
+            check: 异步回调函数，返回 bool（True = 已取消）
+        """
+        self._cancel_check = check
+
+    async def _check_cancelled(self):
+        """检查任务是否被取消，如果已取消则抛出异常"""
+        if self._cancel_check:
+            import asyncio
+            if asyncio.iscoroutinefunction(self._cancel_check):
+                cancelled = await self._cancel_check()
+            else:
+                cancelled = self._cancel_check()
+            if cancelled:
+                raise asyncio.CancelledError("任务已被用户取消")
 
     async def _update_progress(self, current: int, total: int, message: str):
         """更新进度"""
@@ -303,6 +324,10 @@ class FundDataInitService:
 
         # 2. 逐个基金拉取并写入
         for i, (ts_code, fund_name) in enumerate(funds, 1):
+            # 每 50 只基金检查一次是否被取消
+            if i % 50 == 0:
+                await self._check_cancelled()
+
             try:
                 records = tushare.get_fund_portfolio_by_code(ts_code, period)
 
