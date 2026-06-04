@@ -607,6 +607,7 @@ export const tasksApi = {
   listTasks: (params?: {
     status?: string
     task_type?: string
+    task_types?: string
     page?: number
     page_size?: number
   }) =>
@@ -618,6 +619,8 @@ export const tasksApi = {
         progress: number
         total: number
         percent: number
+        params?: Record<string, any>
+        errorMessage?: string
         retryCount: number
         maxRetries: number
         createdAt: string
