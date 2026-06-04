@@ -357,6 +357,7 @@ class TaskManager:
         self,
         status: Optional[str] = None,
         task_type: Optional[str] = None,
+        task_types: Optional[List[str]] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> List[AsyncTask]:
@@ -365,18 +366,21 @@ class TaskManager:
 
         Args:
             status: 状态过滤
-            task_type: 任务类型过滤
+            task_type: 任务类型过滤（单值，向后兼容）
+            task_types: 任务类型过滤（多值，优先于 task_type）
             limit: 返回数量限制
             offset: 偏移量
 
         Returns:
             任务列表
         """
-        query = select(AsyncTask)
+        query = select(AsyncTask).options(selectinload(AsyncTask.params))
 
         if status:
             query = query.where(AsyncTask.status == status)
-        if task_type:
+        if task_types:
+            query = query.where(AsyncTask.task_type.in_(task_types))
+        elif task_type:
             query = query.where(AsyncTask.task_type == task_type)
 
         query = query.order_by(AsyncTask.created_at.desc()).limit(limit).offset(offset)
@@ -388,13 +392,15 @@ class TaskManager:
         self,
         status: Optional[str] = None,
         task_type: Optional[str] = None,
+        task_types: Optional[List[str]] = None,
     ) -> int:
         """
         统计任务数量
 
         Args:
             status: 状态过滤
-            task_type: 任务类型过滤
+            task_type: 任务类型过滤（单值，向后兼容）
+            task_types: 任务类型过滤（多值，优先于 task_type）
 
         Returns:
             任务数量
@@ -405,7 +411,9 @@ class TaskManager:
 
         if status:
             query = query.where(AsyncTask.status == status)
-        if task_type:
+        if task_types:
+            query = query.where(AsyncTask.task_type.in_(task_types))
+        elif task_type:
             query = query.where(AsyncTask.task_type == task_type)
 
         result = await self.db.execute(query)

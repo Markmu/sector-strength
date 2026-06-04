@@ -59,7 +59,7 @@ class TaskDetailResponse(TaskResponse):
 
 class TaskListResponse(BaseModel):
     """任务列表响应"""
-    tasks: List[TaskResponse] = Field(..., description="任务列表")
+    tasks: List[TaskDetailResponse] = Field(..., description="任务列表（包含参数）")
     total: int = Field(..., description="总数")
     page: int = Field(1, description="页码")
     pageSize: int = Field(50, description="每页数量")
@@ -172,7 +172,11 @@ async def create_task(
 @router.get("", response_model=ApiResponse[TaskListResponse])
 async def list_tasks(
     status: Optional[str] = Query(None, description="状态过滤"),
-    task_type: Optional[str] = Query(None, description="任务类型过滤"),
+    task_type: Optional[str] = Query(None, description="任务类型过滤（单值，向后兼容）"),
+    task_types: Optional[str] = Query(
+        None,
+        description="任务类型过滤（多值，逗号分隔，例如 'sync_fund_basic,sync_fund_portfolio'）",
+    ),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(50, ge=1, le=100, description="每页数量"),
     session: AsyncSession = Depends(get_session),
@@ -183,16 +187,22 @@ async def list_tasks(
 
     Args:
         status: 状态过滤
-        task_type: 任务类型过滤
+        task_type: 任务类型过滤（单值）
+        task_types: 任务类型过滤（多值，逗号分隔，优先于 task_type）
         page: 页码
         page_size: 每页数量
         session: 数据库会话
         _admin: 管理员权限验证
 
     Returns:
-        任务列表
+        任务列表（按创建时间倒序，包含任务参数）
     """
     manager = TaskManager(session)
+
+    # 解析多值过滤
+    parsed_task_types: Optional[List[str]] = None
+    if task_types:
+        parsed_task_types = [t.strip() for t in task_types.split(",") if t.strip()]
 
     # 计算偏移量
     offset = (page - 1) * page_size
@@ -201,6 +211,7 @@ async def list_tasks(
     tasks = await manager.list_tasks(
         status=status,
         task_type=task_type,
+        task_types=parsed_task_types,
         limit=page_size,
         offset=offset,
     )
@@ -209,6 +220,7 @@ async def list_tasks(
     total = await manager.count_tasks(
         status=status,
         task_type=task_type,
+        task_types=parsed_task_types,
     )
 
     return ApiResponse(

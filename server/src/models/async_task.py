@@ -47,6 +47,13 @@ class AsyncTask(Base):
 
     def to_dict(self) -> dict:
         """转换为字典"""
+        # 合并任务参数为 {key: value} 字典
+        params_dict: dict = {}
+        if self.params:
+            for p in self.params:
+                if p.key is not None:
+                    params_dict[p.key] = p.value
+
         return {
             "taskId": self.task_id,
             "taskType": self.task_type,
@@ -54,6 +61,7 @@ class AsyncTask(Base):
             "progress": self.progress,
             "total": self.total,
             "percent": self.percent,
+            "params": params_dict,
             "errorMessage": self.error_message,
             "retryCount": self.retry_count,
             "maxRetries": self.max_retries,
