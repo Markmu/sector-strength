@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from 'react';
+import useSWR from 'swr';
 import {
   Database,
   Loader2,
@@ -16,21 +17,29 @@ import { adminApi } from '@/lib/api';
 import { useTaskStatus, type TaskData } from '@/hooks/useTaskStatus';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
+import { fetcher } from '@/lib/fetcher';
 
 /** 同步记录行 */
 interface SyncRecord {
-  id: string;
+  taskId: string;
   taskType: 'sync_fund_basic' | 'sync_fund_portfolio';
   createdAt: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-  result?: {
-    added?: number;
-    updated?: number;
-    failed?: number;
-  } | null;
+  params?: Record<string, any> | null;
   errorMessage?: string;
-  period?: string;
 }
+
+/** 同步任务类型 → 中文显示名 */
+const TASK_TYPE_LABELS: Record<string, string> = {
+  sync_fund_basic: '同步基金基本信息',
+  sync_fund_portfolio: '同步基金持仓明细',
+};
+
+/** 后端需要的过滤值：逗号分隔两种基金任务 */
+const FUND_TASK_TYPES = 'sync_fund_basic,sync_fund_portfolio';
+
+/** SWR key：fetcher 会拼上 NEXT_PUBLIC_API_URL 前缀，必须包含 /api/v1 */
+const RECORDS_SWR_KEY = `/api/v1/admin/tasks?task_types=${FUND_TASK_TYPES}&page=1&page_size=20`;
 
 /** 生成最近 N 个季度末 YYYYMMDD */
 function getRecentQuarters(count: number = 8): string[] {
@@ -88,8 +97,18 @@ export default function FundSyncPanel() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [periods] = useState<string[]>(() => getRecentQuarters(8));
 
-  // 同步记录表
-  const [syncRecords, setSyncRecords] = useState<SyncRecord[]>([]);
+  // 同步记录表：从后端按 taskType 过滤、按 created_at desc 拉取
+  const {
+    data: tasksData,
+    isLoading: recordsLoading,
+    mutate: refreshRecords,
+  } = useSWR<{
+    tasks: SyncRecord[];
+    total: number;
+    page: number;
+  }>(RECORDS_SWR_KEY, fetcher);
+
+  const syncRecords = tasksData?.tasks ?? [];
 
   // Toast 通知
   const [toast, setToast] = useState<{
@@ -102,55 +121,30 @@ export default function FundSyncPanel() {
     setTimeout(() => setToast(null), 5000);
   }, []);
 
-  const addSyncRecord = useCallback((record: SyncRecord) => {
-    setSyncRecords((prev) => [record, ...prev]);
-  }, []);
+  // 任务状态变化时刷新同步记录
+  const refreshOnTaskChange = useCallback(() => {
+    refreshRecords();
+  }, [refreshRecords]);
 
   // ---- 基金基本信息同步 ----
   const handleBasicComplete = useCallback(
     (task: TaskData) => {
       setBasicLoading(false);
       setBasicTaskId(null);
-
-      // 解析结果
-      const _result: SyncRecord['result'] = null;
-      try {
-        // TaskData 不直接包含 result 字段，需要从 logs 或其他方式获取
-        // 实际结果存于 AsyncTask 的 result 列中
-        // 这里先放占位，后续通过 listTasks 刷新
-      } catch {
-        // ignore
-      }
-
-      addSyncRecord({
-        id: task.taskId,
-        taskType: 'sync_fund_basic',
-        createdAt: task.createdAt || new Date().toISOString(),
-        status: 'completed',
-        result: _result,
-      });
-
+      refreshOnTaskChange();
       showToast('success', '基金基本信息同步完成');
     },
-    [addSyncRecord, showToast]
+    [refreshOnTaskChange, showToast]
   );
 
   const handleBasicFailed = useCallback(
     (task: TaskData) => {
       setBasicLoading(false);
       setBasicTaskId(null);
-
-      addSyncRecord({
-        id: task.taskId,
-        taskType: 'sync_fund_basic',
-        createdAt: task.createdAt || new Date().toISOString(),
-        status: 'failed',
-        errorMessage: task.errorMessage,
-      });
-
+      refreshOnTaskChange();
       showToast('error', `同步失败: ${task.errorMessage || '未知错误'}`);
     },
-    [addSyncRecord, showToast]
+    [refreshOnTaskChange, showToast]
   );
 
   // 轮询基金基本信息任务
@@ -174,13 +168,8 @@ export default function FundSyncPanel() {
       }
 
       setBasicTaskId(taskId);
-
-      addSyncRecord({
-        id: taskId,
-        taskType: 'sync_fund_basic',
-        createdAt: new Date().toISOString(),
-        status: 'running',
-      });
+      // 立即刷新一次以显示新建的 running 任务
+      refreshOnTaskChange();
     } catch (error) {
       const msg = (error as Error).message;
       setBasicError(msg);
@@ -194,37 +183,20 @@ export default function FundSyncPanel() {
     (task: TaskData) => {
       setPortfolioLoading(false);
       setPortfolioTaskId(null);
-
-      addSyncRecord({
-        id: task.taskId,
-        taskType: 'sync_fund_portfolio',
-        createdAt: task.createdAt || new Date().toISOString(),
-        status: 'completed',
-        period: task.params?.period,
-      });
-
+      refreshOnTaskChange();
       showToast('success', '基金持仓明细同步完成');
     },
-    [addSyncRecord, showToast]
+    [refreshOnTaskChange, showToast]
   );
 
   const handlePortfolioFailed = useCallback(
     (task: TaskData) => {
       setPortfolioLoading(false);
       setPortfolioTaskId(null);
-
-      addSyncRecord({
-        id: task.taskId,
-        taskType: 'sync_fund_portfolio',
-        createdAt: task.createdAt || new Date().toISOString(),
-        status: 'failed',
-        errorMessage: task.errorMessage,
-        period: task.params?.period,
-      });
-
+      refreshOnTaskChange();
       showToast('error', `同步失败: ${task.errorMessage || '未知错误'}`);
     },
-    [addSyncRecord, showToast]
+    [refreshOnTaskChange, showToast]
   );
 
   // 轮询基金持仓任务
@@ -253,14 +225,7 @@ export default function FundSyncPanel() {
       }
 
       setPortfolioTaskId(taskId);
-
-      addSyncRecord({
-        id: taskId,
-        taskType: 'sync_fund_portfolio',
-        createdAt: new Date().toISOString(),
-        status: 'running',
-        period,
-      });
+      refreshOnTaskChange();
     } catch (error) {
       const msg = (error as Error).message;
       setPortfolioError(msg);
@@ -431,10 +396,23 @@ export default function FundSyncPanel() {
 
       {/* 同步记录表格 */}
       <div className="bg-card rounded-lg shadow-sm border border-border">
-        <div className="px-6 py-4 border-b border-border">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <h3 className="text-lg font-semibold text-foreground">同步记录</h3>
+          <button
+            onClick={() => refreshOnTaskChange()}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            title="刷新"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>刷新</span>
+          </button>
         </div>
-        {syncRecords.length === 0 ? (
+        {recordsLoading && syncRecords.length === 0 ? (
+          <div className="px-6 py-8 flex items-center justify-center text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            加载中...
+          </div>
+        ) : syncRecords.length === 0 ? (
           <div className="px-6 py-8 text-center text-muted-foreground">
             暂无同步记录
           </div>
@@ -446,34 +424,35 @@ export default function FundSyncPanel() {
                   <th className="px-6 py-3 text-left font-medium text-muted-foreground">时间</th>
                   <th className="px-6 py-3 text-left font-medium text-muted-foreground">任务</th>
                   <th className="px-6 py-3 text-left font-medium text-muted-foreground">报告期</th>
-                  <th className="px-6 py-3 text-left font-medium text-muted-foreground">结果</th>
+                  <th className="px-6 py-3 text-left font-medium text-muted-foreground">状态</th>
                   <th className="px-6 py-3 text-left font-medium text-muted-foreground">详情</th>
                 </tr>
               </thead>
               <tbody>
-                {syncRecords.map((record) => (
-                  <tr key={record.id} className="border-b border-border last:border-0">
-                    <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
-                      {new Date(record.createdAt).toLocaleString('zh-CN')}
-                    </td>
-                    <td className="px-6 py-3">
-                      {record.taskType === 'sync_fund_basic' ? '基金基本信息' : '基金持仓'}
-                    </td>
-                    <td className="px-6 py-3 text-muted-foreground">
-                      {record.period ? formatPeriod(record.period) : '-'}
-                    </td>
-                    <td className="px-6 py-3">
-                      <StatusBadge status={record.status} />
-                    </td>
-                    <td className="px-6 py-3 text-muted-foreground max-w-xs truncate">
-                      {record.status === 'failed' && record.errorMessage
-                        ? record.errorMessage
-                        : record.result
-                          ? `新增 ${record.result.added ?? '-'} / 更新 ${record.result.updated ?? '-'} / 失败 ${record.result.failed ?? '-'}`
+                {syncRecords.map((record) => {
+                  const period = record.params?.period as string | undefined;
+                  return (
+                    <tr key={record.taskId} className="border-b border-border last:border-0">
+                      <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
+                        {record.createdAt ? new Date(record.createdAt).toLocaleString('zh-CN') : '-'}
+                      </td>
+                      <td className="px-6 py-3">
+                        {TASK_TYPE_LABELS[record.taskType] ?? record.taskType}
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        {period ? formatPeriod(period) : '-'}
+                      </td>
+                      <td className="px-6 py-3">
+                        <StatusBadge status={record.status} />
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground max-w-xs truncate">
+                        {record.status === 'failed' && record.errorMessage
+                          ? record.errorMessage
                           : '-'}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

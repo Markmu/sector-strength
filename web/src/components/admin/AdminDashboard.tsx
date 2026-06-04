@@ -214,6 +214,8 @@ export default function AdminDashboard() {
     init_sector_stocks: '初始化板块股票',
     backfill_by_date: '按日期补齐',
     backfill_by_range: '按范围补齐',
+    sync_fund_basic: '同步基金基本信息',
+    sync_fund_portfolio: '同步基金持仓明细',
   };
 
   // 格式化时间
