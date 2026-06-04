@@ -412,9 +412,9 @@ class FundDataInitService:
             return None
 
     @staticmethod
-    def _parse_period_to_date(period: str) -> date:
+    def _parse_period_to_date(period) -> date:
         """将 YYYYMMDD 格式的报告期字符串转为 date"""
-        return datetime.strptime(period, "%Y%m%d").date()
+        return datetime.strptime(str(period), "%Y%m%d").date()
 
     @staticmethod
     def _parse_float(value) -> Optional[float]:

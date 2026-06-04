@@ -63,7 +63,7 @@ class TaskManager:
                 param = AsyncTaskParam(
                     task_id=task_id,
                     key=key,
-                    value=json.dumps(value) if not isinstance(value, str) else value
+                    value=json.dumps(value)
                 )
                 self.db.add(param)
 
