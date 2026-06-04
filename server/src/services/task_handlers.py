@@ -1076,7 +1076,9 @@ async def sync_fund_basic_task(
             f"Fund basic info sync completed: "
             f"added={result.get('added')}, "
             f"updated={result.get('updated')}, "
-            f"failed={result.get('failed')}"
+            f"failed={result.get('failed')}, "
+            f"skipped={result.get('skipped', 0)}, "
+            f"cleaned={result.get('cleaned', 0)}"
         )
         await manager.log_message(task_id, "INFO", msg)
     except Exception as e:

@@ -64,13 +64,21 @@ class FundDataInitService:
         先拉取场内基金 (market='E')，再拉取场外基金 (market='O')，
         合并后通过 PostgreSQL upsert（ON CONFLICT ts_code DO UPDATE）写入 funds 表。
 
+        **退市基金过滤**：
+        - ``delist_date`` 非空 → 已退市
+        - ``status == "E"`` → 已到期（视同退市）
+
+        满足任一条件则跳过 upsert，并在返回结果中通过 ``skipped`` 字段上报。
+        同步完成后会自动清理 funds 表中**已存在**的退市基金。
+
         Returns:
-            {"added": int, "updated": int, "failed": int}
+            {"added": int, "updated": int, "failed": int, "skipped": int, "cleaned": int}
         """
         tushare = DataSourceFactory.create()
         added = 0
         updated = 0
         failed = 0
+        skipped = 0
 
         all_records = []
 
@@ -103,6 +111,19 @@ class FundDataInitService:
                 found_date = self._parse_date(record.get("found_date"))
                 list_date = self._parse_date(record.get("list_date"))
                 delist_date = self._parse_date(record.get("delist_date"))
+                status = record.get("status")
+
+                # 过滤已退市 / 已到期基金
+                # - delist_date 非空：Tushare 标记的退市日期
+                # - status == "E"：基金到期（合同到期清盘）
+                if delist_date is not None or status == "E":
+                    skipped += 1
+                    if i % 500 == 0 or i == total:
+                        await self._update_progress(
+                            i, total,
+                            f"已处理 {i}/{total} 条（已跳过 {skipped} 条退市基金）"
+                        )
+                    continue
 
                 # PostgreSQL upsert: ON CONFLICT ts_code DO UPDATE
                 stmt = pg_insert(Fund).values(
@@ -117,7 +138,7 @@ class FundDataInitService:
                     found_date=found_date,
                     list_date=list_date,
                     delist_date=delist_date,
-                    status=record.get("status"),
+                    status=status,
                 )
 
                 # 收集 updatable 字段（排除 ts_code 和 id）
@@ -161,23 +182,68 @@ class FundDataInitService:
         result = await self.session.execute(count_stmt)
         db_count = len(result.scalars().all())
 
+        # 清理已存在但已退市的基金（去抖时只发生在已写入数据库的场景）
+        await self._update_progress(total, total, "正在清理已存在的退市基金...")
+        cleaned = await self._cleanup_delisted_funds()
+
         await self.session.commit()
 
         # 重新计算 added/updated
         # 使用一种简单策略：added = 新增数（无法精确区分，用 total-failed 近似）
         # 由于 upsert 无法精确区分 insert vs update，这里用查询前后数量差
         # 但上面已经全量查了，直接用总数减去失败数
-        processed = total - failed
+        processed = total - failed - skipped
 
         await self._update_progress(
-            total, total, f"基金基本信息同步完成: {processed} 条处理, {failed} 条失败"
+            total, total,
+            f"基金基本信息同步完成: 处理 {processed}, 跳过 {skipped}, "
+            f"清理 {cleaned}, 失败 {failed}"
         )
 
         logger.info(
-            f"基金基本信息同步完成: 总计 {total}, 处理 {processed}, 失败 {failed}"
+            f"基金基本信息同步完成: 总计 {total}, 处理 {processed}, "
+            f"跳过 {skipped}, 清理 {cleaned}, 失败 {failed}"
         )
 
-        return {"added": processed, "updated": 0, "failed": failed}
+        return {
+            "added": processed,
+            "updated": 0,
+            "failed": failed,
+            "skipped": skipped,
+            "cleaned": cleaned,
+        }
+
+    async def _cleanup_delisted_funds(self) -> int:
+        """
+        清理 funds 表中已退市的基金记录
+
+        删除条件：``delist_date IS NOT NULL`` 或 ``status = 'E'``。
+        先拉取全部记录（数据量小，~18000 条），在 Python 端过滤后
+        按 ``ts_code`` 批量删除，避免一次 DELETE 锁全表。
+
+        Returns:
+            被删除的记录数
+        """
+        result = await self.session.execute(select(Fund))
+        all_funds = result.scalars().all()
+
+        delisted_codes = [
+            f.ts_code
+            for f in all_funds
+            if f.delist_date is not None or f.status == "E"
+        ]
+
+        if not delisted_codes:
+            return 0
+
+        del_stmt = delete(Fund).where(Fund.ts_code.in_(delisted_codes))
+        del_result = await self.session.execute(del_stmt)
+        cleaned = del_result.rowcount or 0
+
+        if cleaned > 0:
+            logger.info(f"已清理 {cleaned} 条退市基金记录")
+
+        return cleaned
 
     async def sync_fund_portfolio(self, period: str) -> dict:
         """
