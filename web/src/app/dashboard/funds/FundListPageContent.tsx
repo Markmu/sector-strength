@@ -13,6 +13,8 @@ import { useFundList } from '@/hooks/useFunds'
 import FundSearchBar from '@/components/funds/FundSearchBar'
 import FundFilterPanel, {
   type FundFilterValues,
+  MARKET_OPTIONS,
+  FUND_TYPE_OPTIONS,
 } from '@/components/funds/FundFilterPanel'
 import FundListTable from '@/components/funds/FundListTable'
 import Pagination from '@/components/funds/Pagination'
@@ -52,11 +54,11 @@ export default function FundListPageContent() {
   const apiParams = useMemo(
     () => ({
       search: search || undefined,
-      market: filters.market.length > 0 && filters.market.length < 2
-        ? filters.market.join(',')
+      market: filters.market.length > 0 && filters.market.length < MARKET_OPTIONS.length
+        ? filters.market
         : undefined,
-      fundType: filters.fundType.length > 0 && filters.fundType.length < 4
-        ? filters.fundType.join(',')
+      fundType: filters.fundType.length > 0 && filters.fundType.length < FUND_TYPE_OPTIONS.length
+        ? filters.fundType
         : undefined,
       page,
       pageSize,

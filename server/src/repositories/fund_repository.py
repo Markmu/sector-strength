@@ -29,8 +29,8 @@ class FundRepository(BaseRepository[Fund]):
     async def list_with_filters(
         self,
         search: str | None = None,
-        market: str | None = None,
-        fund_type: str | None = None,
+        market: list[str] | None = None,
+        fund_type: list[str] | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict], int]:
@@ -39,8 +39,8 @@ class FundRepository(BaseRepository[Fund]):
 
         Args:
             search: 搜索关键词（ts_code 前缀匹配 OR name 包含匹配，ilike 不区分大小写）
-            market: 市场类型过滤（E=场内, O=场外）
-            fund_type: 基金类型过滤
+            market: 市场类型过滤列表（E=场内, O=场外）
+            fund_type: 基金类型过滤列表（任一匹配即命中）
             page: 页码（从 1 开始）
             page_size: 每页数量
 
@@ -69,9 +69,9 @@ class FundRepository(BaseRepository[Fund]):
                 (Fund.ts_code.ilike(f"{search}%")) | (Fund.name.ilike(search_ilike))
             )
         if market:
-            conditions.append(Fund.market == market)
+            conditions.append(Fund.market.in_(market))
         if fund_type:
-            conditions.append(Fund.fund_type == fund_type)
+            conditions.append(Fund.fund_type.in_(fund_type))
 
         if conditions:
             stmt = stmt.where(*conditions)

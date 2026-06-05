@@ -289,6 +289,34 @@ class TestListFunds:
         assert data["items"][0]["fundType"] == "混合型"
 
     @pytest.mark.asyncio
+    async def test_list_funds_filter_by_fund_type_multi(
+        self, auth_client, sample_funds
+    ):
+        """fund_type 多值（重复参数）：命中任一类型即返回（IN 语义）"""
+        resp = await auth_client.get(
+            "/api/v1/funds",
+            params=[("fund_type", "ETF"), ("fund_type", "混合型")],
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        # sample_funds 含 2 个 ETF + 1 个混合型 = 3 条
+        assert data["total"] == 3
+        fund_types = {item["fundType"] for item in data["items"]}
+        assert fund_types == {"ETF", "混合型"}
+
+    @pytest.mark.asyncio
+    async def test_list_funds_filter_by_fund_type_comma(
+        self, auth_client, sample_funds
+    ):
+        """fund_type 单值带逗号（兼容旧 URL）：拆分后 IN 匹配"""
+        resp = await auth_client.get(
+            "/api/v1/funds", params={"fund_type": "ETF,混合型"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["total"] == 3
+
+    @pytest.mark.asyncio
     async def test_list_funds_combined_filters(
         self, auth_client, sample_funds
     ):

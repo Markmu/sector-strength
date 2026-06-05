@@ -120,14 +120,42 @@ def _dict_to_camel(d: dict) -> dict:
     return result
 
 
+def _split_multi_value(values: Optional[list[str]]) -> Optional[list[str]]:
+    """
+    将 FastAPI 接收的 query list 展平并拆分内部逗号。
+
+    FastAPI 对 `Optional[list[str]] = Query(None)` 会把同名重复 query 收集为 list，
+    也可能因为 Pydantic/解析路径直接传入 ["股票型,混合型"] 这种带逗号单值。
+    为兼容旧 URL（"fund_type=股票型,混合型" 形式），对每个元素再做一次 split。
+    """
+    if not values:
+        return values
+    flat: list[str] = []
+    for v in values:
+        if v is None:
+            continue
+        for piece in str(v).split(","):
+            piece = piece.strip()
+            if piece:
+                flat.append(piece)
+    # 去重保序
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in flat:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped or None
+
+
 # ============== Endpoints ==============
 
 
 @router.get("")
 async def list_funds(
     search: Optional[str] = Query(None, description="搜索关键词（ts_code前缀或名称包含）"),
-    market: Optional[str] = Query(None, description="市场类型: E=场内, O=场外"),
-    fund_type: Optional[str] = Query(None, description="基金类型"),
+    market: Optional[list[str]] = Query(None, description="市场类型: E=场内, O=场外（多值，逗号分隔或重复参数）"),
+    fund_type: Optional[list[str]] = Query(None, description="基金类型（多值，逗号分隔或重复参数）"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     session: AsyncSession = Depends(get_session),
@@ -139,11 +167,15 @@ async def list_funds(
     支持搜索（ts_code 前缀 + 名称包含，不区分大小写）、市场过滤、类型过滤、分页。
     列表项包含 has_portfolio 标记（L1 降级支持）。
     """
+    # 兼容旧 URL：单值带逗号的字符串（"股票型,混合型"）拆分到 list
+    market_list = _split_multi_value(market)
+    fund_type_list = _split_multi_value(fund_type)
+
     repo = FundRepository(session)
     items, total = await repo.list_with_filters(
         search=search,
-        market=market,
-        fund_type=fund_type,
+        market=market_list,
+        fund_type=fund_type_list,
         page=page,
         page_size=page_size,
     )

@@ -15,13 +15,13 @@ export interface FundFilterPanelProps {
 }
 
 // 市场选项：label -> API 值
-const MARKET_OPTIONS = [
+export const MARKET_OPTIONS = [
   { label: '场内 ETF', value: 'E' },
   { label: '场外', value: 'O' },
 ] as const
 
 // 基金类型选项
-const FUND_TYPE_OPTIONS = [
+export const FUND_TYPE_OPTIONS = [
   { label: '股票型', value: '股票型' },
   { label: '混合型', value: '混合型' },
   { label: '债券型', value: '债券型' },

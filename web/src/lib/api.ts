@@ -64,7 +64,16 @@ export class ApiClient {
     const url = new URL(`${this.baseURL}${endpoint}`)
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
+        if (value === undefined || value === null) return
+        // 数组：使用重复同名 key（?k=a&k=b），FastAPI 的 list[str] Query 会自动收集
+        if (Array.isArray(value)) {
+          if (value.length === 0) return
+          value.forEach((item) => {
+            if (item !== undefined && item !== null) {
+              url.searchParams.append(key, String(item))
+            }
+          })
+        } else {
           url.searchParams.append(key, String(value))
         }
       })
@@ -276,8 +285,8 @@ export const heatmapApi = {
 // 基金 API
 export interface FundListParams {
   search?: string
-  market?: string
-  fundType?: string
+  market?: string[]
+  fundType?: string[]
   page?: number
   pageSize?: number
 }
@@ -408,7 +417,16 @@ class AdminApiClient extends ApiClient {
     const url = new URL(`${this.baseURL}${endpoint}`)
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
+        if (value === undefined || value === null) return
+        // 数组：使用重复同名 key（?k=a&k=b），FastAPI 的 list[str] Query 会自动收集
+        if (Array.isArray(value)) {
+          if (value.length === 0) return
+          value.forEach((item) => {
+            if (item !== undefined && item !== null) {
+              url.searchParams.append(key, String(item))
+            }
+          })
+        } else {
           url.searchParams.append(key, String(value))
         }
       })
