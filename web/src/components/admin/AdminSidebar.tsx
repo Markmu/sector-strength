@@ -14,6 +14,7 @@ import {
   Activity,
   LogOut,
   Landmark,
+  ArrowLeft,
 } from 'lucide-react';
 
 /**
@@ -50,18 +51,18 @@ const navItems: NavItem[] = [
     description: '异步任务状态和日志',
   },
   {
-    id: 'users',
-    label: '用户管理',
-    icon: Users,
-    href: '/dashboard/admin/users',
-    description: '用户和权限管理',
-  },
-  {
     id: 'fund-init',
     label: '基金同步',
     icon: Landmark,
     href: '/dashboard/admin/fund-init',
     description: '基金数据采集和同步',
+  },
+  {
+    id: 'users',
+    label: '用户管理',
+    icon: Users,
+    href: '/dashboard/admin/users',
+    description: '用户和权限管理',
   },
 ];
 
@@ -86,20 +87,33 @@ export default function AdminSidebar({ className = '' }: AdminSidebarProps) {
         ${className}
       `}
     >
-      {/* Logo */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-border">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <Activity className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-semibold text-foreground">管理控制台</span>
+      {/* Logo - 点击回到主仪表板 */}
+      <div className="flex items-center justify-between h-16 px-4 border-b border-border gap-1">
+        <Link
+          href="/dashboard"
+          className={`
+            group flex items-center gap-2 rounded-lg transition-colors
+            hover:bg-secondary
+            ${collapsed ? 'p-1.5 flex-1 justify-center' : 'flex-1 min-w-0 px-2 py-1.5'}
+          `}
+          title="返回主仪表板"
+          aria-label="返回主仪表板"
+        >
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
+            <Activity className="w-5 h-5 text-white" />
           </div>
-        )}
+          {!collapsed && (
+            <>
+              <span className="font-semibold text-foreground truncate">管理控制台</span>
+              <ArrowLeft className="w-4 h-4 text-muted-foreground ml-auto flex-shrink-0 transition-transform group-hover:-translate-x-0.5" />
+            </>
+          )}
+        </Link>
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 hover:bg-secondary rounded-lg transition-colors"
+          className="p-1.5 hover:bg-secondary rounded-lg transition-colors flex-shrink-0"
           title={collapsed ? '展开' : '收起'}
+          aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
         >
           {collapsed ? (
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
