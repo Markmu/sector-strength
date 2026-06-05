@@ -76,8 +76,11 @@ class FundRepository(BaseRepository[Fund]):
         if conditions:
             stmt = stmt.where(*conditions)
 
-        # ORDER BY ts_code ASC
-        stmt = stmt.order_by(Fund.ts_code.asc())
+        # ORDER BY: 有持仓的排前面，同组内按 ts_code 排序
+        stmt = stmt.order_by(
+            exists(has_portfolio_subq).desc(),
+            Fund.ts_code.asc(),
+        )
 
         # 计算总数
         count_subq = stmt.subquery()

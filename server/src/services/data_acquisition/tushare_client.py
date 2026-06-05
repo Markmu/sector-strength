@@ -105,8 +105,10 @@ class TushareDataSource(BaseDataSource):
         for attempt in range(1, self._max_retries + 1):
             try:
                 self._enforce_rate_limit()
-                result = func()
+                # 记录"请求开始"时刻，限流等待以"距上次开始多久"为基准，
+                # 这样请求耗时本身不再被算入节流间隔，节奏更稳定。
                 self._last_request_time = datetime.now()
+                result = func()
                 return result
             except Exception as e:
                 last_exception = e

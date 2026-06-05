@@ -61,25 +61,20 @@ def call_fund_portfolio(params: dict, fields: str = "") -> dict:
 
 # 多只基金样本：覆盖场内 ETF、LOF、QDII、股票型 / 混合型开放式基金
 SAMPLES: list[tuple[str, str, dict]] = [
-    # (
-    #     "场内 ETF（沪深）",
-    #     "510300.SH",
-    #     {"ts_code": "510300.SH", "period": "20241231"},
-    # ),
-    # (
-    #     "场内 ETF（深市）",
-    #     "159915.SZ",
-    #     {"ts_code": "159915.SZ", "period": "20241231"},
-    # ),
-    # (
-    #     "LOF 基金",
-    #     "163406.OF",
-    #     {"ts_code": "163406.OF", "period": "20241231"},
-    # ),
     (
-        "QDII 基金",
-        "513050.SH",
-        {"ts_code": "513050.SH", "period": "20241231"},
+        "场内 ETF（沪深）",
+        "510300.SH",
+        {"ts_code": "510300.SH", "period": "20241231"},
+    ),
+    (
+        "场内 ETF（深市）",
+        "159915.SZ",
+        {"ts_code": "159915.SZ", "period": "20241231"},
+    ),
+    (
+        "LOF 基金",
+        "163406.OF",
+        {"ts_code": "163406.OF", "period": "20241231"},
     ),
     (
         "主动股票型（参考样本）",

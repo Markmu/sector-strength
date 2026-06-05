@@ -22,7 +22,7 @@ class Fund(Base):
     found_date = Column(Date, comment="成立日期")
     list_date = Column(Date, comment="上市日期")
     delist_date = Column(Date, comment="退市日期")
-    status = Column(String(20), comment="状态: D 存续 I 发行 E 到期")
+    status = Column(String(20), comment="状态: L 已上市 D 摘牌 I 发行中")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), comment="更新时间")

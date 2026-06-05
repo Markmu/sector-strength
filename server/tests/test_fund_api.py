@@ -85,7 +85,7 @@ async def sample_funds(test_session):
             benchmark="上证50指数",
             market="E",
             found_date=date(2004, 1, 1),
-            status="D",
+            status="L",
         ),
         Fund(
             ts_code="000001.OF",
@@ -97,7 +97,7 @@ async def sample_funds(test_session):
             benchmark="沪深300指数",
             market="O",
             found_date=date(2005, 1, 1),
-            status="D",
+            status="L",
         ),
         Fund(
             ts_code="159919.SZ",
@@ -109,7 +109,7 @@ async def sample_funds(test_session):
             benchmark="沪深300指数",
             market="E",
             found_date=date(2012, 5, 1),
-            status="D",
+            status="L",
         ),
     ]
     test_session.add_all(funds)
@@ -219,7 +219,7 @@ class TestListFunds:
         data = body["data"]
         assert data["total"] == 3
         assert data["page"] == 1
-        assert data["page_size"] == 20
+        assert data["pageSize"] == 20
         assert len(data["items"]) == 3
 
     @pytest.mark.asyncio
@@ -381,7 +381,7 @@ class TestListFunds:
         data = resp.json()["data"]
         assert data["total"] == 3
         assert len(data["items"]) == 2
-        assert data["total_pages"] == 2
+        assert data["totalPages"] == 2
 
         resp2 = await auth_client.get(
             "/api/v1/funds", params={"page": 2, "page_size": 2}

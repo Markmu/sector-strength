@@ -134,10 +134,10 @@ class FundDataInitService:
                 delist_date = self._parse_date(record.get("delist_date"))
                 status = record.get("status")
 
-                # 过滤已退市 / 已到期基金
+                # 过滤已退市 / 已摘牌基金
                 # - delist_date 非空：Tushare 标记的退市日期
-                # - status == "E"：基金到期（合同到期清盘）
-                if delist_date is not None or status == "E":
+                # - status == "D"：已摘牌（视同退市）
+                if delist_date is not None or status == "D":
                     skipped += 1
                     if i % 500 == 0 or i == total:
                         await self._update_progress(
@@ -238,7 +238,7 @@ class FundDataInitService:
         """
         清理 funds 表中已退市的基金记录
 
-        删除条件：``delist_date IS NOT NULL`` 或 ``status = 'E'``。
+        删除条件：``delist_date IS NOT NULL`` 或 ``status = 'D'``。
         先拉取全部记录（数据量小，~18000 条），在 Python 端过滤后
         按 ``ts_code`` 批量删除，避免一次 DELETE 锁全表。
 
@@ -251,7 +251,7 @@ class FundDataInitService:
         delisted_codes = [
             f.ts_code
             for f in all_funds
-            if f.delist_date is not None or f.status == "E"
+            if f.delist_date is not None or f.status == "D"
         ]
 
         if not delisted_codes:
