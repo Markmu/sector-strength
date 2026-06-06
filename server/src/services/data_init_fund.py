@@ -301,17 +301,6 @@ class FundDataInitService:
 
         report_period_date = self._parse_period_to_date(period)
 
-        # 1.5 清理该报告期的旧数据，避免重复
-        del_stmt = delete(FundPortfolio).where(
-            FundPortfolio.report_period == report_period_date,
-        )
-        del_result = await self.session.execute(del_stmt)
-        await self.session.commit()
-        if del_result.rowcount > 0:
-            logger.info(
-                f"清理旧持仓数据: 报告期 {period}, 删除 {del_result.rowcount} 条旧记录"
-            )
-
         await self._update_progress(
             0, total_funds,
             f"共 {total_funds} 只基金待同步持仓 (period={period})"
@@ -339,6 +328,13 @@ class FundDataInitService:
                             f"已处理 {i}/{total_funds} 只基金 (新增 {added}, 跳过 {skipped}, 失败 {failed})"
                         )
                     continue
+
+                # 先删除该基金在该报告期的旧持仓数据，避免重复
+                fund_del_stmt = delete(FundPortfolio).where(
+                    FundPortfolio.fund_ts_code == ts_code,
+                    FundPortfolio.report_period == report_period_date,
+                )
+                await self.session.execute(fund_del_stmt)
 
                 # 写入该基金的持仓
                 fund_added = 0
