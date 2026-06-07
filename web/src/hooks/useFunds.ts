@@ -106,7 +106,13 @@ export function useFundPortfolio(
 
 export function useReverseLookup(
   symbol: string,
-  params?: { page?: number; pageSize?: number }
+  params?: {
+    page?: number
+    pageSize?: number
+    fundType?: string[]
+    market?: string[]
+    fundSearch?: string
+  }
 ) {
   const { data, error, isLoading, mutate } = useSWR<{
     success: boolean

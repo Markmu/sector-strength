@@ -114,6 +114,48 @@ async def get_stocks(
     return StockListResponse(success=True, data=paginated_data)
 
 
+@router.get("/search")
+async def search_stocks(
+    keyword: str = Query(..., min_length=1, description="搜索关键词（股票代码或名称）"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(10, ge=1, le=100, description="每页数量"),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    搜索股票
+
+    根据股票代码前缀或名称关键词搜索，支持模糊匹配和分页。
+    用于前端下拉搜索框。
+    """
+    stmt = select(StockModel).where(
+        or_(
+            StockModel.symbol.ilike(f"{keyword}%"),
+            StockModel.name.ilike(f"%{keyword}%"),
+        )
+    ).order_by(StockModel.symbol.asc())
+
+    # 计算总数
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await session.execute(count_stmt)
+    total = total_result.scalar() or 0
+
+    # 分页
+    offset = (page - 1) * page_size
+    stmt = stmt.offset(offset).limit(page_size)
+
+    result = await session.execute(stmt)
+    stocks = result.scalars().all()
+
+    items = [
+        {"symbol": s.symbol, "name": s.name}
+        for s in stocks
+    ]
+
+    paginated = PaginatedData.create(items, total, page, page_size)
+    return {"success": True, "data": paginated.model_dump()}
+
+
 @router.get("/{stock_id}", response_model=StockDetailResponse)
 async def get_stock_detail(
     stock_id: str,

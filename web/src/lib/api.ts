@@ -145,10 +145,27 @@ export const healthApi = {
 }
 
 // 股票 API
+export interface StockSearchResponse {
+  items: Array<{ symbol: string; name: string }>
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 export const stocksApi = {
   getStocks: (params?: { skip?: number; limit?: number }) =>
     apiClient.get<any[]>('/stocks', params),
   getStock: (stockId: string) => apiClient.get<any>(`/stocks/${stockId}`),
+  searchStocks: (keyword: string, params?: { page?: number; pageSize?: number }) =>
+    apiClient.get<{
+      success: boolean
+      data: StockSearchResponse
+    }>('/stocks/search', {
+      keyword,
+      page: params?.page || 1,
+      page_size: params?.pageSize || 10,
+    }),
 }
 
 // 板块 API
@@ -390,7 +407,13 @@ export const fundsApi = {
       page_size: params?.pageSize || 20,
     }),
 
-  reverseLookup: (symbol: string, params?: { page?: number; pageSize?: number }) =>
+  reverseLookup: (symbol: string, params?: {
+    page?: number
+    pageSize?: number
+    fundType?: string[]
+    market?: string[]
+    fundSearch?: string
+  }) =>
     apiClient.get<{
       success: boolean
       data: ReverseLookupResponse
@@ -398,6 +421,9 @@ export const fundsApi = {
       symbol,
       page: params?.page || 1,
       page_size: params?.pageSize || 20,
+      fund_type: params?.fundType || undefined,
+      market: params?.market || undefined,
+      fund_search: params?.fundSearch || undefined,
     }),
 }
 

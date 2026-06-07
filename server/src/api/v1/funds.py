@@ -192,6 +192,9 @@ async def list_funds(
 @router.get("/reverse-lookup")
 async def reverse_lookup(
     symbol: str = Query(..., min_length=1, description="股票代码（纯数字或带后缀如 600519.SH）"),
+    fund_type: Optional[list[str]] = Query(None, description="基金类型筛选（多值）"),
+    market: Optional[list[str]] = Query(None, description="市场类型: E=场内, O=场外（多值）"),
+    fund_search: Optional[str] = Query(None, description="基金代码或名称搜索"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     session: AsyncSession = Depends(get_session),
@@ -202,10 +205,14 @@ async def reverse_lookup(
 
     仅返回 stk_mkv_ratio >= 1.0 的记录，按占净值比降序。
     symbol 格式归一化：接受纯数字或带后缀。
+    支持按基金类型、市场类型、基金代码/名称进一步筛选。
     """
     repo = FundRepository(session)
     items, total, meta = await repo.reverse_lookup(
         symbol=symbol,
+        fund_type=fund_type,
+        market=market,
+        fund_search=fund_search,
         page=page,
         page_size=page_size,
     )

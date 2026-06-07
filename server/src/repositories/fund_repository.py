@@ -6,7 +6,7 @@
 
 from typing import Any
 
-from sqlalchemy import select, func, exists, and_, literal_column
+from sqlalchemy import select, func, exists, and_, or_, literal_column
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import label
 
@@ -258,6 +258,9 @@ class FundRepository(BaseRepository[Fund]):
     async def reverse_lookup(
         self,
         symbol: str,
+        fund_type: list[str] | None = None,
+        market: list[str] | None = None,
+        fund_search: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict], int, dict]:
@@ -269,6 +272,9 @@ class FundRepository(BaseRepository[Fund]):
 
         Args:
             symbol: 股票代码（接受纯数字如 "600519" 或带后缀如 "600519.SH"）
+            fund_type: 基金类型筛选（可选，多值）
+            market: 市场类型筛选（可选，多值，E=场内/O=场外）
+            fund_search: 基金代码或名称搜索（可选）
             page: 页码
             page_size: 每页数量
 
@@ -319,6 +325,19 @@ class FundRepository(BaseRepository[Fund]):
                     FundPortfolio.stock_symbol == normalized_symbol,
                     FundPortfolio.stk_mkv_ratio >= 1.0,
                     FundPortfolio.report_period == global_latest_period_subq,
+                    *(
+                        # 追加可选筛选条件
+                        [Fund.fund_type.in_(fund_type)] if fund_type else []
+                    ),
+                    *(
+                        [Fund.market.in_(market)] if market else []
+                    ),
+                    *(
+                        [or_(
+                            Fund.ts_code.ilike(f"{fund_search}%"),
+                            Fund.name.ilike(f"%{fund_search}%"),
+                        )] if fund_search else []
+                    ),
                 )
             )
             .order_by(FundPortfolio.stk_mkv_ratio.desc().nulls_last())

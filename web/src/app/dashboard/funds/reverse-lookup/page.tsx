@@ -1,29 +1,98 @@
 /**
  * 基金反查页
  *
- * 路由：/dashboard/funds/reverse-lookup?symbol=600519
- * 按股票代码查询重仓基金列表
+ * 路由：/dashboard/funds/reverse-lookup?symbol=600519&fund_type=股票型,混合型&fund_search=华夏
+ * 按股票代码查询重仓基金列表，支持多维度联合筛选
  */
 'use client'
 
-import { useMemo, Suspense } from 'react'
+import { useMemo, Suspense, useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout, DashboardHeader, ErrorState } from '@/components/dashboard'
 import { Disclaimer } from '@/components/ui/Disclaimer'
 import { useReverseLookup } from '@/hooks/useFunds'
 import ReverseLookupTable from '@/components/funds/ReverseLookupTable'
 import Pagination from '@/components/funds/Pagination'
-import { ArrowLeftIcon, SearchIcon } from 'lucide-react'
-import { useState, useCallback } from 'react'
+import { FUND_TYPE_OPTIONS, MARKET_OPTIONS } from '@/components/funds/FundFilterPanel'
+import { Checkbox } from '@/components/ui/Checkbox'
+import SearchDropdownInput from '@/components/ui/SearchDropdownInput'
+import { stocksApi } from '@/lib/api'
+import { ArrowLeftIcon, SearchIcon, FilterIcon } from 'lucide-react'
 
 const DEFAULT_PAGE_SIZE = 20
+
+/**
+ * 股票下拉搜索函数
+ */
+function useStockSearch() {
+  return useCallback(async (keyword: string, page: number) => {
+    const res = await stocksApi.searchStocks(keyword, { page, pageSize: 10 })
+    const data = res.data as { data: { items: Array<{ symbol: string; name: string }>; total: number } }
+    return {
+      options: (data.data.items || []).map((s) => ({
+        value: s.symbol,
+        label: s.name,
+      })),
+      total: data.data.total || 0,
+    }
+  }, [])
+}
 
 function ReverseLookupContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const symbol = searchParams.get('symbol')?.trim() || ''
 
-  const [page, setPage] = useState(1)
+  // 从 URL 解析初始状态
+  const symbol = searchParams.get('symbol')?.trim() || ''
+  const initialFundSearch = searchParams.get('fund_search') || ''
+  const initialFundType = searchParams.get('fund_type')?.split(',').filter(Boolean) || []
+  const initialMarket = searchParams.get('market')?.split(',').filter(Boolean) || []
+  const initialPage = parseInt(searchParams.get('page') || '1', 10)
+
+  const [page, setPage] = useState(initialPage)
+  const [fundSearch, setFundSearch] = useState(initialFundSearch)
+  const [fundType, setFundType] = useState<string[]>(initialFundType)
+  const [market, setMarket] = useState<string[]>(initialMarket)
+
+  // debounce fundSearch
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [debouncedFundSearch, setDebouncedFundSearch] = useState(initialFundSearch)
+
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+    }
+    debounceRef.current = setTimeout(() => {
+      setDebouncedFundSearch(fundSearch)
+      setPage(1)
+    }, 300)
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+    }
+  }, [fundSearch])
+
+  // URL 同步
+  const syncUrl = useCallback((newSymbol: string, newFundSearch: string, newFundType: string[], newMarket: string[], newPage: number) => {
+    const params = new URLSearchParams()
+    if (newSymbol) params.set('symbol', newSymbol)
+    if (newFundSearch) params.set('fund_search', newFundSearch)
+    if (newFundType.length > 0) params.set('fund_type', newFundType.join(','))
+    if (newMarket.length > 0) params.set('market', newMarket.join(','))
+    if (newPage > 1) params.set('page', String(newPage))
+    const qs = params.toString()
+    router.replace(`/dashboard/funds/reverse-lookup${qs ? `?${qs}` : ''}`, { scroll: false })
+  }, [router])
+
+  // 构建 API 参数（全选 = 无筛选）
+  const apiParams = useMemo(() => ({
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+    fundType: fundType.length > 0 && fundType.length < FUND_TYPE_OPTIONS.length ? fundType : undefined,
+    market: market.length > 0 && market.length < MARKET_OPTIONS.length ? market : undefined,
+    fundSearch: debouncedFundSearch || undefined,
+  }), [page, fundType, market, debouncedFundSearch])
 
   const {
     items,
@@ -34,12 +103,55 @@ function ReverseLookupContent() {
     isLoading,
     isError,
     mutate,
-  } = useReverseLookup(symbol, { page, pageSize: DEFAULT_PAGE_SIZE })
+  } = useReverseLookup(symbol, apiParams)
 
   const handlePageChange = useCallback((newPage: number) => {
     setPage(newPage)
+    syncUrl(symbol, fundSearch, fundType, market, newPage)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
+  }, [symbol, fundSearch, fundType, market, syncUrl])
+
+  // 股票搜索：选中后更新 URL
+  const handleStockSelect = useCallback((option: { value: string; label: string }) => {
+    setPage(1)
+    setFundSearch('')
+    setDebouncedFundSearch('')
+    setFundType([])
+    setMarket([])
+    syncUrl(option.value, '', [], [], 1)
+  }, [syncUrl])
+
+  // 基金关键词搜索
+  const handleFundSearchChange = useCallback((value: string) => {
+    setFundSearch(value)
+    syncUrl(symbol, value, fundType, market, 1)
+  }, [symbol, fundType, market, syncUrl])
+
+  // 基金类型切换
+  const handleFundTypeToggle = useCallback((typeValue: string) => {
+    setFundType(prev => {
+      const next = prev.includes(typeValue)
+        ? prev.filter(v => v !== typeValue)
+        : [...prev, typeValue]
+      setPage(1)
+      syncUrl(symbol, fundSearch, next, market, 1)
+      return next
+    })
+  }, [symbol, fundSearch, market, syncUrl])
+
+  // 市场类型切换
+  const handleMarketToggle = useCallback((marketValue: string) => {
+    setMarket(prev => {
+      const next = prev.includes(marketValue)
+        ? prev.filter(v => v !== marketValue)
+        : [...prev, marketValue]
+      setPage(1)
+      syncUrl(symbol, fundSearch, fundType, next, 1)
+      return next
+    })
+  }, [symbol, fundSearch, fundType, syncUrl])
+
+  const searchStocks = useStockSearch()
 
   // 构建标题
   const titleParts = useMemo(() => {
@@ -78,19 +190,22 @@ function ReverseLookupContent() {
               <ArrowLeftIcon className="w-4 h-4" />
               返回基金分析
             </button>
+
+            {/* 股票搜索框 */}
+            <div className="max-w-md">
+              <SearchDropdownInput
+                placeholder="输入股票代码或名称搜索"
+                icon={<SearchIcon className="w-4 h-4" />}
+                onSearch={searchStocks}
+                onSelect={handleStockSelect}
+              />
+            </div>
+
             <div className="bg-card rounded-xl border border-border shadow-sm p-12 text-center">
-              <SearchIcon className="w-12 h-12 mx-auto mb-3 text-faint" />
               <p className="text-lg font-medium text-foreground mb-2">请输入股票代码</p>
-              <p className="text-sm text-muted-foreground mb-6">
-                请在基金分析页面输入股票代码进行反查
+              <p className="text-sm text-muted-foreground">
+                在上方搜索框输入股票代码或名称，查看重仓该股票的基金列表
               </p>
-              <button
-                onClick={() => router.push('/dashboard/funds')}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-border bg-card hover:bg-secondary text-foreground transition-colors"
-              >
-                <ArrowLeftIcon className="w-4 h-4" />
-                返回列表
-              </button>
             </div>
           </div>
         </div>
@@ -153,8 +268,77 @@ function ReverseLookupContent() {
             返回基金分析
           </button>
 
+          {/* 搜索筛选区域 */}
+          <div className="bg-card rounded-xl border border-border shadow-sm p-4 space-y-4">
+            {/* 第一行：股票搜索 + 基金关键词搜索 */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* 股票搜索下拉框 */}
+              <div className="flex-1 max-w-xs">
+                <SearchDropdownInput
+                  placeholder="切换股票"
+                  icon={<SearchIcon className="w-4 h-4" />}
+                  onSearch={searchStocks}
+                  onSelect={handleStockSelect}
+                />
+              </div>
+
+              {/* 基金代码/名称搜索 */}
+              <div className="flex-1 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FilterIcon className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="基金代码或名称"
+                  value={fundSearch}
+                  onChange={(e) => handleFundSearchChange(e.target.value)}
+                  className="block w-full text-sm border rounded-lg transition-colors duration-200
+                    focus:outline-none focus:ring-2 focus:ring-primary-light
+                    border-border bg-card text-foreground placeholder-faint
+                    focus:border-primary pl-10 pr-4 py-2.5"
+                />
+              </div>
+            </div>
+
+            {/* 第二行：市场 + 基金类型复选框 */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              {/* 市场筛选 */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">市场</span>
+                <div className="flex items-center gap-3">
+                  {MARKET_OPTIONS.map((opt) => (
+                    <Checkbox
+                      key={opt.value}
+                      label={opt.label}
+                      checked={market.includes(opt.value)}
+                      onCheckedChange={() => handleMarketToggle(opt.value)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* 分隔线 */}
+              <div className="hidden sm:block w-px h-5 bg-border" />
+
+              {/* 基金类型筛选 */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">类型</span>
+                <div className="flex items-center gap-3">
+                  {FUND_TYPE_OPTIONS.map((opt) => (
+                    <Checkbox
+                      key={opt.value}
+                      label={opt.label}
+                      checked={fundType.includes(opt.value)}
+                      onCheckedChange={() => handleFundTypeToggle(opt.value)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* 反查结果 */}
-          {!isLoading && items.length === 0 ? (
+          {!isLoading && items.length === 0 && !fundSearch && fundType.length === 0 && market.length === 0 ? (
             <div className="bg-card rounded-xl border border-border shadow-sm p-12 text-center">
               <SearchIcon className="w-12 h-12 mx-auto mb-3 text-faint" />
               <p className="text-lg font-medium text-foreground mb-2">
@@ -164,12 +348,25 @@ function ReverseLookupContent() {
                 {`当前报告期无占净值比 >= 1% 的基金持仓记录`}
               </p>
             </div>
+          ) : !isLoading && items.length === 0 ? (
+            <div className="bg-card rounded-xl border border-border shadow-sm p-12 text-center">
+              <SearchIcon className="w-12 h-12 mx-auto mb-3 text-faint" />
+              <p className="text-lg font-medium text-foreground mb-2">无匹配结果</p>
+              <p className="text-sm text-muted-foreground">
+                当前筛选条件下没有匹配的基金，请调整筛选条件
+              </p>
+            </div>
           ) : (
             <>
               {/* 结果统计 */}
               {!isLoading && total > 0 && (
                 <div className="text-sm text-muted-foreground">
                   共 <span className="font-semibold text-foreground">{total}</span> 只基金重仓持有（占净值比 &gt;= 1%）
+                  {(fundSearch || fundType.length > 0 || market.length > 0) && (
+                    <span className="ml-2">
+                      （已筛选）
+                    </span>
+                  )}
                 </div>
               )}
 
