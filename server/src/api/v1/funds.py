@@ -78,6 +78,10 @@ class FundPortfolioOut(BaseModel):
     amount: Optional[float] = Field(None, description="持仓数量")
     stk_mkv_ratio: Optional[float] = Field(None, description="占股票市值比")
     stk_float_ratio: Optional[float] = Field(None, description="占流通股比")
+    stk_mkv_ratio_change: Optional[float] = Field(None, description="占净值比环比变化(百分点)")
+    amount_change: Optional[float] = Field(None, description="持股数环比变化")
+    market_value_change: Optional[float] = Field(None, description="持仓市值环比变化")
+    is_new: Optional[bool] = Field(None, description="本期新增持仓")
 
 
 class ReverseLookupItem(BaseModel):

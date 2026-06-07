@@ -10,10 +10,22 @@ from sqlalchemy import select, func, exists, and_, or_, literal_column
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import label
 
+from decimal import Decimal
+
 from src.models.fund import Fund
 from src.models.fund_portfolio import FundPortfolio
 from src.models.stock import Stock
 from src.repositories.base import BaseRepository
+
+
+def _calc_change(current, previous) -> float | None:
+    """计算环比变化值（当前 - 上期），None 表示无法计算"""
+    if current is None or previous is None:
+        return None
+    c = float(current) if isinstance(current, Decimal) else current
+    p = float(previous) if isinstance(previous, Decimal) else previous
+    change = round(c - p, 4)
+    return change if change != 0 else None
 
 
 class FundRepository(BaseRepository[Fund]):
@@ -188,6 +200,38 @@ class FundRepository(BaseRepository[Fund]):
             ann_date_result = await self.session.execute(ann_date_stmt)
             latest_ann_date = ann_date_result.scalar()
 
+        # 4. prev_report_period: 该基金倒数第二个报告期（用于环比变化计算）
+        prev_report_period = None
+        prev_map: dict[str, Any] = {}
+        if latest_report_period is not None:
+            prev_period_stmt = (
+                select(func.max(FundPortfolio.report_period))
+                .where(
+                    and_(
+                        FundPortfolio.fund_ts_code == fund_ts_code,
+                        FundPortfolio.report_period < latest_report_period,
+                    )
+                )
+            )
+            prev_period_result = await self.session.execute(prev_period_stmt)
+            prev_report_period = prev_period_result.scalar()
+
+            # 如果上期存在，一次性查询上期全部持仓，构建 {stock_symbol: row} 索引
+            if prev_report_period is not None:
+                prev_stmt = (
+                    select(FundPortfolio)
+                    .where(
+                        and_(
+                            FundPortfolio.fund_ts_code == fund_ts_code,
+                            FundPortfolio.report_period == prev_report_period,
+                        )
+                    )
+                )
+                prev_result = await self.session.execute(prev_stmt)
+                prev_rows = prev_result.scalars().all()
+                for row in prev_rows:
+                    prev_map[row.stock_symbol] = row
+
         # 主查询：最新报告期持仓明细 + LEFT JOIN stocks 取 stock_name
         latest_period_subq = (
             select(func.max(FundPortfolio.report_period))
@@ -227,11 +271,12 @@ class FundRepository(BaseRepository[Fund]):
         result = await self.session.execute(stmt)
         rows = result.all()
 
-        # 转换为字典列表
+        # 转换为字典列表（含环比变化）
         items = []
         for row in rows:
             portfolio = row[0]
             stock_name = row[1]
+            prev_row = prev_map.get(portfolio.stock_symbol)
             items.append({
                 "fund_ts_code": portfolio.fund_ts_code,
                 "report_period": portfolio.report_period,
@@ -242,6 +287,10 @@ class FundRepository(BaseRepository[Fund]):
                 "amount": portfolio.amount,
                 "stk_mkv_ratio": portfolio.stk_mkv_ratio,
                 "stk_float_ratio": portfolio.stk_float_ratio,
+                "stk_mkv_ratio_change": _calc_change(portfolio.stk_mkv_ratio, prev_row.stk_mkv_ratio) if prev_row else None,
+                "amount_change": _calc_change(portfolio.amount, prev_row.amount) if prev_row else None,
+                "market_value_change": _calc_change(portfolio.market_value, prev_row.market_value) if prev_row else None,
+                "is_new": prev_row is None if prev_report_period is not None else None,
             })
 
         # 元信息
@@ -251,6 +300,7 @@ class FundRepository(BaseRepository[Fund]):
             "has_portfolio": has_portfolio,
             "latest_report_period": latest_report_period,
             "latest_ann_date": latest_ann_date,
+            "prev_report_period": prev_report_period,
         }
 
         return items, total, meta

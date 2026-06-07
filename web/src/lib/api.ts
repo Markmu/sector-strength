@@ -342,6 +342,10 @@ export interface PortfolioItem {
   amount: number | null
   stkMkvRatio: number | null
   stkFloatRatio: number | null
+  stkMkvRatioChange: number | null
+  amountChange: number | null
+  marketValueChange: number | null
+  isNew: boolean | null
 }
 
 export interface PortfolioResponse {
@@ -354,6 +358,7 @@ export interface PortfolioResponse {
   hasPortfolio: boolean
   latestReportPeriod: string | null
   latestAnnDate: string | null
+  prevReportPeriod: string | null
 }
 
 export interface ReverseLookupItem {

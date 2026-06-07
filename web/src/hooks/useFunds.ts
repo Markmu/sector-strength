@@ -98,6 +98,7 @@ export function useFundPortfolio(
     hasPortfolio: data?.data?.hasPortfolio ?? false,
     latestReportPeriod: data?.data?.latestReportPeriod || null,
     latestAnnDate: data?.data?.latestAnnDate || null,
+    prevReportPeriod: data?.data?.prevReportPeriod || null,
     isLoading,
     isError: error,
     mutate,

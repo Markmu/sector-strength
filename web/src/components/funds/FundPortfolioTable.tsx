@@ -49,11 +49,77 @@ function formatAmount(value: number | null): string {
 }
 
 /**
+ * 格式化环比变化值
+ * 返回 { text, className } 或 null（无变化时不显示）
+ */
+function formatChange(
+  value: number | null | undefined,
+  formatter?: 'ratio' | 'amount' | 'marketValue'
+): { text: string; className: string } | null {
+  if (value === null || value === undefined || value === 0) return null
+
+  const isPositive = value > 0
+  const arrow = isPositive ? '↑' : '↓'
+  const absVal = Math.abs(value)
+
+  let display: string
+  if (formatter === 'ratio') {
+    // 百分点变化，如 ↑0.35、↓1.20
+    display = absVal < 0.01 ? absVal.toFixed(4) : absVal.toFixed(2)
+  } else if (formatter === 'amount') {
+    // 股数变化，如 ↑12.50 万、↓3.20 万
+    if (absVal >= 10000) {
+      display = `${(absVal / 10000).toFixed(2)} 万`
+    } else {
+      display = absVal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+    }
+  } else if (formatter === 'marketValue') {
+    // 市值变化，如 ↑1.2 亿、↓500.0 万
+    const yi = absVal / 1e8
+    const wan = absVal / 1e4
+    if (yi >= 1) {
+      display = `${yi.toFixed(1)} 亿`
+    } else if (wan >= 1) {
+      display = `${wan.toFixed(1)} 万`
+    } else {
+      display = absVal.toFixed(0)
+    }
+  } else {
+    display = absVal.toFixed(2)
+  }
+
+  return {
+    text: `${arrow}${display}`,
+    className: isPositive ? 'text-rise' : 'text-fall',
+  }
+}
+
+/**
+ * 环比变化指示器组件
+ */
+function ChangeIndicator({
+  value,
+  formatter,
+}: {
+  value: number | null | undefined
+  formatter: 'ratio' | 'amount' | 'marketValue'
+}) {
+  const change = formatChange(value, formatter)
+  if (!change) return null
+  return (
+    <div className={`text-xxs ${change.className}`}>
+      {change.text}
+    </div>
+  )
+}
+
+/**
  * 基金持仓明细表格组件
  *
  * 列：股票代码、名称、持仓市值、持股数、占净值比、占流通比
  * 排序：API 已按 stkMkvRatio DESC 排序
  * 分页：默认前 20 条 + "全部持仓"展开按钮
+ * 环比：持仓市值、持股数、占净值比列下方显示相较上期变化值
  */
 export default function FundPortfolioTable({
   items,
@@ -162,16 +228,22 @@ export default function FundPortfolioTable({
                   {item.stockSymbol}
                 </td>
                 <td className="px-4 py-3 text-foreground">
-                  {item.stockName || '—'}
+                  <div>{item.stockName || '—'}</div>
+                  {item.isNew && (
+                    <div className="text-xxs text-rise">新增</div>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right text-foreground">
-                  {formatMarketValue(item.marketValue)}
+                  <div>{formatMarketValue(item.marketValue)}</div>
+                  <ChangeIndicator value={item.marketValueChange} formatter="marketValue" />
                 </td>
                 <td className="px-4 py-3 text-right text-foreground">
-                  {formatAmount(item.amount)}
+                  <div>{formatAmount(item.amount)}</div>
+                  <ChangeIndicator value={item.amountChange} formatter="amount" />
                 </td>
                 <td className="px-4 py-3 text-right font-medium text-foreground">
-                  {formatRatio(item.stkMkvRatio)}
+                  <div>{formatRatio(item.stkMkvRatio)}</div>
+                  <ChangeIndicator value={item.stkMkvRatioChange} formatter="ratio" />
                 </td>
                 <td className="px-4 py-3 text-right text-muted-foreground">
                   {formatRatio(item.stkFloatRatio)}
