@@ -15,6 +15,7 @@ from .update_history import UpdateHistory
 from .async_task import AsyncTask, AsyncTaskParam, AsyncTaskLog
 from .fund import Fund
 from .fund_portfolio import FundPortfolio
+from .top10_float_holder import Top10FloatHolder
 
 __all__ = [
     "Base",
@@ -36,4 +37,5 @@ __all__ = [
     "AsyncTaskLog",
     "Fund",
     "FundPortfolio",
+    "Top10FloatHolder",
 ]

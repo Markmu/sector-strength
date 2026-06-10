@@ -177,7 +177,9 @@ class TushareDataSource(BaseDataSource):
 
         def _fetch():
             logger.info("[Tushare] 正在获取股票列表...")
-            return pro.stock_basic(exchange="", list_status="L")
+            # 显式指定 fields，因为 Tushare 默认不返回 list_status/exchange/curr_type/delist_date/is_hs/fullname/enname 等字段
+            fields = "ts_code,symbol,name,area,industry,fullname,enname,cnspell,market,exchange,curr_type,list_status,list_date,delist_date,is_hs,act_name,act_ent_type"
+            return pro.stock_basic(exchange="", list_status="L", fields=fields)
 
         df = self._execute_with_retry(_fetch)
         stocks: List[StockInfo] = []
@@ -190,11 +192,8 @@ class TushareDataSource(BaseDataSource):
                 ts_code = str(row["ts_code"])
                 symbol = ts_code.split(".")[0]
                 name = str(row["name"])
-                suffix = ts_code.split(".")[1] if "." in ts_code else ""
-
-                # 交易所映射：ts_code 后缀 → Tushare exchange 字段
-                exchange_map = {"SH": "SSE", "SZ": "SZSE", "BJ": "BSE"}
-                exchange = exchange_map.get(suffix)
+                # 直接使用 Tushare 返回的 exchange 字段
+                exchange = str(row.get("exchange", "")) or None if pd.notna(row.get("exchange")) else None
 
                 # Tushare market 字段（主板/创业板/科创板/CDR）
                 market = str(row.get("market", "")) or None if pd.notna(row.get("market")) else None
@@ -625,4 +624,53 @@ class TushareDataSource(BaseDataSource):
                     record[col] = val
             records.append(record)
 
+        return records
+
+    async def get_top10_float_holders(
+        self, ts_code: str, period: str
+    ) -> List[dict]:
+        """
+        获取单只股票的前十大流通股东数据
+
+        Args:
+            ts_code: Tushare 股票代码，如 "600000.SH"
+            period: 报告期，YYYYMMDD 格式，如 "20241231"
+
+        Returns:
+            dict 列表，每条包含: ts_code, ann_date, end_date, holder_name,
+            hold_amount, hold_ratio, hold_float_ratio, hold_change, holder_type
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            return pro.top10_floatholders(
+                ts_code=ts_code,
+                period=period,
+            )
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(
+                f"[Tushare] top10_floatholders 返回空数据 "
+                f"(ts_code={ts_code}, period={period})"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条十大流通股东数据 "
+            f"(ts_code={ts_code}, period={period})"
+        )
         return records

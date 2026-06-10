@@ -68,7 +68,7 @@ class TaskManager:
                 self.db.add(param)
 
         await self.db.commit()
-        await self.db.refresh(task)
+        await self.db.refresh(task, ["params"])
 
         # 记录创建日志
         await self._log_message(

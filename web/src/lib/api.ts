@@ -600,6 +600,8 @@ export const adminApi = {
     adminApiClient.post<{task_id: string}>('/admin/init/funds'),
   initFundPortfolio: (period: string) =>
     adminApiClient.post<{task_id: string}>('/admin/init/fund-portfolio', { period }),
+  initStockTop10Holders: (period: string) =>
+    adminApiClient.post<{task_id: string}>('/admin/init/top10-holders', { period }),
 }
 
 // 导出任务状态类型供组件使用
@@ -620,6 +622,7 @@ export const tasksApi = {
     UPDATE_SECTOR_CLASSIFICATION_DAILY: 'update_sector_classification_daily',
     SYNC_FUND_BASIC: 'sync_fund_basic',
     SYNC_FUND_PORTFOLIO: 'sync_fund_portfolio',
+    SYNC_TOP10_HOLDERS: 'sync_top10_holders',
   } as const,
 
   // 任务状态定义

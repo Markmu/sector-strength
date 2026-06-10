@@ -59,6 +59,9 @@ class TaskType(str, Enum):
     SYNC_FUND_BASIC = "sync_fund_basic"
     SYNC_FUND_PORTFOLIO = "sync_fund_portfolio"
 
+    # 股票十大流通股东同步任务
+    SYNC_TOP10_HOLDERS = "sync_top10_holders"
+
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
     """
@@ -624,6 +627,7 @@ __all__ = [
     "backfill_strength_task",
     "sync_fund_basic_task",
     "sync_fund_portfolio_task",
+    "sync_top10_holders_task",
 ]
 
 
@@ -1145,5 +1149,69 @@ async def sync_fund_portfolio_task(
         original_error = getattr(e, "original_error", None)
         detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
         error_msg = f"Fund portfolio sync failed (period={period}): {detail}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+# ============== 股票十大流通股东同步任务 ==============
+
+@TaskRegistry.register(TaskType.SYNC_TOP10_HOLDERS)
+async def sync_top10_holders_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    十大流通股东同步任务
+
+    逐只股票从 Tushare 拉取指定报告期的前十大流通股东数据并写入数据库。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数 {"period": "YYYYMMDD"}
+        manager: 任务管理器
+    """
+    from src.services.data_init_top10_holder import Top10HolderDataInitService
+
+    period = params.get("period")
+    if not period:
+        error_msg = "Missing required parameter: period"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise ValueError(error_msg)
+
+    service = Top10HolderDataInitService(manager.db)
+
+    # 设置进度回调（await 异步工厂函数）
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    # 设置取消检查（async 闭包查询 DB 状态）
+    async def _check_cancelled():
+        task = await manager.get_task(task_id)
+        return task is not None and task.status == "cancelled"
+
+    service.set_cancel_check(_check_cancelled)
+
+    await manager.log_message(
+        task_id, "INFO", f"Starting stock top10 holders sync (period={period})"
+    )
+
+    try:
+        result = await service.sync_top10_holders(period)
+
+        msg = (
+            f"Stock top10 holders sync completed (period={period}): "
+            f"added={result.get('added')}, "
+            f"skipped={result.get('skipped')}, "
+            f"failed={result.get('failed')}"
+        )
+        failed_stocks = result.get("failed_stocks", [])
+        if failed_stocks:
+            msg += f", failed_stocks_count={len(failed_stocks)}"
+        await manager.log_message(task_id, "INFO", msg)
+    except Exception as e:
+        original_error = getattr(e, "original_error", None)
+        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        error_msg = f"Stock top10 holders sync failed (period={period}): {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise

@@ -15,6 +15,7 @@ import {
   LogOut,
   Landmark,
   ArrowLeft,
+  UserCheck,
 } from 'lucide-react';
 
 /**
@@ -56,6 +57,13 @@ const navItems: NavItem[] = [
     icon: Landmark,
     href: '/dashboard/admin/fund-init',
     description: '基金数据采集和同步',
+  },
+  {
+    id: 'top10-holder-init',
+    label: '股票持仓同步',
+    icon: UserCheck,
+    href: '/dashboard/admin/top10-holder-init',
+    description: '十大流通股东数据采集和同步',
   },
   {
     id: 'users',
