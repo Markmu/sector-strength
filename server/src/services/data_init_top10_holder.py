@@ -136,12 +136,11 @@ class Top10HolderDataInitService:
                             "period": period,
                         },
                     )
-                    if i % 100 == 0 or i == total_stocks:
-                        await self._update_progress(
-                            i, total_stocks,
-                            f"已处理 {i}/{total_stocks} 只股票 "
-                            f"(新增 {added}, 跳过 {skipped}, 失败 {failed})"
-                        )
+                    await self._update_progress(
+                        i, total_stocks,
+                        f"已处理 {i}/{total_stocks} 只股票 "
+                        f"(新增 {added}, 跳过 {skipped}, 失败 {failed})"
+                    )
                     continue
 
             try:
@@ -150,12 +149,11 @@ class Top10HolderDataInitService:
                 # 空数据：正常跳过（ADR-5）
                 if not records:
                     skipped += 1
-                    if i % 100 == 0 or i == total_stocks:
-                        await self._update_progress(
-                            i, total_stocks,
-                            f"已处理 {i}/{total_stocks} 只股票 "
-                            f"(新增 {added}, 跳过 {skipped}, 失败 {failed})"
-                        )
+                    await self._update_progress(
+                        i, total_stocks,
+                        f"已处理 {i}/{total_stocks} 只股票 "
+                        f"(新增 {added}, 跳过 {skipped}, 失败 {failed})"
+                    )
                     continue
 
                 # DELETE：先删后写（ADR-1）
@@ -245,13 +243,12 @@ class Top10HolderDataInitService:
                     pass
                 continue
 
-            # 4. 每处理 100 只股票或到达末尾，调用进度回调
-            if i % 100 == 0 or i == total_stocks:
-                await self._update_progress(
-                    i, total_stocks,
-                    f"已处理 {i}/{total_stocks} 只股票 "
-                    f"(新增 {added}, 跳过 {skipped}, 失败 {failed})"
-                )
+            # 4. 每只股票处理完后回调进度
+            await self._update_progress(
+                i, total_stocks,
+                f"已处理 {i}/{total_stocks} 只股票 "
+                f"(新增 {added}, 跳过 {skipped}, 失败 {failed})"
+            )
 
         # 5. 返回结果
         msg = (
