@@ -602,10 +602,44 @@ export const adminApi = {
     adminApiClient.post<{task_id: string}>('/admin/init/fund-portfolio', { period }),
   initStockTop10Holders: (period: string) =>
     adminApiClient.post<{task_id: string}>('/admin/init/top10-holders', { period }),
+
+  // 股东监控组管理（plan-03 / plan-01 后端契约）
+  // 后端 ApiResponse 包 { success, data, message }，AdminApiClient.request 已提取 data 字段
+  getShareholderGroups: () =>
+    adminApiClient.get<Array<ShareholderGroupListItem>>('/admin/shareholder-groups'),
+  createShareholderGroup: (data: { name: string; description?: string; keywords: string[] }) =>
+    adminApiClient.post<ShareholderGroupListItem>('/admin/shareholder-groups', data),
+  updateShareholderGroup: (
+    id: number,
+    data: { name?: string; description?: string; keywords?: string[] }
+  ) => adminApiClient.patch<ShareholderGroupListItem>(`/admin/shareholder-groups/${id}`, data),
+  deleteShareholderGroup: (id: number) =>
+    adminApiClient.delete<null>(`/admin/shareholder-groups/${id}`),
+  previewShareholderGroupMatch: (keywords: string, excludeGroupId?: number) => {
+    const params: Record<string, string> = { keywords }
+    if (excludeGroupId) params['exclude_group_id'] = String(excludeGroupId)
+    // 手动拼到 endpoint（AdminApiClient 的 params 用 url.searchParams，
+    // 这里 keywords 是逗号分隔字符串，直接走 endpoint 拼接与 mock 的 URL 匹配一致）
+    const search = new URLSearchParams(params).toString()
+    return adminApiClient.get<{ matchedStockCount: number }>(
+      `/admin/shareholder-groups/preview?${search}`
+    )
+  },
 }
 
 // 导出任务状态类型供组件使用
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+// 股东监控组列表项（plan-01 / plan-03 契约，camelCase）
+export interface ShareholderGroupListItem {
+  id: number
+  name: string
+  description: string | null
+  isSystem: boolean
+  ruleCount: number
+  matchedStockCount: number
+  keywords: string[]
+}
 
 // 异步任务 API
 export const tasksApi = {
@@ -733,4 +767,145 @@ export const tasksApi = {
       cancelled: number
       total: number
     }>('/admin/tasks/stats/summary'),
+}
+
+// 股东分析面板 API（plan-04 / plan-02 后端用户侧 API）
+// apiClient.baseURL 已含 /api/v1（见上方 API_BASE_WITH_PREFIX），路径不再带 /v1，避免双前缀
+// 后端契约（plan-02 §7 / 架构 §7.2）：外层 { success: true, data: {...} }，camelCase
+export interface ShareholderGroupOverview {
+  groupId: number
+  groupName: string
+  description: string | null
+  stockCount: number
+  increaseCount: number
+  decreaseCount: number
+  newCount: number
+  exitCount: number
+}
+
+export interface ShareholderOverviewResponse {
+  reportPeriods: string[]
+  currentPeriod: string
+  hasPrevPeriod: boolean
+  groups: ShareholderGroupOverview[]
+}
+
+export interface ShareholderSummary {
+  stockCount: number
+  totalHoldAmount: number
+  avgHoldFloatRatio: number
+}
+
+export interface ShareholderTrend {
+  increaseCount: number
+  decreaseCount: number
+  newCount: number
+  exitCount: number
+}
+
+export interface ShareholderSummaryResponse {
+  summary: ShareholderSummary
+  trend: ShareholderTrend
+  hasPrevPeriod: boolean
+}
+
+export interface ShareholderIndustryItem {
+  industry: string
+  stockCount: number
+  percentage: number
+}
+
+export interface ShareholderIndustryDistributionResponse {
+  distribution: ShareholderIndustryItem[]
+}
+
+export type ShareholderChangeDirection =
+  | 'increase'
+  | 'decrease'
+  | 'new'
+  | 'unchanged'
+  | 'exit'
+  | null
+
+export interface ShareholderHoldingItem {
+  symbol: string
+  stockName: string
+  totalHoldAmount: number
+  totalHoldFloatRatio: number
+  changeDirection: ShareholderChangeDirection
+  industries: string[]
+}
+
+export interface ShareholderHoldingsResponse {
+  holdings: ShareholderHoldingItem[]
+  total: number
+}
+
+export const shareholderAnalysisApi = {
+  getOverview: (params?: { report_period?: string }) => {
+    const query = params?.report_period
+      ? `?report_period=${params.report_period}`
+      : ''
+    return apiClient.get<{
+      success: boolean
+      data: ShareholderOverviewResponse
+    }>(`/shareholder-analysis/overview${query}`)
+  },
+  getSummary: (params: {
+    group_ids: string
+    report_period: string
+    industry?: string
+    change_direction?: string
+  }) => {
+    const query = new URLSearchParams({
+      group_ids: params.group_ids,
+      report_period: params.report_period,
+    })
+    if (params.industry) query.append('industry', params.industry)
+    if (params.change_direction)
+      query.append('change_direction', params.change_direction)
+    return apiClient.get<{
+      success: boolean
+      data: ShareholderSummaryResponse
+    }>(`/shareholder-analysis/summary?${query}`)
+  },
+  getIndustryDistribution: (params: {
+    group_ids: string
+    report_period: string
+    change_direction?: string
+  }) => {
+    const query = new URLSearchParams({
+      group_ids: params.group_ids,
+      report_period: params.report_period,
+    })
+    if (params.change_direction)
+      query.append('change_direction', params.change_direction)
+    return apiClient.get<{
+      success: boolean
+      data: ShareholderIndustryDistributionResponse
+    }>(`/shareholder-analysis/industry-distribution?${query}`)
+  },
+  getHoldings: (params: {
+    group_ids: string
+    report_period: string
+    industry?: string
+    change_direction?: string
+    page?: number
+    pageSize?: number
+  }) => {
+    // query key 用 snake_case（后端 Query 参数约定，to_camel 不作用于 query）
+    const query = new URLSearchParams({
+      group_ids: params.group_ids,
+      report_period: params.report_period,
+      page: String(params.page || 1),
+      page_size: String(params.pageSize || 20),
+    })
+    if (params.industry) query.append('industry', params.industry)
+    if (params.change_direction)
+      query.append('change_direction', params.change_direction)
+    return apiClient.get<{
+      success: boolean
+      data: ShareholderHoldingsResponse
+    }>(`/shareholder-analysis/holdings?${query}`)
+  },
 }

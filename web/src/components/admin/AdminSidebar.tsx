@@ -66,6 +66,13 @@ const navItems: NavItem[] = [
     description: '十大流通股东数据采集和同步',
   },
   {
+    id: 'shareholder-groups',
+    label: '股东分组管理',
+    icon: Users,
+    href: '/dashboard/admin/shareholder-groups',
+    description: '股东分组和匹配规则管理',
+  },
+  {
     id: 'users',
     label: '用户管理',
     icon: Users,

@@ -18,6 +18,19 @@ export { useMarketIndex } from './useMarketIndex'
 export { useStockRanking } from './useStockRanking'
 export { useRequireAdmin } from './useRequireAdmin'
 
+// 导出股东分析面板 Hooks（plan-04）
+export {
+  useShareholderOverview,
+  useShareholderSummary,
+  useShareholderIndustryDistribution,
+  useShareholderHoldings,
+} from './useShareholderAnalysis'
+export type {
+  UseShareholderSummaryParams,
+  UseShareholderIndustryDistributionParams,
+  UseShareholderHoldingsParams,
+} from './useShareholderAnalysis'
+
 // API 请求 Hook
 export function useApi<T = any>(
   url: string | null,

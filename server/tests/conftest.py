@@ -144,6 +144,35 @@ async def test_session():
 
     session = async_session()
     try:
+        # 注入股东监控组预定义种子数据（plan-01）
+        # 测试 schema 通过 create_all 建表，不会触发 Alembic 迁移的种子写入；
+        # 但 plan-01 的集成测试（test_shareholder_group_admin_api.py）依赖
+        # 5 个预定义分组存在（列表验收、name 唯一性校验），因此在此补充。
+        try:
+            from src.services.shareholder_group_service import PREDEFINED_GROUPS
+            from src.models.shareholder_group import (
+                ShareholderGroup,
+                ShareholderGroupRule,
+            )
+
+            for group_def in PREDEFINED_GROUPS:
+                grp = ShareholderGroup(
+                    name=group_def["name"],
+                    description=group_def["description"],
+                    sort_order=group_def["sort_order"],
+                    is_system=True,
+                )
+                session.add(grp)
+                await session.flush()
+                for kw in group_def["keywords"]:
+                    session.add(
+                        ShareholderGroupRule(group_id=grp.id, keyword=kw)
+                    )
+                await session.commit()
+        except Exception:
+            # 种子写入失败不应阻断其它测试，回滚后继续。
+            await session.rollback()
+
         yield session
     finally:
         try:

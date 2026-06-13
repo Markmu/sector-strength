@@ -8,6 +8,7 @@ from .base import BaseRepository
 from .sector_repository import SectorRepository
 from .stock_repository import StockRepository
 from .market_data_repository import MarketDataRepository, MovingAverageRepository
+from .shareholder_group_repository import ShareholderGroupRepository
 
 __all__ = [
     "BaseRepository",
@@ -15,4 +16,5 @@ __all__ = [
     "StockRepository",
     "MarketDataRepository",
     "MovingAverageRepository",
+    "ShareholderGroupRepository",
 ]
