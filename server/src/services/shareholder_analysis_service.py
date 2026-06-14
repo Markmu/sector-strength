@@ -28,13 +28,10 @@ logger = logging.getLogger(__name__)
 
 # 报告期列表最多返回最近 N 个
 _MAX_REPORT_PERIODS = 4
-# 行业分布占比低于该阈值的合并为"未分类"
-_INDUSTRY_MIN_PERCENTAGE = 5.0
+# "未分类"桶：仅指无行业关联的股票。distribution 返回全量真实行业（前端图表自行
+# 截断 Top N 展示），此桶仅当存在无行业股票时追加，不再吸收 Top N 外长尾——
+# 保证「分布展示项 ↔ holdings/summary 可筛选项」1:1 口径一致。
 _UNDEFINED_INDUSTRY = "未分类"
-# 行业分布独立展示的前 N 个行业（按持仓股票数降序），其余合并到"未分类"。
-# 真实数据行业极度分散（单组数百行业、最高占比常 <5%），纯占比阈值会无行业达标、
-# distribution 无意义，故用 Top N 保证展示主要行业、长尾合并。
-_INDUSTRY_TOP_N = 10
 
 
 def _escape_like_keyword(keyword: str) -> str:
@@ -192,6 +189,10 @@ class ShareholderAnalysisService:
         ]
 
         # 先取原始明细，按 (symbol, holder_name) 去重（同一股东匹配多组关键词时避免重复）
+        # DISTINCT ON (symbol, holder_name) + ORDER BY ... ann_date DESC NULLS LAST：
+        # 同一报告期 Tushare 可能返回多个 ann_date 公告版本（初次公告 + 更正公告），
+        # 在 SQL 层直接取每个 (symbol, holder_name) 的最新公告版本，避免读到旧版本。
+        # （PG 方言；与 fund_repository.ann_date.desc().nulls_last() 写法一致）
         stmt = (
             select(
                 Top10FloatHolder.symbol,
@@ -199,11 +200,20 @@ class ShareholderAnalysisService:
                 Top10FloatHolder.hold_amount,
                 Top10FloatHolder.hold_float_ratio,
             )
+            .distinct(
+                Top10FloatHolder.symbol,
+                Top10FloatHolder.holder_name,
+            )
             .where(
                 and_(
                     Top10FloatHolder.report_period == report_period,
                     or_(*like_conditions),
                 )
+            )
+            .order_by(
+                Top10FloatHolder.symbol,
+                Top10FloatHolder.holder_name,
+                Top10FloatHolder.ann_date.desc().nulls_last(),
             )
         )
         result = await self.session.execute(stmt)
@@ -285,6 +295,11 @@ class ShareholderAnalysisService:
         """批量获取股票的行业关联（显式 JOIN，无 ORM relationship）。
 
         一只股票可关联多个行业板块，全部返回。
+
+        TODO: 当前 industry 板块为 GICS 多级分类（一股平均关联 ~6 个），导致行业
+        分布极度分散（单组数百行业、Top 10 仅占 ~20%）。后续可评估"主行业判定"
+        （如仅取 GICS 一级 700301-700311，需 sectors 加 level 字段或 code 前缀规则）
+        以缓解分散——作为独立任务，本次 bug 修复不纳入。
 
         Returns:
             { symbol: { "stock_name": str | None, "industries": list[str] } }
@@ -546,9 +561,12 @@ class ShareholderAnalysisService:
                 }
             )
 
-        # 应用 industry 筛选
+        # 应用 industry 筛选（"未分类"对应无行业关联的股票，口径与分布一致）
         if industry is not None:
-            rows = [r for r in rows if industry in r["industries"]]
+            if industry == _UNDEFINED_INDUSTRY:
+                rows = [r for r in rows if len(r["industries"]) == 0]
+            else:
+                rows = [r for r in rows if industry in r["industries"]]
 
         # 应用 change_direction 筛选
         if change_direction is not None:
@@ -679,38 +697,38 @@ class ShareholderAnalysisService:
 
         # 按行业分组统计（一只股票多行业时每个行业独立计数）
         industry_counter: dict = defaultdict(int)
-        total_count = 0
+        undefined_count = 0  # 无行业关联的股票数（"未分类"桶）
+        total_count = 0      # 占比基数（含全部行业计数 + 无行业股票数）
         for r in rows:
             if r["industries"]:
                 for ind in r["industries"]:
                     industry_counter[ind] += 1
                     total_count += 1
             else:
-                industry_counter[_UNDEFINED_INDUSTRY] += 1
+                undefined_count += 1
                 total_count += 1
 
-        # 按持仓股票数降序，前 N 个行业独立展示，其余（含未定义）合并到"未分类"
-        # （plan-02 §3.4：前 N 个独立展示，其余合并为"未分类"。真实数据行业分散，
-        # 纯占比阈值会无行业达标导致 distribution 无意义，故用 Top N 保证主要行业可见）
+        # 全量真实行业（按持仓股票数降序）。distribution 作为筛选数据源返回全量，
+        # 前端图表自行截断 Top N 展示；占比基于 total_count（含长尾），故 Top N 占比
+        # 之和可能 < 100%——这是真实分散的反映（一只股票可关联多个 industry 板块）。
         sorted_inds = sorted(industry_counter.items(), key=lambda x: x[1], reverse=True)
-        items: list[dict] = []
-        others_count = 0
-        for idx, (ind, cnt) in enumerate(sorted_inds):
-            pct = (cnt / total_count * 100) if total_count else 0.0
-            if ind == _UNDEFINED_INDUSTRY:
-                others_count += cnt
-            elif idx < _INDUSTRY_TOP_N:
-                items.append({"industry": ind, "stock_count": cnt, "percentage": pct})
-            else:
-                others_count += cnt
-
-        if others_count > 0:
-            pct = (others_count / total_count * 100) if total_count else 0.0
+        items: list[dict] = [
+            {
+                "industry": ind,
+                "stock_count": cnt,
+                "percentage": (cnt / total_count * 100) if total_count else 0.0,
+            }
+            for ind, cnt in sorted_inds
+        ]
+        # "未分类"仅指无行业关联股票，不再吸收 Top N 外长尾——保证分布口径 = 筛选口径。
+        if undefined_count > 0:
             items.append(
                 {
                     "industry": _UNDEFINED_INDUSTRY,
-                    "stock_count": others_count,
-                    "percentage": pct,
+                    "stock_count": undefined_count,
+                    "percentage": (undefined_count / total_count * 100)
+                    if total_count
+                    else 0.0,
                 }
             )
 
@@ -788,9 +806,12 @@ class ShareholderAnalysisService:
                 }
             )
 
-        # 应用 industry 筛选
+        # 应用 industry 筛选（"未分类"对应无行业关联的股票，口径与分布一致）
         if industry is not None:
-            rows = [r for r in rows if industry in r["industries"]]
+            if industry == _UNDEFINED_INDUSTRY:
+                rows = [r for r in rows if len(r["industries"]) == 0]
+            else:
+                rows = [r for r in rows if industry in r["industries"]]
 
         # 应用 change_direction 筛选
         if change_direction is not None:

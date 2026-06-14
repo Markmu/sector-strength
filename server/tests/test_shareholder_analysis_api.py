@@ -322,6 +322,94 @@ async def full_dataset(
     }
 
 
+@pytest_asyncio.fixture
+async def dataset_with_undefined_industry(
+    test_session, sample_stocks, sample_industry_sectors, sample_sector_stocks, sample_holders
+):
+    """在 full_dataset 基础上追加 1 只无行业关联股票（国家队「中央汇金」匹配）。
+
+    用于验证「未分类」新语义 = 无行业关联股票（industries==[]），以及分布口径与
+    holdings/summary 筛选口径的 1:1 一致性。
+    """
+    test_session.add(Stock(symbol="600888", name="无行业测试"))
+    test_session.add(
+        Top10FloatHolder(
+            symbol="600888",
+            ts_code="600888.SH",
+            report_period=date(2024, 12, 31),
+            ann_date=date(2025, 1, 20),
+            holder_name="中央汇金投资有限责任公司",
+            hold_amount=Decimal("100.00"),
+            hold_ratio=Decimal("0.0100"),
+            hold_float_ratio=Decimal("0.0200"),
+        )
+    )
+    await test_session.commit()
+
+
+@pytest_asyncio.fixture
+async def multi_ann_date_dataset(test_session):
+    """同一 (symbol, report_period, holder_name) 存在两个 ann_date 公告版本，
+    验证 _match_holdings 在 SQL 层取最新 ann_date 版本（bug 修复核心场景）。
+
+    场景：688075 在 2024-12-31 期，国家队「中央汇金」匹配，存在两版公告：
+      - ann_date=2025-04-03（初次公告）hold_amount=500  hold_float_ratio=0.05
+      - ann_date=2025-04-30（更正公告）hold_amount=1000 hold_float_ratio=0.10
+    修复前：查询无 ORDER BY，Python 去重保留随机版本（可能旧版 500），或两版本
+            名单不同时被双倍聚合；修复后：SQL DISTINCT ON 取最新版本 1000。
+    自包含（不依赖 sample_holders），确保 group 1 仅匹配这一只股票，断言干净。
+    """
+    test_session.add(Stock(symbol="688075", name="多公告版本测试"))
+    test_session.add_all([
+        # 初次公告版本（旧）
+        Top10FloatHolder(
+            symbol="688075",
+            ts_code="688075.SH",
+            report_period=date(2024, 12, 31),
+            ann_date=date(2025, 4, 3),
+            holder_name="中央汇金投资有限责任公司",
+            hold_amount=Decimal("500.00"),
+            hold_ratio=Decimal("0.0050"),
+            hold_float_ratio=Decimal("0.0500"),
+        ),
+        # 更正公告版本（新，hold_amount / hold_float_ratio 翻倍）
+        Top10FloatHolder(
+            symbol="688075",
+            ts_code="688075.SH",
+            report_period=date(2024, 12, 31),
+            ann_date=date(2025, 4, 30),
+            holder_name="中央汇金投资有限责任公司",
+            hold_amount=Decimal("1000.00"),
+            hold_ratio=Decimal("0.0100"),
+            hold_float_ratio=Decimal("0.1000"),
+        ),
+    ])
+    await test_session.commit()
+
+
+@pytest_asyncio.fixture
+async def null_ann_date_dataset(test_session):
+    """ann_date=NULL 边界：仅有 NULL 版本时记录应被保留（不丢数据）。
+
+    NULLS LAST 排序下 NULL 排末尾；若某 (symbol, holder_name) 只有 NULL 版本，
+    DISTINCT ON 仍保留该行，不被过滤掉。
+    """
+    test_session.add(Stock(symbol="688999", name="NULL公告测试"))
+    test_session.add(
+        Top10FloatHolder(
+            symbol="688999",
+            ts_code="688999.SH",
+            report_period=date(2024, 12, 31),
+            ann_date=None,
+            holder_name="中央汇金投资有限责任公司",
+            hold_amount=Decimal("300.00"),
+            hold_ratio=Decimal("0.0030"),
+            hold_float_ratio=Decimal("0.0300"),
+        )
+    )
+    await test_session.commit()
+
+
 def _resolve_group_ids(test_session, names):
     """通过 group_name 解析出 group_id 列表（conftest 注入了 5 个预定义组）"""
     # 不直接 query DB（避免 async 上下文问题），由 API 层负责；
@@ -626,13 +714,13 @@ class TestIndustryDistribution:
         assert "白酒" in industries
 
     @pytest.mark.asyncio
-    async def test_low_percentage_industry_merged_into_undefined(
+    async def test_low_percentage_full_industries_no_undefined(
         self, auth_client, low_percentage_dataset
     ):
-        """UC-014 回归：占比 <5% 的行业应合并到'未分类'，distribution 不为空。
+        """UC-014 回归（新语义）：全量真实行业展示，不合并到"未分类"。
 
-        1 只股票 × 21 行业 → 每行业 4.76% < 5% 阈值。修复前 distribution 恒空
-        （多行业摊薄 + 阈值过滤 + 低占比未合并）；修复后低占比行业合并到'未分类'项。
+        1 只股票 × 21 行业 → 每行业 count=1、占比≈4.76%。新语义下 distribution 返回
+        全量 21 个真实行业，且因无无行业股票而不含"未分类"项。
         """
         resp = await auth_client.get(
             "/api/v1/shareholder-analysis/industry-distribution",
@@ -640,8 +728,8 @@ class TestIndustryDistribution:
         )
         assert resp.status_code == 200
         dist = resp.json()["data"]["distribution"]
-        assert len(dist) > 0, "低占比行业应合并到'未分类'，不应导致 distribution 为空"
-        assert any(d["industry"] == "未分类" for d in dist), "应含'未分类'合并项"
+        assert len(dist) == 21, "应返回全部 21 个真实行业"
+        assert all(d["industry"] != "未分类" for d in dist), "无无行业股票时不应含'未分类'"
 
     @pytest.mark.asyncio
     async def test_industry_distribution_requires_auth(self, client):
@@ -651,6 +739,138 @@ class TestIndustryDistribution:
             params={"group_ids": "1", "report_period": "2024-12-31"},
         )
         assert resp.status_code == 401
+
+
+# ============== Test: 行业分布 ↔ 筛选口径一致性 ==============
+
+
+class TestIndustrySemanticsConsistency:
+    """行业分布展示项 ↔ holdings/summary 可筛选项 1:1 口径一致（bug 修复核心验证）。
+
+    修复前：分布把 Top N 外长尾合并到虚拟桶「未分类」，但筛选用 `industry in
+    industries` 成员判断，选中「未分类」恒返回空（核心 bug）。
+    修复后：「未分类」仅指无行业关联股票，筛选 `len(industries)==0`，口径对齐。
+    """
+
+    @pytest.mark.asyncio
+    async def test_distribution_no_undefined_when_all_have_industry(
+        self, auth_client, full_dataset
+    ):
+        """所有股票都有行业时 distribution 不含「未分类」"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/industry-distribution",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 200
+        dist = resp.json()["data"]["distribution"]
+        assert all(d["industry"] != "未分类" for d in dist), "无无行业股票时不应含'未分类'"
+
+    @pytest.mark.asyncio
+    async def test_distribution_undefined_only_when_no_industry_stocks(
+        self, auth_client, dataset_with_undefined_industry
+    ):
+        """无行业股票存在时 distribution 含「未分类」，stockCount = 无行业股票数"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/industry-distribution",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 200
+        dist = resp.json()["data"]["distribution"]
+        undefined = next((d for d in dist if d["industry"] == "未分类"), None)
+        assert undefined is not None, "存在无行业股票时应含'未分类'项"
+        assert undefined["stockCount"] == 1  # 仅 600888
+
+    @pytest.mark.asyncio
+    async def test_holdings_filter_undefined_returns_no_industry_stocks(
+        self, auth_client, dataset_with_undefined_industry
+    ):
+        """核心 bug 修复：industry=未分类 → holdings 返回无行业关联股票（600888）"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={
+                "group_ids": "1", "report_period": "2024-12-31",
+                "industry": "未分类",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["total"] == 1
+        h = data["holdings"][0]
+        assert h["symbol"] == "600888"
+        assert h["industries"] == []
+
+    @pytest.mark.asyncio
+    async def test_summary_filter_undefined_consistent_with_holdings(
+        self, auth_client, dataset_with_undefined_industry
+    ):
+        """summary 与 holdings 口径一致：industry=未分类 时 stockCount 相同"""
+        resp_sum = await auth_client.get(
+            "/api/v1/shareholder-analysis/summary",
+            params={
+                "group_ids": "1", "report_period": "2024-12-31",
+                "industry": "未分类",
+            },
+        )
+        resp_hold = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={
+                "group_ids": "1", "report_period": "2024-12-31",
+                "industry": "未分类",
+            },
+        )
+        assert resp_sum.status_code == 200
+        assert resp_hold.status_code == 200
+        assert (
+            resp_sum.json()["data"]["summary"]["stockCount"]
+            == resp_hold.json()["data"]["total"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_long_tail_industry_filterable_in_holdings(
+        self, auth_client, low_percentage_dataset
+    ):
+        """长尾行业（全量分布内）可在 holdings 筛选：1 股 × 21 行业，任一行业可查"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/industry-distribution",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        dist = resp.json()["data"]["distribution"]
+        assert len(dist) > 1
+        # 取分布最后一个（长尾）行业，验证 holdings 能筛出
+        tail_industry = dist[-1]["industry"]
+        resp_h = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={
+                "group_ids": "1", "report_period": "2024-12-31",
+                "industry": tail_industry,
+            },
+        )
+        assert resp_h.json()["data"]["total"] > 0
+
+    @pytest.mark.asyncio
+    async def test_every_distribution_industry_is_holdings_filterable(
+        self, auth_client, dataset_with_undefined_industry
+    ):
+        """口径一致性铁律：distribution 每项作 industry= 查 holdings，total > 0"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/industry-distribution",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 200
+        dist = resp.json()["data"]["distribution"]
+        assert len(dist) > 0
+        for d in dist:
+            resp_h = await auth_client.get(
+                "/api/v1/shareholder-analysis/holdings",
+                params={
+                    "group_ids": "1", "report_period": "2024-12-31",
+                    "industry": d["industry"],
+                },
+            )
+            total = resp_h.json()["data"]["total"]
+            assert total > 0, (
+                f"分布项 '{d['industry']}' 应能筛选出持仓（口径一致性），实际 total={total}"
+            )
 
 
 # ============== Test: GET /holdings — 分页持仓列表 ==============
@@ -880,3 +1100,87 @@ class TestDegradation:
         holdings = resp.json()["data"]["holdings"]
         for h in holdings:
             assert h["changeDirection"] is None
+
+
+# ============== Test: 多 ann_date 公告版本取最新（bug 修复回归）==============
+
+
+class TestMultiAnnDateDedup:
+    """修复核心：同一 (symbol, holder_name) 多 ann_date 公告版本时，_match_holdings
+    在 SQL 层取最新 ann_date 版本，避免读到旧版本或被双倍聚合（>100% 根因之一）。"""
+
+    @pytest.mark.asyncio
+    async def test_holdings_picks_latest_ann_date_version(
+        self, auth_client, multi_ann_date_dataset
+    ):
+        """holdings 取最新 ann_date 版本（1000 / 0.1），而非旧版本（500 / 0.05）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 200
+        holdings = resp.json()["data"]["holdings"]
+        target = next(h for h in holdings if h["symbol"] == "688075")
+        # 取 ann_date=2025-04-30 的更正公告版本，而非 2025-04-03 的初次公告
+        assert target["totalHoldAmount"] == 1000.0
+        assert target["totalHoldFloatRatio"] == 0.1
+
+    @pytest.mark.asyncio
+    async def test_holdings_no_double_aggregation(
+        self, auth_client, multi_ann_date_dataset
+    ):
+        """两版本不被累加成 500+1000=1500（bug 核心症状：聚合倍增致占比 >100%）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 200
+        holdings = resp.json()["data"]["holdings"]
+        target = next(h for h in holdings if h["symbol"] == "688075")
+        assert target["totalHoldAmount"] != 1500.0
+        assert target["totalHoldFloatRatio"] != 0.15
+
+    @pytest.mark.asyncio
+    async def test_holdings_symbol_not_duplicated(
+        self, auth_client, multi_ann_date_dataset
+    ):
+        """多 ann_date 版本不导致同一 symbol 在 holdings 中重复出现。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 200
+        symbols = [h["symbol"] for h in resp.json()["data"]["holdings"]]
+        assert symbols.count("688075") == 1
+
+    @pytest.mark.asyncio
+    async def test_summary_uses_latest_version(
+        self, auth_client, multi_ann_date_dataset
+    ):
+        """summary 的 avgHoldFloatRatio 基于最新版本（0.1），而非双倍值（0.15）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/summary",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 200
+        summary = resp.json()["data"]["summary"]
+        # 仅 688075 一只股票匹配 group 1 → avg 等于该股票最新版本值
+        assert summary["stockCount"] == 1
+        assert summary["avgHoldFloatRatio"] == 0.1
+
+
+class TestNullAnnDateBoundary:
+    """ann_date=NULL 边界：DISTINCT ON + NULLS LAST 下记录不被过滤丢失。"""
+
+    @pytest.mark.asyncio
+    async def test_only_null_ann_date_record_kept(
+        self, auth_client, null_ann_date_dataset
+    ):
+        """仅有 NULL ann_date 版本时记录仍被保留（不丢数据）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 200
+        symbols = [h["symbol"] for h in resp.json()["data"]["holdings"]]
+        assert "688999" in symbols

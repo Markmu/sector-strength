@@ -25,6 +25,10 @@ const ReactECharts = dynamic(() => import('echarts-for-react').then((mod) => mod
   loading: () => <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">加载图表中...</div>,
 })
 
+// 图表/标签仅渲染持仓股票数 Top N（后端 distribution 返回全量真实行业，前端截断展示；
+// 筛选栏下拉仍来自全量 distribution，长尾行业可选）。
+const TOP_N = 10
+
 export interface IndustryDistributionProps {
   distribution: ShareholderIndustryItem[]
   selectedIndustry?: string
@@ -36,19 +40,23 @@ export default function IndustryDistribution({
   selectedIndustry,
   onIndustryClick,
 }: IndustryDistributionProps) {
-  // 按占比降序
+  // 按占比降序（全量，后端 distribution 返回全量真实行业）
   const sorted = useMemo(
     () => [...distribution].sort((a, b) => b.percentage - a.percentage),
     [distribution]
   )
 
+  // 仅渲染持仓股票数 Top N，避免数百长尾行业撑爆图表/标签。
+  // 筛选栏下拉仍来自全量 distribution（HoldingsDetail industryOptions），长尾可选。
+  const displayed = useMemo(() => sorted.slice(0, TOP_N), [sorted])
+
   // ECharts option：水平条形图（yAxis 为类目轴）
   const option = useMemo(() => {
     // 空数据时返回 null option
-    if (sorted.length === 0) return null
+    if (displayed.length === 0) return null
     // ECharts 自下而上展示，故 categories 反序使最大值在顶部
-    const cats = sorted.map((d) => d.industry).reverse()
-    const values = sorted.map((d) => d.percentage).reverse()
+    const cats = displayed.map((d) => d.industry).reverse()
+    const values = displayed.map((d) => d.percentage).reverse()
     return {
       tooltip: {
         trigger: 'axis',
@@ -56,8 +64,8 @@ export default function IndustryDistribution({
         formatter: (params: Array<{ dataIndex?: number }>) => {
           const idx = params[0]?.dataIndex
           if (idx === undefined) return ''
-          // 反序后下标对应原 sorted（反序后），需要还原
-          const item = sorted[sorted.length - 1 - idx]
+          // 反序后下标对应原 displayed（反序后），需要还原
+          const item = displayed[displayed.length - 1 - idx]
           if (!item) return ''
           return `<div>${item.industry}</div>
             <div>持仓股票数：${item.stockCount}</div>
@@ -89,7 +97,7 @@ export default function IndustryDistribution({
         },
       ],
     }
-  }, [sorted])
+  }, [displayed])
 
   // 空状态：无行业数据
   if (sorted.length === 0) {
@@ -106,7 +114,7 @@ export default function IndustryDistribution({
     // 反序后下标映射
     const idx = params.dataIndex
     if (idx === undefined) return
-    const item = sorted[sorted.length - 1 - idx]
+    const item = displayed[displayed.length - 1 - idx]
     if (item) onIndustryClick(item.industry)
   }
 
@@ -114,13 +122,13 @@ export default function IndustryDistribution({
     <div data-testid="industry-distribution-chart" className="space-y-3">
       <ReactECharts
         option={option}
-        style={{ height: `${Math.max(200, sorted.length * 36 + 40)}px`, width: '100%' }}
+        style={{ height: `${Math.max(200, displayed.length * 36 + 40)}px`, width: '100%' }}
         onEvents={{ click: handleChartClick }}
         opts={{ renderer: 'canvas' }}
       />
       {/* 可点击的行业标签列表：兼容 spec getByText('银行') 点击 + 联动筛选 */}
       <div className="flex flex-wrap gap-2">
-        {sorted.map((d) => {
+        {displayed.map((d) => {
           const isSelected = selectedIndustry === d.industry
           return (
             <button
@@ -140,6 +148,12 @@ export default function IndustryDistribution({
           )
         })}
       </div>
+      {/* Top N 说明：占比基于全部持仓（含长尾），故 Top N 占比之和可能 < 100% */}
+      {displayed.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          仅展示持仓股票数前 {TOP_N} 行业；筛选栏下拉可查看全部行业。
+        </p>
+      )}
     </div>
   )
 }

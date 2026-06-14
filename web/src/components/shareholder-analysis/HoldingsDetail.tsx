@@ -48,8 +48,10 @@ function formatAmount(amount: number): string {
   return amount.toLocaleString('zh-CN')
 }
 
+// 后端 avg_hold_float_ratio 已是百分数（如 4.66 表示 4.66%），直接格式化即可，
+// 不再 ×100（与 FundPortfolioTable 一致）。
 function formatRatio(ratio: number): string {
-  return `${(ratio * 100).toFixed(2)}%`
+  return `${ratio.toFixed(2)}%`
 }
 
 export default function HoldingsDetail({

@@ -282,6 +282,67 @@ test.describe('AC-01/02/03/04/05/08/09/11：股东分析面板（plan-04）', ()
     })
   })
 
+  test.describe('未分类口径一致性（bug 修复：选中"未分类"能查出无行业股票）', () => {
+    test('TC-4.6b 点击行业分布图"未分类"条目 → 列表返回无行业关联股票', async ({ page }) => {
+      // distribution 含"未分类"项（存在无行业股票）；holdings 默认含 1 只无行业股票，
+      // industry=未分类 时只返回它——验证分布口径 = 筛选口径（核心 bug 修复）
+      const distWithUndefined = {
+        distribution: [
+          { industry: '白酒', stockCount: 2, percentage: 40 },
+          { industry: '银行', stockCount: 1, percentage: 20 },
+          { industry: '保险', stockCount: 1, percentage: 20 },
+          { industry: '未分类', stockCount: 1, percentage: 20 },
+        ],
+      }
+      const undefinedStock = {
+        symbol: '600888',
+        stockName: '无行业测试',
+        totalHoldAmount: 100,
+        totalHoldFloatRatio: 2.0,
+        changeDirection: 'new' as const,
+        industries: [] as string[],
+      }
+      const baseHoldings = {
+        holdings: [...createTestHoldings().holdings, undefinedStock],
+        total: 5,
+      }
+
+      await mockShareholderOverview(page, createTestOverview())
+      await mockShareholderSummary(page)
+      await mockShareholderIndustryDistribution(page, distWithUndefined)
+      await mockShareholderHoldings(page, (query) => {
+        if (query.get('industry') === '未分类') {
+          return { holdings: [undefinedStock], total: 1 }
+        }
+        return baseHoldings
+      })
+
+      await page.goto(SHAREHOLDER_ANALYSIS_PAGE)
+      const main = page.locator('main')
+
+      // 点击"国家队"卡片
+      const nationalCard =
+        main.locator('[data-testid="group-card-1"]').or(
+          main.getByText('国家队', { exact: true }).first().locator('xpath=ancestor::*[contains(@class,"cursor-pointer") or self::button][1]')
+        )
+      await nationalCard.first().click()
+
+      const detail = main.locator('[data-testid="holdings-detail"]')
+      await expect(detail).toBeVisible({ timeout: 10000 })
+
+      // 点击行业分布图中的"未分类"条目（canvas 旁的 DOM 标签，文案含"未分类"）
+      const chart = detail.locator('[data-testid="industry-distribution-chart"]')
+      await chart.getByText(/未分类/).first().click()
+
+      // 断言：列表显示无行业关联股票（600888），验证选中"未分类"能查出持仓（核心 bug）
+      const table = detail.locator('table').first()
+      await expect(table.locator('tbody')).toContainText('600888', { timeout: 10000 })
+      // 占流通比按真实百分数显示（修复 formatRatio 误 ×100）：ratio=2.0 → "2.00%"，
+      // 修复前会显示成 "200.00%"
+      await expect(table.locator('tbody')).toContainText('2.00%', { timeout: 10000 })
+    })
+  })
+
   test.describe('变动方向筛选含"退出"（AC-05 / US-07）', () => {
     test('TC-4.7 选择变动方向"退出" → 列表展示退出股票（上期数据）', async ({ page }) => {
       await installFullMocks(page)
