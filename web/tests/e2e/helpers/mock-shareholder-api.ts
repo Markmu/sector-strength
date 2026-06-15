@@ -289,6 +289,11 @@ export async function mockShareholderGroupDelete(page: Page): Promise<void> {
 
 /**
  * Mock GET /api/v1/admin/shareholder-groups/preview — 匹配预览
+ *
+ * 注意：本 helper 用 matchApiPathPrefix 捕获 /preview 前缀，会同时匹配
+ * /preview-breakdown 路径。spec 中如同时使用 mockShareholderGroupPreview
+ * 和 mockShareholderGroupPreviewBreakdown，必须先注册本 helper、后注册
+ * PreviewBreakdown —— LIFO 让精确匹配的 PreviewBreakdown 先命中。
  */
 export async function mockShareholderGroupPreview(
   page: Page,
@@ -305,6 +310,207 @@ export async function mockShareholderGroupPreview(
             success: true,
             data: { matchedStockCount },
           }),
+        })
+      } else {
+        await route.fallback()
+      }
+    }
+  )
+}
+
+// ---------- plan-02 helpers ----------
+
+/**
+ * 测试用"社保"分组（plan-02 场景 1~4 用，多关键词场景）
+ *
+ * 跟随 createQFiiGroup() 无参工厂风格；返回固定实例
+ */
+export function createSocialGroup(): ShareholderGroupItem {
+  return {
+    id: 1,
+    name: '社保',
+    description: '全国社保基金测试组',
+    isSystem: false,
+    ruleCount: 2,
+    matchedStockCount: 5,
+    keywords: ['全国社保', '社保基金'],
+  }
+}
+
+/**
+ * 测试用"社保"分组变体（plan-02 场景 5 用，含空关键词 + 0 匹配关键词）
+ *
+ * keywords: ['全国社保', '', '无匹配关键词']
+ *  - index 0：正常匹配（2 只）
+ *  - index 1：空关键词 → AC-08 不显示股数和按钮
+ *  - index 2：0 匹配 → AC-09 按钮置灰
+ */
+export function createSocialGroupWithEmptyAndZero(): ShareholderGroupItem {
+  return {
+    id: 1,
+    name: '社保',
+    description: '场景 5 边界测试组',
+    isSystem: false,
+    ruleCount: 3,
+    matchedStockCount: 2,
+    keywords: ['全国社保', '', '无匹配关键词'],
+  }
+}
+
+/**
+ * Mock GET /api/v1/admin/shareholder-groups/preview-breakdown — 逐关键词股数
+ *
+ * 注意：spec 中必须先注册 mockShareholderGroupPreview（前缀匹配 /preview），
+ * 再注册本 helper（精确匹配 /preview-breakdown）—— LIFO 让精确匹配先命中。
+ */
+export async function mockShareholderGroupPreviewBreakdown(
+  page: Page,
+  items: Array<{ keyword: string; matchedStockCount: number | null }>
+): Promise<void> {
+  await page.route(
+    (url) => matchApiPath(url, '/api/v1/admin/shareholder-groups/preview-breakdown'),
+    async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: { items } }),
+        })
+      } else {
+        await route.fallback()
+      }
+    }
+  )
+}
+
+/**
+ * Mock GET /api/v1/admin/shareholder-groups/preview-breakdown — 失败（默认 500）
+ */
+export async function mockShareholderGroupPreviewBreakdownError(
+  page: Page,
+  status: number = 500
+): Promise<void> {
+  await page.route(
+    (url) => matchApiPath(url, '/api/v1/admin/shareholder-groups/preview-breakdown'),
+    async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Internal Server Error' }),
+        })
+      } else {
+        await route.fallback()
+      }
+    }
+  )
+}
+
+/**
+ * Mock GET /api/v1/admin/shareholder-groups/preview-breakdown — 按调用次数返回不同结果
+ *
+ * 场景 3（AC-06 实时刷新）用：第一次（初始加载）与第二次（修改关键词后）返回不同股数。
+ * 参照 mockShareholderGroupsList 的 callIndex 模式（line 147-168）
+ */
+export async function mockShareholderGroupPreviewBreakdownSequence(
+  page: Page,
+  itemsList: Array<Array<{ keyword: string; matchedStockCount: number | null }>>
+): Promise<void> {
+  let callIndex = 0
+  await page.route(
+    (url) => matchApiPath(url, '/api/v1/admin/shareholder-groups/preview-breakdown'),
+    async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback()
+        return
+      }
+      const items = itemsList[Math.min(callIndex, itemsList.length - 1)] ?? []
+      callIndex += 1
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { items } }),
+      })
+    }
+  )
+}
+
+/**
+ * Mock GET /api/v1/admin/shareholder-groups/keyword-matches — 关键词明细
+ */
+export async function mockShareholderGroupKeywordMatches(
+  page: Page,
+  data: {
+    items: Array<{ symbol: string; stockName: string | null; holderName: string }>
+    total: number
+    page: number
+    pageSize: number
+  }
+): Promise<void> {
+  await page.route(
+    (url) => matchApiPath(url, '/api/v1/admin/shareholder-groups/keyword-matches'),
+    async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data }),
+        })
+      } else {
+        await route.fallback()
+      }
+    }
+  )
+}
+
+/**
+ * Mock GET /api/v1/admin/shareholder-groups/keyword-matches — 失败（默认 500）
+ */
+export async function mockShareholderGroupKeywordMatchesError(
+  page: Page,
+  status: number = 500
+): Promise<void> {
+  await page.route(
+    (url) => matchApiPath(url, '/api/v1/admin/shareholder-groups/keyword-matches'),
+    async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Internal Server Error' }),
+        })
+      } else {
+        await route.fallback()
+      }
+    }
+  )
+}
+
+/**
+ * Mock GET /api/v1/admin/shareholder-groups/{id} — 单条详情（编辑页按 id 加载）
+ *
+ * 匹配 prefix 之后为纯数字 id 的路径（排除 preview / preview-breakdown /
+ * keyword-matches 等静态段），仅处理 GET。
+ */
+export async function mockShareholderGroupDetail(
+  page: Page,
+  group: ShareholderGroupItem
+): Promise<void> {
+  const prefix = '/api/v1/admin/shareholder-groups/'
+  await page.route(
+    (url) => {
+      const path = toPathname(url)
+      if (!path.startsWith(prefix)) return false
+      const rest = path.slice(prefix.length)
+      // 只匹配 /{数字id}，排除 preview / preview-breakdown / keyword-matches 等静态段
+      return /^\d+$/.test(rest)
+    },
+    async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: group }),
         })
       } else {
         await route.fallback()

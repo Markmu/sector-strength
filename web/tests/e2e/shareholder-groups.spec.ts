@@ -2,6 +2,8 @@ import { test as base, expect } from '@playwright/test'
 import {
   createTestShareholderGroups,
   createQFiiGroup,
+  createSocialGroup,
+  createSocialGroupWithEmptyAndZero,
   mockShareholderGroupsList,
   mockShareholderGroupsListError,
   mockShareholderGroupCreate,
@@ -9,6 +11,12 @@ import {
   mockShareholderGroupUpdate,
   mockShareholderGroupDelete,
   mockShareholderGroupPreview,
+  mockShareholderGroupPreviewBreakdown,
+  mockShareholderGroupPreviewBreakdownError,
+  mockShareholderGroupPreviewBreakdownSequence,
+  mockShareholderGroupKeywordMatches,
+  mockShareholderGroupKeywordMatchesError,
+  mockShareholderGroupDetail,
 } from './helpers/mock-shareholder-api'
 
 const ADMIN_GROUPS_PAGE = '/dashboard/admin/shareholder-groups'
@@ -117,110 +125,107 @@ test.describe('AC-06/07/10：股东分组管理面板（plan-03）', () => {
     }) => {
       const initialGroups = createTestShareholderGroups()
       const afterGroups = [...initialGroups, createQFiiGroup()]
-      // 第一次 GET 返回 5 组，第二次（保存后刷新）返回 6 组
       await mockShareholderGroupsList(page, [initialGroups, afterGroups])
       await mockShareholderGroupCreate(page, createQFiiGroup())
+      // 填关键词会触发 preview / preview-breakdown，mock 之避免实际请求
+      await mockShareholderGroupPreview(page, 5)
+      await mockShareholderGroupPreviewBreakdown(page, [
+        { keyword: '瑞士银行', matchedStockCount: 5 },
+        { keyword: '摩根大通', matchedStockCount: 3 },
+      ])
 
       await page.goto(ADMIN_GROUPS_PAGE)
 
       const main = page.locator('main')
 
-      // 点击"新增分组"
+      // 点击"新增分组" → 跳转 /new
       await main.getByRole('button', { name: /^新增分组/ }).click()
+      await expect(page).toHaveURL(/\/shareholder-groups\/new$/)
 
-      // 弹出编辑表单 dialog
-      const dialog = page.getByRole('dialog')
-      await expect(dialog).toBeVisible()
-
-      // 填组名 QFII — 用 placeholder 或 label 定位组名 input，避免歧义
-      const nameInput = dialog.getByLabel(/组名/).or(dialog.locator('input').first())
+      // 填组名 QFII — 用 placeholder 或 label 定位组名 input
+      const nameInput = page.getByLabel(/组名/).or(page.locator('input').first())
       await nameInput.fill('QFII')
 
-      // 添加关键词"瑞士银行""摩根大通" — 找关键词输入区
-      // 实现侧关键词编辑 UI 可能是多个 input 或一个 textarea，用宽松定位
-      const keywordInputs = dialog.locator('input[type="text"]')
-      const inputCount = await keywordInputs.count()
-      if (inputCount >= 2) {
-        // 已有多个关键词输入框（组名 input 不在 type=text 范围内的假设）
-        await keywordInputs.nth(0).fill('瑞士银行')
-        // 如果只有一个关键词 input + 添加按钮的模式，这里兼容处理
-        const addButton = dialog.getByRole('button', { name: /添加关键词|\+.*关键词/ })
-        if (await addButton.isVisible().catch(() => false)) {
-          await addButton.click()
-        }
-        await keywordInputs.nth(1).fill('摩根大通')
-      } else {
-        // 退化：填第一个 input
-        await keywordInputs.first().fill('瑞士银行')
-      }
+      // 第一个关键词
+      const keywordInputs = page.locator('input[type="text"]')
+      await keywordInputs.nth(0).fill('瑞士银行')
+      // 添加第二个关键词
+      await page.getByRole('button', { name: /添加关键词/ }).click()
+      await keywordInputs.nth(1).fill('摩根大通')
 
-      // 点击保存 — 限定到 dialog 避免匹配页面其他"保存"按钮
-      await dialog.getByRole('button', { name: /^保存$/ }).click()
+      // 保存 → 回列表
+      await page.getByRole('button', { name: /^保存$/ }).click()
+      await expect(page).toHaveURL(/\/dashboard\/admin\/shareholder-groups$/)
 
-      // 断言：保存后列表刷新可见"QFII"行（限定 main 区域 table）
+      // 断言：列表刷新可见"QFII"行
       const table = main.locator('table').first()
       await expect(table.getByText('QFII', { exact: true })).toBeVisible({ timeout: 10000 })
     })
 
-    test('TC-1.6 编辑表单关键词变化触发匹配预览', async ({ page }) => {
+    test('TC-1.6 关键词变化触发匹配预览', async ({ page }) => {
       const groups = createTestShareholderGroups()
       await mockShareholderGroupsList(page, [groups])
       await mockShareholderGroupPreview(page, 3)
+      await mockShareholderGroupPreviewBreakdown(page, [
+        { keyword: '瑞士银行', matchedStockCount: 3 },
+      ])
 
       await page.goto(ADMIN_GROUPS_PAGE)
 
       const main = page.locator('main')
       await main.getByRole('button', { name: /^新增分组/ }).click()
-
-      const dialog = page.getByRole('dialog')
-      await expect(dialog).toBeVisible()
+      await expect(page).toHaveURL(/\/shareholder-groups\/new$/)
 
       // 填组名
-      const nameInput = dialog.getByLabel(/组名/).or(dialog.locator('input').first())
+      const nameInput = page.getByLabel(/组名/).or(page.locator('input').first())
       await nameInput.fill('QFII')
 
       // 输入关键词 — 触发 debounce 预览
-      const keywordInput = dialog.locator('input[type="text"]').first()
+      const keywordInput = page.locator('input[type="text"]').first()
       await keywordInput.fill('瑞士银行')
 
-      // 断言：预览区显示匹配股数 — 用正则兼容文案"当前规则匹配到 N 只股票"或"匹配 N 只"
+      // 断言：预览区显示匹配股数
       await expect(
-        dialog.getByText(/匹配到?\s*3\s*只股票|匹配\s*3\s*只/)
+        page.getByText(/合并匹配\s*3\s*只|匹配到?\s*3\s*只股票|匹配\s*3\s*只/)
       ).toBeVisible({ timeout: 10000 })
     })
   })
 
   test.describe('编辑分组（AC-07）', () => {
-    test('TC-1.5 编辑国家队分组：预填充关键词，新增关键词后保存', async ({ page }) => {
+    test('TC-1.5 编辑国家队分组：预填充关键词，保存后回列表', async ({ page }) => {
       const groups = createTestShareholderGroups()
       await mockShareholderGroupsList(page, [groups])
+      // 编辑页按 id 加载详情
+      await mockShareholderGroupDetail(page, groups[0])
       await mockShareholderGroupUpdate(page)
+      // 预填充关键词会触发 debounce 预览，mock 之避免实际请求
+      await mockShareholderGroupPreview(page, 10)
+      await mockShareholderGroupPreviewBreakdown(page, [
+        { keyword: '中央汇金', matchedStockCount: 5 },
+        { keyword: '中国证金', matchedStockCount: 4 },
+        { keyword: '国家集成电路产业投资基金', matchedStockCount: 3 },
+      ])
 
       await page.goto(ADMIN_GROUPS_PAGE)
 
       const main = page.locator('main')
       const table = main.locator('table').first()
 
-      // 点击"国家队"行的"编辑"按钮 — 限定到含"国家队"的行
+      // 点击"国家队"行的"编辑"按钮
       const nationalRow = table.locator('tr').filter({ hasText: '国家队' })
       await nationalRow.getByRole('button', { name: /^编辑$/ }).click()
 
-      // 弹出编辑表单 dialog
-      const dialog = page.getByRole('dialog')
-      await expect(dialog).toBeVisible()
+      // 跳转 /{id}
+      await expect(page).toHaveURL(/\/shareholder-groups\/1$/)
 
-      // 断言：关键词预填充"中央汇金"（dialog 内可见）
-      await expect(dialog.getByRole('textbox', { name: /中央汇金/ }).or(dialog.locator('input').filter({ hasText: /中央汇金/ }))).toBeVisible().catch(async () => {
-        // 退化断言：dialog 内某处可见预填充关键词文本
-        await expect(dialog.getByText('中央汇金', { exact: true }).first()).toBeVisible()
+      // 断言：关键词预填充"中央汇金"可见（aria-label = 关键词值）
+      await expect(page.getByRole('textbox', { name: /中央汇金/ })).toBeVisible({
+        timeout: 10000,
       })
 
-      // 点击保存
-      await dialog.getByRole('button', { name: /^保存$/ }).click()
-
-      // 断言：保存后 dialog 关闭（dialog 不再可见）或 mock update 被调用
-      // 用 dialog 消失作为成功信号（容错：实现侧可能刷新列表）
-      await expect(dialog).toBeHidden({ timeout: 10000 })
+      // 点击保存 → 回列表
+      await page.getByRole('button', { name: /^保存$/ }).click()
+      await expect(page).toHaveURL(/\/dashboard\/admin\/shareholder-groups$/)
     })
   })
 
@@ -310,7 +315,7 @@ test.describe('AC-06/07/10：股东分组管理面板（plan-03）', () => {
   })
 
   test.describe('错误与边界', () => {
-    test('TC-1.10 新增组名重复时 toast 提示错误', async ({ page }) => {
+    test('TC-1.10 新增组名重复时提示错误', async ({ page }) => {
       const groups = createTestShareholderGroups()
       await mockShareholderGroupsList(page, [groups])
       await mockShareholderGroupCreateConflict(page)
@@ -319,19 +324,17 @@ test.describe('AC-06/07/10：股东分组管理面板（plan-03）', () => {
 
       const main = page.locator('main')
       await main.getByRole('button', { name: /^新增分组/ }).click()
-
-      const dialog = page.getByRole('dialog')
-      await expect(dialog).toBeVisible()
+      await expect(page).toHaveURL(/\/shareholder-groups\/new$/)
 
       // 填已存在的组名"国家队"
-      const nameInput = dialog.getByLabel(/组名/).or(dialog.locator('input').first())
+      const nameInput = page.getByLabel(/组名/).or(page.locator('input').first())
       await nameInput.fill('国家队')
 
-      await dialog.getByRole('button', { name: /^保存$/ }).click()
+      await page.getByRole('button', { name: /^保存$/ }).click()
 
-      // 断言：toast/错误提示可见 — 兼容"组名已存在"或通用失败文案
+      // 断言：编辑页内 inline 错误提示可见 — 兼容"组名已存在"或通用失败文案
       await expect(
-        main.getByText(/组名已存在|操作失败|保存失败|失败/)
+        page.getByText(/组名已存在|操作失败|保存失败|失败/)
       ).toBeVisible({ timeout: 10000 })
     })
 
@@ -346,5 +349,197 @@ test.describe('AC-06/07/10：股东分组管理面板（plan-03）', () => {
         main.getByText(/加载失败|加载出错|请求失败|失败/)
       ).toBeVisible({ timeout: 10000 })
     })
+  })
+})
+
+// ============================================================================
+// plan-02：编辑页逐关键词股数与明细下钻（AC-01 ~ AC-09）
+//
+// 来源：docs/07-股东分组匹配明细/07-2-实现计划-股东分组匹配明细/plan-02-...md
+// 用例文档：docs/e2e/07-e2e-用例-股东分组匹配明细.md
+//
+// 重构后（弹窗 → 整页）：编辑从 dialog 改为路由页 /{id}，data-testid 断言不变。
+// ============================================================================
+
+test.describe('plan-02：编辑页逐关键词股数与明细下钻（AC-01 ~ AC-09）', () => {
+  test('TC-2.1 编辑页显示逐关键词股数 + 合并预览（AC-01, AC-02）', async ({ page }) => {
+    const group = createSocialGroup()
+    await mockShareholderGroupsList(page, [[group]])
+    await mockShareholderGroupDetail(page, group)
+    // LIFO：先注册前缀 preview，再注册精确 preview-breakdown，让精确先命中
+    await mockShareholderGroupPreview(page, 3) // 合并去重
+    await mockShareholderGroupPreviewBreakdown(page, [
+      { keyword: '全国社保', matchedStockCount: 2 },
+      { keyword: '社保基金', matchedStockCount: 3 },
+    ])
+
+    await page.goto(ADMIN_GROUPS_PAGE)
+    await page.getByRole('button', { name: /^编辑$/ }).first().click()
+    await expect(page).toHaveURL(/\/shareholder-groups\/1$/)
+
+    // AC-01：每个非空关键词行显示「X 只」标签
+    await expect(page.locator('[data-testid="keyword-count-0"]')).toContainText('2 只')
+    await expect(page.locator('[data-testid="keyword-count-1"]')).toContainText('3 只')
+
+    // AC-02：底部合并预览仍在（与逐关键词股数并存）
+    await expect(page.getByText(/合并匹配\s*\d+\s*只|匹配\s*3\s*只/)).toBeVisible()
+  })
+
+  test('TC-2.2 点击查看明细展开三列，多股东分行按股票代码升序（AC-03, AC-04, AC-05）', async ({ page }) => {
+    const group = createSocialGroup()
+    await mockShareholderGroupsList(page, [[group]])
+    await mockShareholderGroupDetail(page, group)
+    await mockShareholderGroupPreview(page, 3)
+    await mockShareholderGroupPreviewBreakdown(page, [
+      { keyword: '全国社保', matchedStockCount: 3 },
+      { keyword: '社保基金', matchedStockCount: 3 },
+    ])
+    // mock 数据：600000 两个不同 holder + 600036 一个 holder（验证多股东分行 + 升序）
+    await mockShareholderGroupKeywordMatches(page, {
+      items: [
+        { symbol: '600000', stockName: '浦发银行', holderName: '全国社保基金一一六组合' },
+        { symbol: '600000', stockName: '浦发银行', holderName: '全国社保基金一零四组合' },
+        { symbol: '600036', stockName: '招商银行', holderName: '全国社保基金一零八组合' },
+      ],
+      total: 3,
+      page: 1,
+      pageSize: 20,
+    })
+
+    await page.goto(ADMIN_GROUPS_PAGE)
+    await page.getByRole('button', { name: /^编辑$/ }).first().click()
+    await expect(page).toHaveURL(/\/shareholder-groups\/1$/)
+
+    // 点击第一个关键词的「查看明细」按钮（用 data-testid 避免多元素匹配，规则 5）
+    await page.locator('[data-testid="view-detail-0"]').click()
+
+    // AC-03：三列表头可见
+    await expect(page.getByRole('columnheader', { name: '股票代码' })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: '股票名称' })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: '股东名称' })).toBeVisible()
+
+    // AC-04：600000 出现 2 行（不同 holderName）
+    const rows = page.locator('[data-testid="keyword-detail-panel"] tbody tr')
+    await expect(rows).toHaveCount(3)
+    await expect(rows.nth(0).locator('td').nth(0)).toHaveText('600000')
+    await expect(rows.nth(1).locator('td').nth(0)).toHaveText('600000')
+    // 行 0 / 行 1 的 holderName 不同（多股东分行）
+    const holder0 = await rows.nth(0).locator('td').nth(2).textContent()
+    const holder1 = await rows.nth(1).locator('td').nth(2).textContent()
+    expect(holder0).not.toBeNull()
+    expect(holder0).not.toEqual(holder1)
+
+    // AC-05：按 symbol 升序
+    const symbols = await rows.locator('td').nth(0).allTextContents()
+    const sorted = [...symbols].sort()
+    expect(symbols).toEqual(sorted)
+  })
+
+  test('TC-2.3 修改关键词后股数与已展开明细实时刷新（AC-06）', async ({ page }) => {
+    const group = createSocialGroup()
+    await mockShareholderGroupsList(page, [[group]])
+    await mockShareholderGroupDetail(page, group)
+    // preview 合并预览 mock（避免 401 触发 handleUnauthorizedRedirect 中断测试）
+    await mockShareholderGroupPreview(page, 2)
+
+    // preview-breakdown：第一次（初始加载）返回 2 只；第二次（修改后）返回 5 只
+    await mockShareholderGroupPreviewBreakdownSequence(page, [
+      [{ keyword: '全国社保', matchedStockCount: 2 }],
+      [{ keyword: '全国社保基金', matchedStockCount: 5 }],
+    ])
+    // keyword-matches：固定返回 1 条（验证刷新后能重新加载）
+    await mockShareholderGroupKeywordMatches(page, {
+      items: [
+        { symbol: '600036', stockName: '招商银行', holderName: '全国社保基金一零八组合' },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    })
+
+    await page.goto(ADMIN_GROUPS_PAGE)
+    await page.getByRole('button', { name: /^编辑$/ }).first().click()
+    await expect(page).toHaveURL(/\/shareholder-groups\/1$/)
+
+    // 初始：第一个关键词显示 2 只
+    await expect(page.locator('[data-testid="keyword-count-0"]')).toContainText('2 只', {
+      timeout: 10000,
+    })
+
+    // 展开明细
+    await page.locator('[data-testid="view-detail-0"]').click()
+    await expect(page.locator('[data-testid="keyword-detail-panel"]')).toBeVisible()
+
+    // 修改第一个关键词 → 触发 500ms debounce → preview-breakdown 重新调用
+    await page.locator('input[type="text"]').first().fill('全国社保基金')
+
+    // 等待 debounce（500ms）+ buffer（100ms）
+    await page.waitForTimeout(600)
+
+    // AC-06：股数从 2 只刷新到 5 只
+    await expect(page.locator('[data-testid="keyword-count-0"]')).toContainText('5 只', {
+      timeout: 10000,
+    })
+  })
+
+  test('TC-2.4 后端 500 时股数和明细显示重试按钮且保存可用（AC-07）', async ({ page }) => {
+    const group = createSocialGroup()
+    await mockShareholderGroupsList(page, [[group]])
+    await mockShareholderGroupDetail(page, group)
+    // preview 合并预览 mock（避免 401 触发 handleUnauthorizedRedirect 中断测试）
+    await mockShareholderGroupPreview(page, 2)
+    // preview-breakdown 整体失败（500）→ 股数区显示错误
+    await mockShareholderGroupPreviewBreakdownError(page, 500)
+    // keyword-matches 失败（500）→ 明细区显示错误
+    await mockShareholderGroupKeywordMatchesError(page, 500)
+    // 编辑保存 mock（沿用现有 helper）
+    await mockShareholderGroupUpdate(page, group)
+
+    await page.goto(ADMIN_GROUPS_PAGE)
+    await page.getByRole('button', { name: /^编辑$/ }).first().click()
+    await expect(page).toHaveURL(/\/shareholder-groups\/1$/)
+
+    // AC-07：股数区显示「加载失败」
+    await expect(page.getByText(/加载失败/).first()).toBeVisible({ timeout: 10000 })
+
+    // 点击查看明细 → 明细区显示「加载失败」
+    await page.locator('[data-testid="view-detail-0"]').click()
+    await expect(
+      page.locator('[data-testid="keyword-detail-panel"]').getByText(/加载失败/)
+    ).toBeVisible({ timeout: 10000 })
+
+    // 保存按钮始终可点击
+    const saveButton = page.getByRole('button', { name: /^保存$/ })
+    await expect(saveButton).toBeEnabled()
+
+    // 点击保存成功 → 回列表
+    await saveButton.click()
+    await expect(page).toHaveURL(/\/dashboard\/admin\/shareholder-groups$/)
+  })
+
+  test('TC-2.5 空关键词不显示股数和按钮，0 匹配按钮置灰（AC-08, AC-09）', async ({ page }) => {
+    // 用专用工厂：含空关键词 + 0 匹配关键词
+    const group = createSocialGroupWithEmptyAndZero()
+    await mockShareholderGroupsList(page, [[group]])
+    await mockShareholderGroupDetail(page, group)
+    // preview 合并预览 mock（避免 401 触发 handleUnauthorizedRedirect 中断测试）
+    await mockShareholderGroupPreview(page, 2)
+    await mockShareholderGroupPreviewBreakdown(page, [
+      { keyword: '全国社保', matchedStockCount: 2 },
+      { keyword: '无匹配关键词', matchedStockCount: 0 },
+    ])
+
+    await page.goto(ADMIN_GROUPS_PAGE)
+    await page.getByRole('button', { name: /^编辑$/ }).first().click()
+    await expect(page).toHaveURL(/\/shareholder-groups\/1$/)
+
+    // AC-08：空关键词行（index 1）无 count 标签 + 无查看明细按钮
+    await expect(page.locator('[data-testid="keyword-count-1"]')).toHaveCount(0)
+    await expect(page.locator('[data-testid="view-detail-1"]')).toHaveCount(0)
+
+    // AC-09：0 匹配关键词（index 2）的按钮 disabled
+    await expect(page.locator('[data-testid="view-detail-2"]')).toBeDisabled()
+    // 非 0 关键词（index 0）按钮 enabled
+    await expect(page.locator('[data-testid="view-detail-0"]')).toBeEnabled()
   })
 })

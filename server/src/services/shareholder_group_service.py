@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.shareholder_group import ShareholderGroup, ShareholderGroupRule
+from src.models.stock import Stock
 from src.models.top10_float_holder import Top10FloatHolder
 from src.repositories.shareholder_group_repository import ShareholderGroupRepository
 
@@ -153,6 +154,91 @@ class ShareholderGroupService:
         result = await self.session.execute(stmt)
         return int(result.scalar() or 0)
 
+    # ============== 单关键词匹配（plan-01 新增）==============
+
+    async def _count_matched_stocks_single(self, keyword: str, period: Any) -> int:
+        """单关键词版本的股数统计（plan-01 §3 #1）。
+
+        与 `_count_matched_stocks` 的差异：
+        - 不再调用 `_get_latest_report_period`，period 由调用方传入
+          （避免在 preview_match_breakdown 中 N 个关键词 N 次查 MAX）
+        - 单关键词，无需 OR 组合
+
+        安全要求：
+        - keyword 必须经 `_escape_like_keyword` 转义 % 和 _ 通配符
+        - 所有匹配通过参数绑定，不拼接 SQL
+
+        Args:
+            keyword: 单关键词（调用方保证已 strip 且非空）
+            period: 报告期（调用方保证非 None）
+
+        Returns:
+            匹配的去重股票数（int）
+        """
+        stmt = (
+            select(func.count(func.distinct(Top10FloatHolder.symbol)))
+            .where(
+                and_(
+                    Top10FloatHolder.report_period == period,
+                    Top10FloatHolder.holder_name.like(
+                        f"%{_escape_like_keyword(keyword)}%", escape="\\"
+                    ),
+                )
+            )
+        )
+        result = await self.session.execute(stmt)
+        return int(result.scalar() or 0)
+
+    async def _get_keyword_matches(self, keyword: str, period: Any) -> list[Any]:
+        """单关键词的明细行查询（plan-01 §3 #2 / ADR-3）。
+
+        使用 PostgreSQL `DISTINCT ON (symbol, holder_name)` 配合
+        `ORDER BY symbol, holder_name, ann_date DESC NULLS LAST`：
+        每个 (symbol, holder_name) 取最新 ann_date 一行，避免历史重复。
+
+        LEFT JOIN stocks 表，stocks 表缺失该 symbol 时 stock_name 为 None
+        （由路由层 Pydantic 输出为 null）。
+
+        安全要求：keyword 必须经 `_escape_like_keyword` 转义。
+
+        Args:
+            keyword: 单关键词（调用方保证已 strip 且非空）
+            period: 报告期（调用方保证非 None）
+
+        Returns:
+            list[Row(symbol, stock_name, holder_name)]，按 symbol ASC、
+            holder_name ASC 排序
+        """
+        stmt = (
+            select(
+                Top10FloatHolder.symbol,
+                Stock.name.label("stock_name"),
+                Top10FloatHolder.holder_name,
+            )
+            .select_from(Top10FloatHolder)
+            .outerjoin(Stock, Stock.symbol == Top10FloatHolder.symbol)
+            .where(
+                and_(
+                    Top10FloatHolder.report_period == period,
+                    Top10FloatHolder.holder_name.like(
+                        f"%{_escape_like_keyword(keyword)}%", escape="\\"
+                    ),
+                )
+            )
+            # DISTINCT ON 必须配合 ORDER BY 前缀匹配（PG 要求）
+            .distinct(
+                Top10FloatHolder.symbol,
+                Top10FloatHolder.holder_name,
+            )
+            .order_by(
+                Top10FloatHolder.symbol.asc(),
+                Top10FloatHolder.holder_name.asc(),
+                Top10FloatHolder.ann_date.desc().nullslast(),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return result.all()
+
     # ============== list_groups ==============
 
     async def list_groups(self) -> list[dict[str, Any]]:
@@ -186,6 +272,40 @@ class ShareholderGroupService:
                 }
             )
         return items
+
+    # ============== get_group ==============
+
+    async def get_group(self, group_id: int) -> dict[str, Any]:
+        """查询单个监控组详情（含规则数、关键词、匹配股数）。
+
+        与 ``list_groups`` 单项同结构，供详情页 / 编辑页按 id 独立加载。
+
+        Args:
+            group_id: 监控组ID
+
+        Returns:
+            GroupListItem 字典（snake_case，由路由层 to_camel 输出）
+
+        Raises:
+            LookupError: 分组不存在（由 repo.get_by_id_with_rules 抛出）
+        """
+        group = await self.repo.get_by_id_with_rules(group_id)
+
+        keywords = [rule.keyword for rule in group.rules]
+        matched_stock_count = 0
+        if keywords:
+            matched_stock_count = await self._count_matched_stocks(keywords)
+
+        return {
+            "id": group.id,
+            "name": group.name,
+            "description": group.description,
+            "sort_order": group.sort_order,
+            "is_system": bool(group.is_system),
+            "rule_count": len(keywords),
+            "matched_stock_count": matched_stock_count,
+            "keywords": keywords,
+        }
 
     # ============== create_group ==============
 
@@ -336,3 +456,120 @@ class ShareholderGroupService:
         """
         matched = await self._count_matched_stocks(keywords, exclude_group_id)
         return {"matched_stock_count": matched}
+
+    # ============== preview_match_breakdown（plan-01 新增）==============
+
+    async def preview_match_breakdown(
+        self,
+        keywords: list[str],
+        exclude_group_id: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """逐关键词查询匹配的去重股票数（AC-01 / AC-07 后端语义）。
+
+        与 `preview_match` 的差异：返回每个关键词单独匹配的股数，
+        而非所有关键词合并后的去重总数。
+
+        降级（ADR-5）：单个关键词查询失败不抛错到整体，失败 item 返回
+        `matched_stock_count: None`，其他 item 正常。
+
+        安全（架构 §8.3）：
+        - 关键词长度超 200 字符直接返回 None（避免超大 pattern 拖垮 DB）
+        - 关键词经 `_escape_like_keyword` 转义 % 和 _
+
+        Args:
+            keywords: 关键词列表（前端按逗号分隔字符串 split 后传入）
+            exclude_group_id: 预留参数（与 `preview_match` 保持一致占位）
+
+        Returns:
+            {"items": [{"keyword": str, "matched_stock_count": int | None}, ...]}
+            返回字典使用 snake_case（路由层 `_dict_to_camel` 转 camelCase）
+        """
+        items: list[dict[str, Any]] = []
+        period = await self._get_latest_report_period()
+        logger.info(
+            "preview_match_breakdown called, keywords=%d, period=%s",
+            len(keywords),
+            period,
+        )
+
+        for kw in keywords:
+            clean = (kw or "").strip()
+            if not clean:
+                # 空 kw 不返回 item（前端按索引映射会跳过空行）
+                continue
+            if len(clean) > 200:
+                logger.error(
+                    "preview_match_breakdown keyword too long, skip: %s",
+                    clean[:50],
+                )
+                items.append({"keyword": kw, "matched_stock_count": None})
+                continue
+            if period is None:
+                items.append({"keyword": kw, "matched_stock_count": 0})
+                continue
+            try:
+                cnt = await self._count_matched_stocks_single(clean, period)
+                items.append({"keyword": kw, "matched_stock_count": cnt})
+            except Exception as e:  # noqa: BLE001 — ADR-5 单关键词失败降级
+                logger.exception(
+                    "preview_match_breakdown single kw failed: %s", e
+                )
+                items.append({"keyword": kw, "matched_stock_count": None})
+        return {"items": items}
+
+    # ============== list_keyword_matches（plan-01 新增）==============
+
+    async def list_keyword_matches(
+        self,
+        keyword: str,
+        page: int,
+        page_size: int,
+        exclude_group_id: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """查询单个关键词匹配的明细列表（AC-03 ~ AC-05）。
+
+        全量查询后 Python 层分页（架构 §6.2）；total 用 `len(rows)` 与列表
+        行数口径一致（同股票多股东按分行计入）。
+
+        Args:
+            keyword: 单关键词（路由层保证已 strip 非空）
+            page: 页码（1-based，路由层保证 ≥ 1）
+            page_size: 每页条数（路由层保证 1 ≤ page_size ≤ 100）
+            exclude_group_id: 预留参数（与 `preview_match_breakdown` 一致占位）
+
+        Returns:
+            {
+                "items": [{"symbol": str, "stock_name": str | None, "holder_name": str}, ...],
+                "total": int,
+                "page": int,
+                "page_size": int,
+            }
+            返回字典使用 snake_case（路由层 `_dict_to_camel` 转 camelCase）
+        """
+        period = await self._get_latest_report_period()
+        if period is None:
+            return {
+                "items": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+            }
+
+        rows = await self._get_keyword_matches(keyword, period)
+        total = len(rows)
+        offset = (page - 1) * page_size
+        page_rows = rows[offset : offset + page_size]
+        items = [
+            {
+                "symbol": r.symbol,
+                "stock_name": r.stock_name,
+                "holder_name": r.holder_name,
+            }
+            for r in page_rows
+        ]
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }

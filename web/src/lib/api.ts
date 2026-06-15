@@ -607,6 +607,9 @@ export const adminApi = {
   // 后端 ApiResponse 包 { success, data, message }，AdminApiClient.request 已提取 data 字段
   getShareholderGroups: () =>
     adminApiClient.get<Array<ShareholderGroupListItem>>('/admin/shareholder-groups'),
+  // 单条详情（编辑页按 id 独立加载，URL 可刷新/可分享）
+  getShareholderGroup: (id: number) =>
+    adminApiClient.get<ShareholderGroupListItem>(`/admin/shareholder-groups/${id}`),
   createShareholderGroup: (data: { name: string; description?: string; keywords: string[] }) =>
     adminApiClient.post<ShareholderGroupListItem>('/admin/shareholder-groups', data),
   updateShareholderGroup: (
@@ -624,6 +627,42 @@ export const adminApi = {
     return adminApiClient.get<{ matchedStockCount: number }>(
       `/admin/shareholder-groups/preview?${search}`
     )
+  },
+  // 逐关键词股数（plan-01 / plan-02）
+  // 后端 ApiResponse 包 { success, data, message }，data.items[].matchedStockCount: number | null
+  previewShareholderGroupMatchBreakdown: (
+    keywords: string[],
+    excludeGroupId?: number
+  ) => {
+    const params: Record<string, string> = {
+      keywords: keywords.join(','),
+    }
+    if (excludeGroupId) params['exclude_group_id'] = String(excludeGroupId)
+    // 与现有 previewShareholderGroupMatch 一致风格：手动 URLSearchParams 拼 endpoint，
+    // 便于 E2E mock 用 pathname + search 精确匹配。
+    // query 参数用 snake_case（exclude_group_id），不经 Pydantic alias 转换
+    const search = new URLSearchParams(params).toString()
+    return adminApiClient.get<{
+      items: Array<{ keyword: string; matchedStockCount: number | null }>
+    }>(`/admin/shareholder-groups/preview-breakdown?${search}`)
+  },
+  // 关键词匹配明细（plan-01 / plan-02）
+  // 注意：query 参数 snake_case（page_size / exclude_group_id），response 才 camelCase
+  listShareholderGroupKeywordMatches: (
+    keyword: string,
+    params: { page?: number; pageSize?: number; excludeGroupId?: number }
+  ) => {
+    const query: Record<string, string> = { keyword }
+    if (params.page) query['page'] = String(params.page)
+    if (params.pageSize) query['page_size'] = String(params.pageSize)
+    if (params.excludeGroupId) query['exclude_group_id'] = String(params.excludeGroupId)
+    const search = new URLSearchParams(query).toString()
+    return adminApiClient.get<{
+      items: Array<{ symbol: string; stockName: string | null; holderName: string }>
+      total: number
+      page: number
+      pageSize: number
+    }>(`/admin/shareholder-groups/keyword-matches?${search}`)
   },
 }
 
