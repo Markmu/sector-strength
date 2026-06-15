@@ -30,47 +30,53 @@ class JobManager:
 
     def _register_jobs(self):
         """注册所有定时任务"""
-        # 每个工作日 15:30 执行数据更新
-        self.scheduler.add_job(
-            self._daily_data_update,
-            trigger=CronTrigger(
-                day_of_week='mon-fri',
-                hour=15,
-                minute=30
-            ),
-            id='daily_data_update',
-            name='每日数据更新',
-            replace_existing=True
-        )
+        # ============================================================
+        # ⏸ 暂停注册：所有定时任务暂时停用，调度器仍会启动但不绑定任何 job。
+        # 需要恢复时，把下方对应 add_job 块的注释去掉即可。
+        # （2026-06-15 暂停，原因：开发期间避免后台任务自动执行）
+        # ============================================================
 
-        # 每小时检查数据质量
-        self.scheduler.add_job(
-            self._check_data_quality,
-            trigger=IntervalTrigger(hours=1),
-            id='data_quality_check',
-            name='数据质量检查',
-            replace_existing=True
-        )
+        # # 每个工作日 15:30 执行数据更新
+        # self.scheduler.add_job(
+        #     self._daily_data_update,
+        #     trigger=CronTrigger(
+        #         day_of_week='mon-fri',
+        #         hour=15,
+        #         minute=30
+        #     ),
+        #     id='daily_data_update',
+        #     name='每日数据更新',
+        #     replace_existing=True
+        # )
 
-        # 每小时清理过期缓存
-        self.scheduler.add_job(
-            self._cleanup_cache,
-            trigger=IntervalTrigger(hours=1),
-            id='cache_cleanup',
-            name='缓存清理',
-            replace_existing=True
-        )
+        # # 每小时检查数据质量
+        # self.scheduler.add_job(
+        #     self._check_data_quality,
+        #     trigger=IntervalTrigger(hours=1),
+        #     id='data_quality_check',
+        #     name='数据质量检查',
+        #     replace_existing=True
+        # )
 
-        # 每日 16:00 执行板块分类更新
-        self.scheduler.add_job(
-            self._daily_sector_classification_update,
-            trigger=CronTrigger(hour=16, minute=0),
-            id='daily_sector_classification',
-            name='板块分类每日更新',
-            replace_existing=True,
-            max_instances=1,  # 防止并发执行
-            misfire_grace_time=3600  # 错过执行时间后1小时内仍可执行
-        )
+        # # 每小时清理过期缓存
+        # self.scheduler.add_job(
+        #     self._cleanup_cache,
+        #     trigger=IntervalTrigger(hours=1),
+        #     id='cache_cleanup',
+        #     name='缓存清理',
+        #     replace_existing=True
+        # )
+
+        # # 每日 16:00 执行板块分类更新
+        # self.scheduler.add_job(
+        #     self._daily_sector_classification_update,
+        #     trigger=CronTrigger(hour=16, minute=0),
+        #     id='daily_sector_classification',
+        #     name='板块分类每日更新',
+        #     replace_existing=True,
+        #     max_instances=1,  # 防止并发执行
+        #     misfire_grace_time=3600  # 错过执行时间后1小时内仍可执行
+        # )
 
     async def _daily_data_update(self):
         """每日数据更新任务"""
