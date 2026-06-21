@@ -14,7 +14,7 @@ Decimal → float 由 service 层显式转换（避免前端拿到字符串）�
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,13 +122,32 @@ class HoldingsData(BaseModel):
     total: int = Field(..., description="符合条件的总记录数")
 
 
+class HolderSearchItem(BaseModel):
+    """股东搜索结果项（单股东维度入口）"""
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    holder_name: str = Field(..., description="股东名称(精确，选中后作为查询条件)")
+
+
+class HolderSearchData(BaseModel):
+    """股东搜索响应"""
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    holders: List[HolderSearchItem] = Field(
+        default_factory=list, description="股东名称列表(全库去重)"
+    )
+    total: int = Field(..., description="去重后总数")
+
+
 # ============== Helpers ==============
 
 
-def _parse_group_ids(group_ids: str) -> List[int]:
-    """解析逗号分隔的 group_ids 字符串为 int 列表。"""
+def _parse_group_ids(group_ids: Optional[str]) -> List[int]:
+    """解析逗号分隔的 group_ids 字符串为 int 列表；None/空串返回 []。"""
+    if not group_ids:
+        return []
     result: List[int] = []
-    for piece in str(group_ids).split(","):
+    for piece in group_ids.split(","):
         piece = piece.strip()
         if not piece:
             continue
@@ -137,6 +156,23 @@ def _parse_group_ids(group_ids: str) -> List[int]:
         except ValueError:
             continue
     return result
+
+
+def _require_holder_filter(
+    group_ids: Optional[str], holder_name: Optional[str]
+) -> None:
+    """校验 group_ids 与 holder_name 至少一个非空，否则抛 400。
+
+    summary / industry-distribution / holdings 三端点共用：单股东维度
+    （holder_name）与监控组维度（group_ids）二选一，不可同时为空。
+    """
+    has_group = bool(group_ids and group_ids.strip())
+    has_holder = bool(holder_name and holder_name.strip())
+    if not has_group and not has_holder:
+        raise HTTPException(
+            status_code=400,
+            detail="group_ids 与 holder_name 至少需要传一个",
+        )
 
 
 def _to_camel_dict(d: dict) -> dict:
@@ -172,16 +208,18 @@ async def get_overview(
 
 @router.get("/summary", response_model=ApiResponse[SummaryResponse])
 async def get_summary(
-    group_ids: str = Query(..., description="监控组ID列表(逗号分隔)"),
+    group_ids: Optional[str] = Query(None, description="监控组ID列表(逗号分隔，与 holder_name 二选一)"),
     report_period: Optional[str] = Query(None, description="报告期(YYYY-MM-DD)"),
     industry: Optional[str] = Query(None, description="行业筛选"),
     change_direction: Optional[str] = Query(
         None, description="变动方向筛选: increase/decrease/new/unchanged/exit"
     ),
+    holder_name: Optional[str] = Query(None, description="单股东精确名称(与 group_ids 二选一)"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """汇总统计 + 变动趋势（trend 不受 change_direction 筛选影响）。"""
+    _require_holder_filter(group_ids, holder_name)
     gid_list = _parse_group_ids(group_ids)
     service = ShareholderAnalysisService(session)
     data = await service.get_summary(
@@ -189,6 +227,7 @@ async def get_summary(
         report_period=report_period,
         industry=industry,
         change_direction=change_direction,
+        holder_name=holder_name,
     )
     return {"success": True, "data": _to_camel_dict(data)}
 
@@ -197,7 +236,7 @@ async def get_summary(
     "/industry-distribution", response_model=ApiResponse[IndustryDistributionData]
 )
 async def get_industry_distribution(
-    group_ids: str = Query(..., description="监控组ID列表(逗号分隔)"),
+    group_ids: Optional[str] = Query(None, description="监控组ID列表(逗号分隔，与 holder_name 二选一)"),
     report_period: Optional[str] = Query(None, description="报告期(YYYY-MM-DD)"),
     industry: Optional[str] = Query(
         None, description="行业筛选(本接口不生效，行业分布自身是筛选数据源)"
@@ -205,34 +244,39 @@ async def get_industry_distribution(
     change_direction: Optional[str] = Query(
         None, description="变动方向筛选: increase/decrease/new/unchanged/exit"
     ),
+    holder_name: Optional[str] = Query(None, description="单股东精确名称(与 group_ids 二选一)"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """行业分布（不受 industry 筛选影响，受 change_direction 筛选影响）。"""
+    _require_holder_filter(group_ids, holder_name)
     gid_list = _parse_group_ids(group_ids)
     service = ShareholderAnalysisService(session)
     data = await service.get_industry_distribution(
         group_ids=gid_list,
         report_period=report_period,
         change_direction=change_direction,
+        holder_name=holder_name,
     )
     return {"success": True, "data": _to_camel_dict(data)}
 
 
 @router.get("/holdings", response_model=ApiResponse[HoldingsData])
 async def get_holdings(
-    group_ids: str = Query(..., description="监控组ID列表(逗号分隔)"),
+    group_ids: Optional[str] = Query(None, description="监控组ID列表(逗号分隔，与 holder_name 二选一)"),
     report_period: Optional[str] = Query(None, description="报告期(YYYY-MM-DD)"),
     industry: Optional[str] = Query(None, description="行业筛选"),
     change_direction: Optional[str] = Query(
         None, description="变动方向筛选: increase/decrease/new/unchanged/exit"
     ),
+    holder_name: Optional[str] = Query(None, description="单股东精确名称(与 group_ids 二选一)"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=200, description="每页数量"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """分页持仓列表（退出股票展示上期 total_hold_amount / total_hold_float_ratio）。"""
+    _require_holder_filter(group_ids, holder_name)
     gid_list = _parse_group_ids(group_ids)
     service = ShareholderAnalysisService(session)
     data = await service.get_holdings(
@@ -240,7 +284,28 @@ async def get_holdings(
         report_period=report_period,
         industry=industry,
         change_direction=change_direction,
+        holder_name=holder_name,
         page=page,
         page_size=page_size,
+    )
+    return {"success": True, "data": _to_camel_dict(data)}
+
+
+@router.get("/holders/search", response_model=ApiResponse[HolderSearchData])
+async def search_holders(
+    keyword: str = Query(..., min_length=1, description="股东名称关键词(LIKE 模糊匹配，全库去重)"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """按股东名称模糊搜索（全库所有报告期 DISTINCT holder_name，分页）。
+
+    单股东持仓查询的搜索入口：选中 holder_name 后用 summary / industry-distribution /
+    holdings 端点（holder_name 参数）查询该股东的聚合统计。
+    """
+    service = ShareholderAnalysisService(session)
+    data = await service.search_holders(
+        keyword=keyword, page=page, page_size=page_size
     )
     return {"success": True, "data": _to_camel_dict(data)}

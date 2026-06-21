@@ -159,13 +159,21 @@ class ShareholderAnalysisService:
         return keywords
 
     async def _match_holdings(
-        self, group_ids: list[int], report_period: date
+        self,
+        group_ids: list[int],
+        report_period: date,
+        holder_name: Optional[str] = None,
     ) -> dict:
-        """按多组关键词并集 LIKE 匹配，按 (symbol, holder_name) 去重后按 symbol 聚合。
+        """按过滤条件匹配明细，按 (symbol, holder_name) 去重后按 symbol 聚合。
+
+        两种过滤入口（二选一，holder_name 优先）：
+        - holder_name 非空：单股东精确匹配（holder_name == holder_name）
+        - 否则：按 group_ids 的关键词并集 LIKE 匹配（监控组维度）
 
         Args:
-            group_ids: 监控组 ID 列表
+            group_ids: 监控组 ID 列表（holder_name 非空时忽略）
             report_period: 报告期（date 对象）
+            holder_name: 单股东精确名称（与 group_ids 互斥，单股东持仓查询入口）
 
         Returns:
             {
@@ -177,16 +185,20 @@ class ShareholderAnalysisService:
                 }
             }
         """
-        keywords = await self._get_group_keywords(group_ids)
-        if not keywords:
-            return {}
-
-        like_conditions = [
-            Top10FloatHolder.holder_name.like(
-                f"%{_escape_like_keyword(kw)}%", escape="\\"
-            )
-            for kw in keywords
-        ]
+        # 构造 holder_name 过滤条件：单股东精确匹配 vs 监控组关键词 LIKE 并集
+        if holder_name is not None:
+            name_filter = Top10FloatHolder.holder_name == holder_name
+        else:
+            keywords = await self._get_group_keywords(group_ids)
+            if not keywords:
+                return {}
+            like_conditions = [
+                Top10FloatHolder.holder_name.like(
+                    f"%{_escape_like_keyword(kw)}%", escape="\\"
+                )
+                for kw in keywords
+            ]
+            name_filter = or_(*like_conditions)
 
         # 先取原始明细，按 (symbol, holder_name) 去重（同一股东匹配多组关键词时避免重复）
         # DISTINCT ON (symbol, holder_name) + ORDER BY ... ann_date DESC NULLS LAST：
@@ -207,7 +219,7 @@ class ShareholderAnalysisService:
             .where(
                 and_(
                     Top10FloatHolder.report_period == report_period,
-                    or_(*like_conditions),
+                    name_filter,
                 )
             )
             .order_by(
@@ -434,10 +446,12 @@ class ShareholderAnalysisService:
         prev_date: Optional[date],
         has_prev_period: bool,
         exit_requested: bool,
+        holder_name: Optional[str] = None,
     ) -> dict:
         """汇总匹配 + 变动方向计算，返回统一的中间结构。
 
         被 get_summary / get_industry_distribution / get_holdings 复用。
+        holder_name 非空时切换为单股东精确匹配维度（透传给 _match_holdings）。
 
         Returns:
             {
@@ -449,7 +463,9 @@ class ShareholderAnalysisService:
                 "has_prev_period": bool,
             }
         """
-        current_holdings = await self._match_holdings(group_ids, current_date)
+        current_holdings = await self._match_holdings(
+            group_ids, current_date, holder_name=holder_name
+        )
 
         if not has_prev_period or prev_date is None:
             return {
@@ -461,7 +477,9 @@ class ShareholderAnalysisService:
                 "has_prev_period": False,
             }
 
-        prev_holdings = await self._match_holdings(group_ids, prev_date)
+        prev_holdings = await self._match_holdings(
+            group_ids, prev_date, holder_name=holder_name
+        )
         directions, exit_symbols = self._compute_change_directions(
             current_holdings, prev_holdings
         )
@@ -487,6 +505,7 @@ class ShareholderAnalysisService:
         report_period: str,
         industry: Optional[str] = None,
         change_direction: Optional[str] = None,
+        holder_name: Optional[str] = None,
     ) -> dict:
         """汇总统计 + 变动趋势（AC-02 / AC-03 / AC-04 / AC-05 / AC-11）。
 
@@ -523,6 +542,7 @@ class ShareholderAnalysisService:
             prev_date=prev_date,
             has_prev_period=has_prev_period,
             exit_requested=exit_requested,
+            holder_name=holder_name,
         )
 
         current_holdings = agg["current_holdings"]
@@ -637,6 +657,7 @@ class ShareholderAnalysisService:
         group_ids: list[int],
         report_period: str,
         change_direction: Optional[str] = None,
+        holder_name: Optional[str] = None,
     ) -> dict:
         """行业分布（AC-02 / AC-05）。
 
@@ -662,6 +683,7 @@ class ShareholderAnalysisService:
             prev_date=prev_date,
             has_prev_period=has_prev_period,
             exit_requested=exit_requested,
+            holder_name=holder_name,
         )
 
         current_holdings = agg["current_holdings"]
@@ -743,6 +765,7 @@ class ShareholderAnalysisService:
         report_period: str,
         industry: Optional[str] = None,
         change_direction: Optional[str] = None,
+        holder_name: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict:
@@ -768,6 +791,7 @@ class ShareholderAnalysisService:
             prev_date=prev_date,
             has_prev_period=has_prev_period,
             exit_requested=exit_requested,
+            holder_name=holder_name,
         )
 
         current_holdings = agg["current_holdings"]
@@ -827,3 +851,52 @@ class ShareholderAnalysisService:
         page_rows = rows[start:end]
 
         return {"holdings": page_rows, "total": total}
+
+    async def search_holders(
+        self,
+        keyword: str,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        """按 holder_name 模糊搜索股东（全库所有报告期去重）。
+
+        单股东持仓查询的搜索入口：返回 DISTINCT holder_name 列表（分页），
+        选中后用精确 holder_name 调 get_summary / get_holdings 等（holder_name 维度）。
+
+        Args:
+            keyword: 搜索关键词（LIKE %keyword%，% 和 _ 已转义）
+            page: 页码，从 1 开始
+            page_size: 每页数量
+
+        Returns:
+            {"holders": [{"holder_name": str}], "total": int}
+        """
+        escaped = f"%{_escape_like_keyword(keyword)}%"
+        name_not_null = Top10FloatHolder.holder_name.isnot(None)
+        like_cond = Top10FloatHolder.holder_name.like(escaped, escape="\\")
+
+        # total：DISTINCT holder_name 的总数
+        distinct_subq = (
+            select(Top10FloatHolder.holder_name)
+            .distinct()
+            .where(and_(name_not_null, like_cond))
+        ).subquery()
+        total = (
+            await self.session.execute(
+                select(func.count()).select_from(distinct_subq)
+            )
+        ).scalar_one()
+
+        # 分页列表（按 holder_name 升序）
+        list_stmt = (
+            select(Top10FloatHolder.holder_name)
+            .distinct()
+            .where(and_(name_not_null, like_cond))
+            .order_by(Top10FloatHolder.holder_name)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        result = await self.session.execute(list_stmt)
+        holders = [{"holder_name": name} for (name,) in result.all() if name]
+
+        return {"holders": holders, "total": total}

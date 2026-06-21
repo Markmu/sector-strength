@@ -26,20 +26,23 @@ const SWR_OPTIONS = {
 } as const
 
 export interface UseShareholderSummaryParams {
-  group_ids: string
+  group_ids?: string
+  holder_name?: string
   report_period: string
   industry?: string
   change_direction?: string
 }
 
 export interface UseShareholderIndustryDistributionParams {
-  group_ids: string
+  group_ids?: string
+  holder_name?: string
   report_period: string
   change_direction?: string
 }
 
 export interface UseShareholderHoldingsParams {
-  group_ids: string
+  group_ids?: string
+  holder_name?: string
   report_period: string
   industry?: string
   change_direction?: string

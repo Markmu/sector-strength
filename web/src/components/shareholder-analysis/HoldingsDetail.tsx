@@ -33,7 +33,8 @@ import HoldingsTable, {
 const DEFAULT_PAGE_SIZE = 20
 
 export interface HoldingsDetailProps {
-  groupIds: number[]
+  groupIds?: number[]
+  holderName?: string
   reportPeriod: string
   hasPrevPeriod: boolean
 }
@@ -56,6 +57,7 @@ function formatRatio(ratio: number): string {
 
 export default function HoldingsDetail({
   groupIds,
+  holderName,
   reportPeriod,
   hasPrevPeriod,
 }: HoldingsDetailProps) {
@@ -65,40 +67,65 @@ export default function HoldingsDetail({
   )
   const [page, setPage] = useState(1)
 
-  const groupIdsStr = useMemo(() => groupIds.join(','), [groupIds])
+  const groupIdsStr = useMemo(() => groupIds?.join(',') ?? '', [groupIds])
 
-  // summary params（受 industry + changeDirection 影响）
+  // summary params（受 industry + changeDirection 影响；holder_name 维度优先于 group_ids）
   const summaryParams: UseShareholderSummaryParams | null = useMemo(
-    () => ({
-      group_ids: groupIdsStr,
-      report_period: reportPeriod,
-      industry,
-      change_direction: changeDirection,
-    }),
-    [groupIdsStr, reportPeriod, industry, changeDirection]
+    () =>
+      holderName
+        ? {
+            holder_name: holderName,
+            report_period: reportPeriod,
+            industry,
+            change_direction: changeDirection,
+          }
+        : {
+            group_ids: groupIdsStr,
+            report_period: reportPeriod,
+            industry,
+            change_direction: changeDirection,
+          },
+    [holderName, groupIdsStr, reportPeriod, industry, changeDirection]
   )
 
   // industry-distribution params（仅受 changeDirection 影响）
   const distParams: UseShareholderIndustryDistributionParams | null = useMemo(
-    () => ({
-      group_ids: groupIdsStr,
-      report_period: reportPeriod,
-      change_direction: changeDirection,
-    }),
-    [groupIdsStr, reportPeriod, changeDirection]
+    () =>
+      holderName
+        ? {
+            holder_name: holderName,
+            report_period: reportPeriod,
+            change_direction: changeDirection,
+          }
+        : {
+            group_ids: groupIdsStr,
+            report_period: reportPeriod,
+            change_direction: changeDirection,
+          },
+    [holderName, groupIdsStr, reportPeriod, changeDirection]
   )
 
   // holdings params（受 industry + changeDirection + page 影响）
   const holdingsParams: UseShareholderHoldingsParams | null = useMemo(
-    () => ({
-      group_ids: groupIdsStr,
-      report_period: reportPeriod,
-      industry,
-      change_direction: changeDirection,
-      page,
-      pageSize: DEFAULT_PAGE_SIZE,
-    }),
-    [groupIdsStr, reportPeriod, industry, changeDirection, page]
+    () =>
+      holderName
+        ? {
+            holder_name: holderName,
+            report_period: reportPeriod,
+            industry,
+            change_direction: changeDirection,
+            page,
+            pageSize: DEFAULT_PAGE_SIZE,
+          }
+        : {
+            group_ids: groupIdsStr,
+            report_period: reportPeriod,
+            industry,
+            change_direction: changeDirection,
+            page,
+            pageSize: DEFAULT_PAGE_SIZE,
+          },
+    [holderName, groupIdsStr, reportPeriod, industry, changeDirection, page]
   )
 
   const { summary: summaryData, isLoading: summaryLoading, isError: summaryError } =

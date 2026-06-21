@@ -1184,3 +1184,269 @@ class TestNullAnnDateBoundary:
         assert resp.status_code == 200
         symbols = [h["symbol"] for h in resp.json()["data"]["holdings"]]
         assert "688999" in symbols
+
+
+# ============== Test: GET /holders/search — 股东搜索（单股东查询入口）==============
+
+
+class TestHolderSearch:
+    """股东搜索端点测试（单股东持仓查询的搜索入口）。"""
+
+    @pytest.mark.asyncio
+    async def test_search_returns_200_and_structure(self, auth_client, full_dataset):
+        """搜索返回 200 + holders 数组 + total，每项含 holderName。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holders/search",
+            params={"keyword": "中央汇金"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert "holders" in data
+        assert "total" in data
+        assert data["total"] >= 1
+        assert "holderName" in data["holders"][0]
+
+    @pytest.mark.asyncio
+    async def test_search_fuzzy_match_multiple(self, auth_client, full_dataset):
+        """搜「中央汇金」命中 2 个不同股东（投资 / 资产管理）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holders/search",
+            params={"keyword": "中央汇金"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        names = {h["holderName"] for h in data["holders"]}
+        assert "中央汇金投资有限责任公司" in names
+        assert "中央汇金资产管理有限责任公司" in names
+        assert data["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_search_distinct_across_periods(self, auth_client, full_dataset):
+        """同一股东跨报告期/多股票只返回一次（DISTINCT holder_name）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holders/search",
+            params={"keyword": "中央汇金投资"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        # 「中央汇金投资有限责任公司」在两期、多只股票出现，DISTINCT 后仅 1 条
+        assert data["total"] == 1
+        assert data["holders"][0]["holderName"] == "中央汇金投资有限责任公司"
+
+    @pytest.mark.asyncio
+    async def test_search_pagination(self, auth_client, full_dataset):
+        """分页 page/page_size 生效，total 不变。"""
+        resp_p1 = await auth_client.get(
+            "/api/v1/shareholder-analysis/holders/search",
+            params={"keyword": "中央汇金", "page": 1, "page_size": 1},
+        )
+        resp_p2 = await auth_client.get(
+            "/api/v1/shareholder-analysis/holders/search",
+            params={"keyword": "中央汇金", "page": 2, "page_size": 1},
+        )
+        assert resp_p1.status_code == 200
+        assert resp_p2.status_code == 200
+        d1 = resp_p1.json()["data"]
+        d2 = resp_p2.json()["data"]
+        assert d1["total"] == 2
+        assert len(d1["holders"]) == 1
+        assert len(d2["holders"]) == 1
+        # 两页应是不同股东
+        assert d1["holders"][0]["holderName"] != d2["holders"][0]["holderName"]
+
+    @pytest.mark.asyncio
+    async def test_search_escapes_wildcards(self, auth_client, full_dataset):
+        """keyword 中的 _ 被转义为字面量（不当作通配符）。"""
+        # 库中无字面下划线「中央汇金_投资」，转义后 total=0；
+        # 若未转义，_ 匹配任意单字符会命中「中央汇金投资...」
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holders/search",
+            params={"keyword": "中央汇金_投资"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["total"] == 0
+
+    @pytest.mark.asyncio
+    async def test_search_requires_keyword(self, auth_client, full_dataset):
+        """缺 keyword → 422（Query required + min_length=1）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holders/search"
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_search_requires_auth(self, client):
+        """未认证返回 401。"""
+        resp = await client.get(
+            "/api/v1/shareholder-analysis/holders/search",
+            params={"keyword": "中央汇金"},
+        )
+        assert resp.status_code == 401
+
+
+# ============== Test: holder_name 维度聚合（单股东持仓查询）==============
+
+
+class TestHolderNameAggregation:
+    """summary / industry-distribution / holdings 传 holder_name 的单股东聚合。
+
+    样本：「中央汇金投资有限责任公司」
+      现期 2024-12-31：600519(1000) / 601318(200) / 601398(200)
+      上期 2024-09-30：600519(800) / 600000(600)  ← 600000 现期退出
+    注意：000858 属于另一股东「中央汇金资产管理有限责任公司」，精确匹配不应混入。
+    """
+
+    @pytest.mark.asyncio
+    async def test_holdings_by_holder_name_count(self, auth_client, full_dataset):
+        """holder_name 维度 holdings（默认不含 exit）：current 3 只。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={
+                "holder_name": "中央汇金投资有限责任公司",
+                "report_period": "2024-12-31",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["total"] == 3
+        symbols = {h["symbol"] for h in data["holdings"]}
+        assert symbols == {"600519", "601318", "601398"}
+
+    @pytest.mark.asyncio
+    async def test_holdings_by_holder_name_exit(self, auth_client, full_dataset):
+        """holder_name + change_direction=exit 返回退出股票 600000（展示上期数据）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={
+                "holder_name": "中央汇金投资有限责任公司",
+                "report_period": "2024-12-31",
+                "change_direction": "exit",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["total"] == 1
+        h = data["holdings"][0]
+        assert h["symbol"] == "600000"
+        assert h["changeDirection"] == "exit"
+        # 退出股票展示上期 totalHoldAmount / totalHoldFloatRatio
+        assert h["totalHoldAmount"] == 600.0
+        assert h["totalHoldFloatRatio"] == 0.05
+
+    @pytest.mark.asyncio
+    async def test_holdings_by_holder_name_excludes_other_holder(
+        self, auth_client, full_dataset
+    ):
+        """精确匹配不混入同名前缀的另一股东（000858 属「资产管理」）。"""
+        resp_holder = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={
+                "holder_name": "中央汇金投资有限责任公司",
+                "report_period": "2024-12-31",
+            },
+        )
+        resp_group = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={"group_ids": "1", "report_period": "2024-12-31"},
+        )
+        assert resp_holder.status_code == 200
+        assert resp_group.status_code == 200
+        holder_symbols = {
+            h["symbol"] for h in resp_holder.json()["data"]["holdings"]
+        }
+        group_symbols = {h["symbol"] for h in resp_group.json()["data"]["holdings"]}
+        # holder_name 维度不含 000858；group 维度（关键词「中央汇金」）含 000858
+        assert "000858" not in holder_symbols
+        assert "000858" in group_symbols
+
+    @pytest.mark.asyncio
+    async def test_summary_by_holder_name_stock_count(
+        self, auth_client, full_dataset
+    ):
+        """holder_name 维度 summary：stockCount=3（默认不含 exit，与 group 维度口径一致）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/summary",
+            params={
+                "holder_name": "中央汇金投资有限责任公司",
+                "report_period": "2024-12-31",
+            },
+        )
+        assert resp.status_code == 200
+        summary = resp.json()["data"]["summary"]
+        assert summary["stockCount"] == 3
+
+    @pytest.mark.asyncio
+    async def test_summary_by_holder_name_trend(self, auth_client, full_dataset):
+        """holder_name 维度 trend：increase=1 / new=2 / exit=1 / decrease=0。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/summary",
+            params={
+                "holder_name": "中央汇金投资有限责任公司",
+                "report_period": "2024-12-31",
+            },
+        )
+        assert resp.status_code == 200
+        trend = resp.json()["data"]["trend"]
+        assert trend["increaseCount"] == 1  # 600519 800→1000
+        assert trend["newCount"] == 2        # 601318 / 601398 无→有
+        assert trend["exitCount"] == 1       # 600000 现期退出
+        assert trend["decreaseCount"] == 0   # 该股东无减持
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_by_holder_name(
+        self, auth_client, full_dataset
+    ):
+        """holder_name 维度行业分布（默认不含 exit）：白酒1 / 保险1 / 银行1。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/industry-distribution",
+            params={
+                "holder_name": "中央汇金投资有限责任公司",
+                "report_period": "2024-12-31",
+            },
+        )
+        assert resp.status_code == 200
+        dist = resp.json()["data"]["distribution"]
+        by_industry = {d["industry"]: d["stockCount"] for d in dist}
+        assert by_industry.get("白酒") == 1   # 600519
+        assert by_industry.get("保险") == 1   # 601318
+        assert by_industry.get("银行") == 1   # 601398（600000 exit 默认不计入）
+
+    @pytest.mark.asyncio
+    async def test_holder_name_takes_precedence_over_group_ids(
+        self, auth_client, full_dataset
+    ):
+        """同时传 group_ids + holder_name 时，holder_name 优先（精确匹配生效）。"""
+        resp = await auth_client.get(
+            "/api/v1/shareholder-analysis/holdings",
+            params={
+                "group_ids": "2",  # 外资投行「高盛」
+                "holder_name": "中央汇金投资有限责任公司",
+                "report_period": "2024-12-31",
+            },
+        )
+        assert resp.status_code == 200
+        symbols = {h["symbol"] for h in resp.json()["data"]["holdings"]}
+        # holder_name 优先：结果为中央汇金投资的持仓，不含高盛的 600036
+        assert "600036" not in symbols
+        assert "600519" in symbols
+
+
+# ============== Test: group_ids / holder_name 互斥校验 ==============
+
+
+class TestHolderFilterValidation:
+    """group_ids 与 holder_name 至少传一个，否则 400。"""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "endpoint", ["summary", "industry-distribution", "holdings"]
+    )
+    async def test_no_filter_returns_400(
+        self, auth_client, full_dataset, endpoint
+    ):
+        """三端点都不传 group_ids / holder_name → 400。"""
+        resp = await auth_client.get(
+            f"/api/v1/shareholder-analysis/{endpoint}",
+            params={"report_period": "2024-12-31"},
+        )
+        assert resp.status_code == 400

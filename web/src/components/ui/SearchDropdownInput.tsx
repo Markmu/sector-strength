@@ -30,6 +30,9 @@ interface SearchDropdownInputProps {
   searchDelay?: number
   /** 最小搜索长度，默认 1 */
   minSearchLength?: number
+  /** 自定义展示文本（下拉项主文本 + 选中后输入框）；
+   * 不传则默认「value - label」（适配基金/股票「代码 - 名称」样式） */
+  formatOption?: (option: SearchDropdownOption) => string
   /** 额外 CSS 类名 */
   className?: string
 }
@@ -54,6 +57,7 @@ export default function SearchDropdownInput({
   pageSize = 10,
   searchDelay = 300,
   minSearchLength = 1,
+  formatOption,
   className,
 }: SearchDropdownInputProps) {
   const [keyword, setKeyword] = useState(inputValue ?? '')
@@ -192,11 +196,13 @@ export default function SearchDropdownInput({
 
   // 选中处理
   const handleSelect = useCallback((option: SearchDropdownOption) => {
-    setKeyword(`${option.value} - ${option.label}`)
+    setKeyword(
+      formatOption ? formatOption(option) : `${option.value} - ${option.label}`
+    )
     setIsOpen(false)
     setOptions([])
     onSelect(option)
-  }, [onSelect])
+  }, [onSelect, formatOption])
 
   // 键盘事件：Escape 关闭下拉，回车立即搜索
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -271,9 +277,17 @@ export default function SearchDropdownInput({
                       onClick={() => handleSelect(option)}
                       className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-secondary flex items-center gap-2"
                     >
-                      <span className="font-mono font-medium text-foreground">{option.value}</span>
-                      <span className="text-muted-foreground">-</span>
-                      <span className="text-foreground truncate">{option.label}</span>
+                      {formatOption ? (
+                        <span className="text-foreground truncate">
+                          {formatOption(option)}
+                        </span>
+                      ) : (
+                        <>
+                          <span className="font-mono font-medium text-foreground">{option.value}</span>
+                          <span className="text-muted-foreground">-</span>
+                          <span className="text-foreground truncate">{option.label}</span>
+                        </>
+                      )}
                     </button>
                   </li>
                 ))}

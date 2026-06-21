@@ -880,6 +880,15 @@ export interface ShareholderHoldingsResponse {
   total: number
 }
 
+export interface ShareholderHolderItem {
+  holderName: string
+}
+
+export interface ShareholderHolderSearchResponse {
+  holders: ShareholderHolderItem[]
+  total: number
+}
+
 export const shareholderAnalysisApi = {
   getOverview: (params?: { report_period?: string }) => {
     const query = params?.report_period
@@ -891,15 +900,17 @@ export const shareholderAnalysisApi = {
     }>(`/shareholder-analysis/overview${query}`)
   },
   getSummary: (params: {
-    group_ids: string
+    group_ids?: string
+    holder_name?: string
     report_period: string
     industry?: string
     change_direction?: string
   }) => {
     const query = new URLSearchParams({
-      group_ids: params.group_ids,
       report_period: params.report_period,
     })
+    if (params.group_ids) query.append('group_ids', params.group_ids)
+    if (params.holder_name) query.append('holder_name', params.holder_name)
     if (params.industry) query.append('industry', params.industry)
     if (params.change_direction)
       query.append('change_direction', params.change_direction)
@@ -909,14 +920,16 @@ export const shareholderAnalysisApi = {
     }>(`/shareholder-analysis/summary?${query}`)
   },
   getIndustryDistribution: (params: {
-    group_ids: string
+    group_ids?: string
+    holder_name?: string
     report_period: string
     change_direction?: string
   }) => {
     const query = new URLSearchParams({
-      group_ids: params.group_ids,
       report_period: params.report_period,
     })
+    if (params.group_ids) query.append('group_ids', params.group_ids)
+    if (params.holder_name) query.append('holder_name', params.holder_name)
     if (params.change_direction)
       query.append('change_direction', params.change_direction)
     return apiClient.get<{
@@ -925,7 +938,8 @@ export const shareholderAnalysisApi = {
     }>(`/shareholder-analysis/industry-distribution?${query}`)
   },
   getHoldings: (params: {
-    group_ids: string
+    group_ids?: string
+    holder_name?: string
     report_period: string
     industry?: string
     change_direction?: string
@@ -934,11 +948,12 @@ export const shareholderAnalysisApi = {
   }) => {
     // query key 用 snake_case（后端 Query 参数约定，to_camel 不作用于 query）
     const query = new URLSearchParams({
-      group_ids: params.group_ids,
       report_period: params.report_period,
       page: String(params.page || 1),
       page_size: String(params.pageSize || 20),
     })
+    if (params.group_ids) query.append('group_ids', params.group_ids)
+    if (params.holder_name) query.append('holder_name', params.holder_name)
     if (params.industry) query.append('industry', params.industry)
     if (params.change_direction)
       query.append('change_direction', params.change_direction)
@@ -946,5 +961,20 @@ export const shareholderAnalysisApi = {
       success: boolean
       data: ShareholderHoldingsResponse
     }>(`/shareholder-analysis/holdings?${query}`)
+  },
+  searchHolders: (params: {
+    keyword: string
+    page?: number
+    pageSize?: number
+  }) => {
+    const query = new URLSearchParams({
+      keyword: params.keyword,
+      page: String(params.page || 1),
+      page_size: String(params.pageSize || 20),
+    })
+    return apiClient.get<{
+      success: boolean
+      data: ShareholderHolderSearchResponse
+    }>(`/shareholder-analysis/holders/search?${query}`)
   },
 }

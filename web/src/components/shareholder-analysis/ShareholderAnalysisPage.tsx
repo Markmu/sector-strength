@@ -23,10 +23,15 @@ import { useShareholderOverview } from '@/hooks/useShareholderAnalysis'
 import ReportPeriodSelector from './ReportPeriodSelector'
 import GroupOverviewCards from './GroupOverviewCards'
 import HoldingsDetail from './HoldingsDetail'
+import HolderSearchBar from './HolderSearchBar'
 
 export default function ShareholderAnalysisPage() {
   const [reportPeriod, setReportPeriod] = useState<string | null>(null)
   const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([])
+  // 单股东维度（与监控组互斥：选股东清空监控组，选监控组清空股东）
+  const [selectedHolderName, setSelectedHolderName] = useState<string | null>(
+    null
+  )
 
   // overview（reportPeriod=null 时取后端默认最新期）
   const { overview, isLoading, isError } = useShareholderOverview(
@@ -38,10 +43,23 @@ export default function ShareholderAnalysisPage() {
     reportPeriod ?? overview?.currentPeriod ?? ''
   const hasPrevPeriod = overview?.hasPrevPeriod ?? false
 
-  // 切换报告期 → 清空选中组
+  // 切换报告期 → 清空选中组与股东
   const handlePeriodChange = (period: string) => {
     setReportPeriod(period)
     setSelectedGroupIds([])
+    setSelectedHolderName(null)
+  }
+
+  // 选中股东 → 清空监控组（互斥）
+  const handleHolderSelect = (holderName: string) => {
+    setSelectedHolderName(holderName)
+    setSelectedGroupIds([])
+  }
+
+  // 选中监控组 → 清空股东（互斥）
+  const handleGroupSelect = (groupIds: number[]) => {
+    setSelectedHolderName(null)
+    setSelectedGroupIds(groupIds)
   }
 
   const isEmpty =
@@ -114,16 +132,30 @@ export default function ShareholderAnalysisPage() {
       {/* 主体内容 */}
       {!isLoading && !isError && overview && overview.reportPeriods.length > 0 && (
         <>
+          {/* 股东搜索框（单股东持仓查询入口，与监控组互斥） */}
+          <HolderSearchBar
+            value={selectedHolderName}
+            onHolderSelect={handleHolderSelect}
+            onClear={() => setSelectedHolderName(null)}
+          />
+
           {/* 监控组概览卡片 */}
           <GroupOverviewCards
             groups={overview.groups}
             selectedGroupIds={selectedGroupIds}
-            onGroupSelect={setSelectedGroupIds}
+            onGroupSelect={handleGroupSelect}
             hasPrevPeriod={hasPrevPeriod}
           />
 
-          {/* 持仓详情区 */}
-          {sortedSelectedGroupIds.length > 0 ? (
+          {/* 持仓详情区：单股东维度优先，否则监控组维度 */}
+          {selectedHolderName ? (
+            <HoldingsDetail
+              key={`holder__${effectivePeriod}__${selectedHolderName}`}
+              holderName={selectedHolderName}
+              reportPeriod={effectivePeriod}
+              hasPrevPeriod={hasPrevPeriod}
+            />
+          ) : sortedSelectedGroupIds.length > 0 ? (
             <HoldingsDetail
               key={`${effectivePeriod}__${sortedSelectedGroupIds.join(',')}`}
               groupIds={sortedSelectedGroupIds}
@@ -133,10 +165,10 @@ export default function ShareholderAnalysisPage() {
           ) : (
             <div className="bg-card rounded-xl border border-dashed border-border p-12 text-center">
               <p className="text-base font-medium text-muted-foreground">
-                请选择监控组
+                请选择监控组或搜索股东
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                点击上方任意监控组卡片查看持仓详情
+                点击上方监控组卡片，或在搜索框输入股东名称查看持仓详情
               </p>
             </div>
           )}
