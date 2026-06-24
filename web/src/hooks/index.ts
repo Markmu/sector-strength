@@ -31,6 +31,13 @@ export type {
   UseShareholderHoldingsParams,
 } from './useShareholderAnalysis'
 
+// 导出基金扎堆分析 Hooks（plan-02）
+export {
+  useFundCrowdRankings,
+  useFundCrowdIndustryDistribution,
+} from './useFundCrowdAnalysis'
+export type { UseFundCrowdRankingsParams } from './useFundCrowdAnalysis'
+
 // API 请求 Hook
 export function useApi<T = any>(
   url: string | null,

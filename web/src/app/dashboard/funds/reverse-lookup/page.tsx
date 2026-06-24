@@ -44,6 +44,8 @@ function ReverseLookupContent() {
 
   // 从 URL 解析初始状态
   const symbol = searchParams.get('symbol')?.trim() || ''
+  // plan-03 / AC-05：from=fund-crowd 标识来自扎堆分析页下钻（前端路由层标识，非 API 参数）
+  const fromFundCrowd = searchParams.get('from') === 'fund-crowd'
   const initialFundSearch = searchParams.get('fund_search') || ''
   const initialFundType = searchParams.get('fund_type')?.split(',').filter(Boolean) || []
   const initialMarket = searchParams.get('market')?.split(',').filter(Boolean) || []
@@ -74,6 +76,8 @@ function ReverseLookupContent() {
   }, [fundSearch])
 
   // URL 同步
+  // plan-03 / AC-05：保留 from=fund-crowd 参数，避免筛选/翻页时 router.replace 丢失标识
+  // （否则用户在 04 反查页切换股票/筛选后「返回扎堆分析」入口与差异提示会消失）
   const syncUrl = useCallback((newSymbol: string, newFundSearch: string, newFundType: string[], newMarket: string[], newPage: number) => {
     const params = new URLSearchParams()
     if (newSymbol) params.set('symbol', newSymbol)
@@ -81,9 +85,10 @@ function ReverseLookupContent() {
     if (newFundType.length > 0) params.set('fund_type', newFundType.join(','))
     if (newMarket.length > 0) params.set('market', newMarket.join(','))
     if (newPage > 1) params.set('page', String(newPage))
+    if (fromFundCrowd) params.set('from', 'fund-crowd')
     const qs = params.toString()
     router.replace(`/dashboard/funds/reverse-lookup${qs ? `?${qs}` : ''}`, { scroll: false })
-  }, [router])
+  }, [router, fromFundCrowd])
 
   // 构建 API 参数（全选 = 无筛选）
   const apiParams = useMemo(() => ({
@@ -183,13 +188,25 @@ function ReverseLookupContent() {
         />
         <div className="px-4 py-6 md:px-6 md:py-8">
           <div className="max-w-7xl mx-auto space-y-6">
-            <button
-              onClick={() => router.push('/dashboard/funds')}
-              className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
-            >
-              <ArrowLeftIcon className="w-4 h-4" />
-              返回基金分析
-            </button>
+            {/* plan-03 / AC-05：from=fund-crowd 时显示「返回扎堆分析」+ 差异提示，否则原「返回基金分析」 */}
+            {fromFundCrowd ? (
+              <button
+                onClick={() => router.push('/dashboard/fund-crowd-analysis')}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+                data-testid="back-to-fund-crowd"
+              >
+                <ArrowLeftIcon className="w-4 h-4" />
+                返回扎堆分析
+              </button>
+            ) : (
+              <button
+                onClick={() => router.push('/dashboard/funds')}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+              >
+                <ArrowLeftIcon className="w-4 h-4" />
+                返回基金分析
+              </button>
+            )}
 
             {/* 股票搜索框 */}
             <div className="max-w-md">
@@ -227,13 +244,25 @@ function ReverseLookupContent() {
         />
         <div className="px-4 py-6 md:px-6 md:py-8">
           <div className="max-w-7xl mx-auto space-y-6">
-            <button
-              onClick={() => router.push('/dashboard/funds')}
-              className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
-            >
-              <ArrowLeftIcon className="w-4 h-4" />
-              返回基金分析
-            </button>
+            {/* plan-03 / AC-05：from=fund-crowd 时显示「返回扎堆分析」，否则原「返回基金分析」 */}
+            {fromFundCrowd ? (
+              <button
+                onClick={() => router.push('/dashboard/fund-crowd-analysis')}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+                data-testid="back-to-fund-crowd"
+              >
+                <ArrowLeftIcon className="w-4 h-4" />
+                返回扎堆分析
+              </button>
+            ) : (
+              <button
+                onClick={() => router.push('/dashboard/funds')}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+              >
+                <ArrowLeftIcon className="w-4 h-4" />
+                返回基金分析
+              </button>
+            )}
             <ErrorState
               title="股票代码无效"
               message="请检查股票代码是否正确后重试"
@@ -259,14 +288,36 @@ function ReverseLookupContent() {
 
       <div className="px-4 py-6 md:px-6 md:py-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* 返回链接 */}
-          <button
-            onClick={() => router.push('/dashboard/funds')}
-            className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
-          >
-            <ArrowLeftIcon className="w-4 h-4" />
-            返回基金分析
-          </button>
+          {/* 返回入口：plan-03 / AC-05 from=fund-crowd 时显示「返回扎堆分析」，否则原「返回基金分析」 */}
+          {fromFundCrowd ? (
+            <button
+              onClick={() => router.push('/dashboard/fund-crowd-analysis')}
+              className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+              data-testid="back-to-fund-crowd"
+            >
+              <ArrowLeftIcon className="w-4 h-4" />
+              返回扎堆分析
+            </button>
+          ) : (
+            <button
+              onClick={() => router.push('/dashboard/funds')}
+              className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+            >
+              <ArrowLeftIcon className="w-4 h-4" />
+              返回基金分析
+            </button>
+          )}
+
+          {/* plan-03 / AC-05 双轨下钻口径差异提示：仅 from=fund-crowd 时渲染（ADR-4 + 架构 §7.6 + PRD §3.3） */}
+          {fromFundCrowd && (
+            <div
+              className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800"
+              data-testid="fund-crowd-drilldown-hint"
+              role="note"
+            >
+              扎堆统计计入全部重仓记录，本表按占净值比 ≥1% 展示，个别大基金的边界持仓可能未在下钻列表中显示。
+            </div>
+          )}
 
           {/* 搜索筛选区域 */}
           <div className="bg-card rounded-xl border border-border shadow-sm p-4 space-y-4">

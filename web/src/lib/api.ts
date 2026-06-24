@@ -978,3 +978,82 @@ export const shareholderAnalysisApi = {
     }>(`/shareholder-analysis/holders/search?${query}`)
   },
 }
+
+// ===================== 基金扎堆分析（08 plan-02）=====================
+
+/**
+ * 基金扎堆度分析前端契约（架构 §7.2 / plan-01 §3 #3）。
+ * 字段全部 camelCase（后端 to_camel + _dict_to_camel 转换）；query 参数保持 snake_case。
+ */
+export type CrowdScope = 'active' | 'all'
+
+export interface CrowdRankingItem {
+  stockSymbol: string
+  stockName: string | null
+  industries: string[]
+  fundCount: number
+  totalFloatRatio: number | null
+  fundCountChange: number | null
+  totalFloatRatioChange: number | null
+  /** 三态：true（新进）/ false（正常环比）/ null（hasPrevPeriod=false 时后端统一 null） */
+  isNew: boolean | null
+}
+
+export interface CrowdRankingsResponse {
+  hasData: boolean
+  currentPeriod: string | null
+  prevPeriod: string | null
+  hasPrevPeriod: boolean
+  items: CrowdRankingItem[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface CrowdIndustryItem {
+  industry: string
+  stockCount: number
+  percentage: number
+  totalFloatRatio: number
+}
+
+export interface CrowdIndustryDistributionResponse {
+  hasData: boolean
+  currentPeriod: string | null
+  distribution: CrowdIndustryItem[]
+}
+
+/**
+ * apiClient.baseURL 已含 /api/v1（见上方 API_BASE_WITH_PREFIX，line 8），
+ * endpoint 不再带 /v1，避免双前缀（与 shareholderAnalysisApi / fundsApi 一致）。
+ *
+ * query 参数 snake_case（FastAPI Query 不经 alias 转换，参照 fundsApi.reverseLookup line 415-432）：
+ * pageSize 入参 → 写 query 时必须转 page_size。
+ */
+export const fundCrowdAnalysisApi = {
+  // 扎堆度排行榜（AC-01/02/03/06/07/08）
+  getRankings: (params: {
+    scope: CrowdScope
+    search?: string
+    page?: number
+    pageSize?: number
+  }) =>
+    apiClient.get<{
+      success: boolean
+      data: CrowdRankingsResponse
+    }>('/fund-crowd-analysis/rankings', {
+      scope: params.scope,
+      search: params.search || undefined,
+      page: params.page || 1,
+      page_size: params.pageSize || 20,
+    }),
+
+  // 行业分布（AC-04）
+  getIndustryDistribution: (params: { scope: CrowdScope }) =>
+    apiClient.get<{
+      success: boolean
+      data: CrowdIndustryDistributionResponse
+    }>('/fund-crowd-analysis/industry-distribution', {
+      scope: params.scope,
+    }),
+}

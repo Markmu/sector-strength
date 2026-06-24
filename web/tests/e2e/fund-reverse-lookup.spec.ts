@@ -215,3 +215,66 @@ test.describe('AC-04：反查页', () => {
     })
   })
 })
+
+// ============================================================================
+// plan-03 / AC-05：从扎堆分析下钻（from=fund-crowd）
+// 04 反查页侧 3 个场景：差异提示 + 返回扎堆分析入口 / 04 原生零影响 / 返回跳转
+// 完全复用 04 反查页核心逻辑（ReverseLookupContent + useReverseLookup），
+// 仅新增 `from` query 参数条件渲染分支（plan-03 Task 6）+ syncUrl 保留 from（Task 7）
+// ============================================================================
+
+test.describe('AC-05：从扎堆分析下钻（from=fund-crowd）', () => {
+  test('TC-3.1 from=fund-crowd 时顶部展示差异提示与返回扎堆分析入口', async ({ page }) => {
+    const lookupData = createTestReverseLookup()
+    await mockReverseLookup(page, lookupData)
+    // 带 from=fund-crowd query 进入（plan-03 handleReverseLookup 跳转的目标 URL）
+    await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519&from=fund-crowd`)
+
+    const main = page.locator('main')
+
+    // 断言：差异提示文案可见（ADR-4 双轨下钻契约 + 架构 §7.6 命名预案）
+    await expect(main.getByTestId('fund-crowd-drilldown-hint')).toBeVisible()
+    await expect(main.getByTestId('fund-crowd-drilldown-hint')).toContainText(
+      '扎堆统计计入全部重仓记录'
+    )
+
+    // 断言：「返回扎堆分析」入口可见（仅 from=fund-crowd 时渲染）
+    await expect(main.getByTestId('back-to-fund-crowd')).toBeVisible()
+
+    // 断言：原「返回基金分析」入口不渲染（避免用户误点回基金分析页丢失扎堆页状态）
+    await expect(
+      main.getByRole('button', { name: /^返回基金分析$/ })
+    ).toHaveCount(0)
+  })
+
+  test('TC-3.2 无 from 参数时（04 原生入口）不渲染差异提示与返回扎堆分析', async ({ page }) => {
+    const lookupData = createTestReverseLookup()
+    await mockReverseLookup(page, lookupData)
+    // 04 原生入口：无 from 参数（从基金分析页进入）
+    await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519`)
+
+    const main = page.locator('main')
+
+    // 断言：差异提示不渲染（04 原生零影响回归）
+    await expect(main.getByTestId('fund-crowd-drilldown-hint')).toHaveCount(0)
+    // 断言：「返回扎堆分析」入口不渲染
+    await expect(main.getByTestId('back-to-fund-crowd')).toHaveCount(0)
+    // 断言：原「返回基金分析」入口正常渲染（04 原生体验不受影响）
+    await expect(
+      main.getByRole('button', { name: /^返回基金分析$/ })
+    ).toBeVisible()
+  })
+
+  test('TC-3.3 点击返回扎堆分析跳转到扎堆分析页', async ({ page }) => {
+    const lookupData = createTestReverseLookup()
+    await mockReverseLookup(page, lookupData)
+    await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519&from=fund-crowd`)
+
+    const main = page.locator('main')
+    // 点击「返回扎堆分析」入口
+    await main.getByTestId('back-to-fund-crowd').click()
+
+    // 断言：路由跳转到扎堆分析页
+    await expect(page).toHaveURL(/\/dashboard\/fund-crowd-analysis/)
+  })
+})
