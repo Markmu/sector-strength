@@ -1,0 +1,597 @@
+"""
+基金扎堆度聚合查询 API 集成测试（plan-01 / 08 期）
+
+覆盖端点：
+- GET /api/v1/fund-crowd-analysis/rankings — 扎堆度排行榜（AC-01/02/03/06/07/08）
+- GET /api/v1/fund-crowd-analysis/industry-distribution — 行业分布（AC-04）
+
+参照 server/tests/test_fund_api.py 的 fixture + httpx 风格。
+red 阶段原则：测试只通过 HTTP client 调 API 端点（`from main import app`），
+不 import 尚未实现的 service / repository；red 失败原因应为「端点 404」或
+「service 模块 ImportError」，而非测试代码本身的语法/逻辑错误。
+"""
+
+import pytest
+import pytest_asyncio
+from datetime import date
+from decimal import Decimal
+from httpx import AsyncClient
+
+from main import app
+from src.models.user import User
+from src.models.fund import Fund
+from src.models.fund_portfolio import FundPortfolio
+from src.models.stock import Stock
+from src.models.sector import Sector
+from src.models.sector_stock import SectorStock
+from src.api.deps import get_current_user, get_session
+
+# app 被 ProcessTimeMiddleware 包装，需要获取底层 FastAPI 实例
+_fastapi_app = app.app if hasattr(app, "app") else app
+
+
+# ============== User fixtures ==============
+
+
+@pytest_asyncio.fixture
+async def normal_user(test_session):
+    """创建普通用户并写入 DB"""
+    user = User(
+        email="normal_fund_crowd@example.com",
+        password_hash="hash",
+        role="user",
+        is_active=True,
+    )
+    test_session.add(user)
+    await test_session.commit()
+    await test_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture
+async def auth_client(client: AsyncClient, test_session, normal_user):
+    """
+    注入普通用户认证 + override get_session。
+    API 请求使用独立的 session（同一 schema），避免 asyncpg 连接冲突。
+    测试数据通过 fixture 写入并 commit 后，API session 可见。
+    """
+    from src.db import database as db_module
+
+    test_session_factory = db_module.AsyncSessionLocal  # conftest 已替换
+
+    async def _override_get_session():
+        async with test_session_factory() as s:
+            yield s
+
+    async def _override_current_user():
+        return normal_user
+
+    _fastapi_app.dependency_overrides[get_session] = _override_get_session
+    _fastapi_app.dependency_overrides[get_current_user] = _override_current_user
+    yield client
+    _fastapi_app.dependency_overrides.pop(get_session, None)
+    _fastapi_app.dependency_overrides.pop(get_current_user, None)
+
+
+# ============== Sample data fixtures ==============
+
+
+@pytest_asyncio.fixture
+async def sample_crowd_data(test_session):
+    """
+    插入测试数据：覆盖主动/被动、跨期、多股东、搜索命中、NULL 边界。
+
+    基金口径：
+      - 001001.OF 主动（普通股票型）
+      - 001002.OF 被动（被动指数型）
+      - 001003.OF 被动（增强指数型）
+      - 001004.OF 主动（invest_type IS NULL → 显式归主动，ADR-1）
+
+    持仓数据：
+      最新期 2024-12-31：
+        - 600519 被 4 只基金全部持有（stk_float_ratio: 2.5 / 1.5 / 0.8 / NULL）
+          → scope=active fundCount=2 (001001+001004)
+          → scope=all    fundCount=4
+          → totalFloatRatio = 2.5+1.5+0.8+0 = 4.8（NULL 忽略）
+        - 000001 被 001001 + 001002 持有（stk_float_ratio: 0.5 / 0.3）
+          → scope=active fundCount=1（仅 001001）
+          → scope=all    fundCount=2
+      上一期 2024-09-30（环比 / 新进）：
+        - 600519 被 001001 + 001004 持有（stk_float_ratio: 2.0 / NULL）
+          → scope=active fundCount=2（本期 2 - 上期 2 = 0；float 2.5 - 2.0 = 0.5）
+        - 000001 无任何记录 → isNew=true
+    """
+    funds = [
+        Fund(ts_code="001001.OF", name="华夏成长", invest_type="普通股票型"),
+        Fund(ts_code="001002.OF", name="华夏大盘", invest_type="被动指数型"),
+        Fund(ts_code="001003.OF", name="易方达蓝筹", invest_type="增强指数型"),
+        Fund(ts_code="001004.OF", name="兴全新发", invest_type=None),
+    ]
+    portfolios = [
+        # 最新期 2024-12-31
+        FundPortfolio(
+            fund_ts_code="001001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("2.5"),
+        ),
+        FundPortfolio(
+            fund_ts_code="001002.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("1.5"),
+        ),
+        FundPortfolio(
+            fund_ts_code="001003.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("0.8"),
+        ),
+        FundPortfolio(
+            fund_ts_code="001004.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=None,  # NULL → SUM 忽略
+        ),
+        FundPortfolio(
+            fund_ts_code="001001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="000001",
+            stk_float_ratio=Decimal("0.5"),
+        ),
+        FundPortfolio(
+            fund_ts_code="001002.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="000001",
+            stk_float_ratio=Decimal("0.3"),
+        ),
+        # 上一期 2024-09-30（用于环比 + 新进）
+        FundPortfolio(
+            fund_ts_code="001001.OF",
+            report_period=date(2024, 9, 30),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("2.0"),
+        ),
+        FundPortfolio(
+            fund_ts_code="001004.OF",
+            report_period=date(2024, 9, 30),
+            stock_symbol="600519",
+            stk_float_ratio=None,
+        ),
+        # 000001 上期无任何记录 → 新进
+    ]
+    stocks = [
+        Stock(symbol="600519", name="贵州茅台"),
+        Stock(symbol="000001", name="平安银行"),
+    ]
+    test_session.add_all(funds + portfolios + stocks)
+    await test_session.commit()
+    return {"funds": funds, "portfolios": portfolios, "stocks": stocks}
+
+
+@pytest_asyncio.fixture
+async def sample_crowd_data_single_period(test_session):
+    """单报告期数据（验证 hasPrevPeriod=false，环比字段全 null）"""
+    funds = [
+        Fund(ts_code="002001.OF", name="单期基金A", invest_type="普通股票型"),
+    ]
+    portfolios = [
+        FundPortfolio(
+            fund_ts_code="002001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("2.5"),
+        ),
+    ]
+    stocks = [Stock(symbol="600519", name="贵州茅台")]
+    test_session.add_all(funds + portfolios + stocks)
+    await test_session.commit()
+    return {"funds": funds, "portfolios": portfolios, "stocks": stocks}
+
+
+@pytest_asyncio.fixture
+async def sample_industry_data(test_session, sample_crowd_data):
+    """
+    在 sample_crowd_data 基础上插入行业映射：600519 → 食品饮料 + 消费龙头（一股多行业）
+    000001 无行业关联（验证"未分类"桶）。
+    """
+    sectors = [
+        Sector(name="食品饮料", code="IND_FOOD", type="industry"),
+        Sector(name="消费龙头", code="IND_CONS", type="industry"),
+    ]
+    test_session.add_all(sectors)
+    await test_session.flush()
+
+    sector_stocks = [
+        SectorStock(sector_code="IND_FOOD", stock_code="600519"),
+        SectorStock(sector_code="IND_CONS", stock_code="600519"),
+        # 000001 无任何行业映射
+    ]
+    test_session.add_all(sector_stocks)
+    await test_session.commit()
+    return {"sectors": sectors, "sector_stocks": sector_stocks}
+
+
+@pytest_asyncio.fixture
+async def sample_null_stocks_table(test_session):
+    """持仓的股票不在 stocks 表中（验证 stockName=null 降级）"""
+    funds = [Fund(ts_code="003001.OF", name="Null Stocks 基金", invest_type="普通股票型")]
+    portfolios = [
+        FundPortfolio(
+            fund_ts_code="003001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="999999",
+            stk_float_ratio=Decimal("1.0"),
+        ),
+    ]
+    # 故意不插入 999999 的 Stock 记录
+    test_session.add_all(funds + portfolios)
+    await test_session.commit()
+    return {"funds": funds, "portfolios": portfolios}
+
+
+@pytest_asyncio.fixture
+async def sample_all_null_ratio(test_session):
+    """所有持仓 stk_float_ratio=None（验证 totalFloatRatio=null，fundCount 正常）"""
+    funds = [Fund(ts_code="004001.OF", name="全 NULL 基金", invest_type="普通股票型")]
+    portfolios = [
+        FundPortfolio(
+            fund_ts_code="004001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=None,
+        ),
+    ]
+    stocks = [Stock(symbol="600519", name="贵州茅台")]
+    test_session.add_all(funds + portfolios + stocks)
+    await test_session.commit()
+    return {"funds": funds, "portfolios": portfolios, "stocks": stocks}
+
+
+# ============== Helper ==============
+
+
+def _find_item(items: list, stock_symbol: str) -> dict:
+    """按 stockSymbol 字段（camelCase）查找 item"""
+    for it in items:
+        if it.get("stockSymbol") == stock_symbol:
+            return it
+    raise AssertionError(f"未找到 stockSymbol={stock_symbol} 的 item，items={items}")
+
+
+# ============== Test: GET /rankings — 扎堆度排行榜 ==============
+
+
+class TestRankings:
+    """扎堆度排行榜端点测试"""
+
+    @pytest.mark.asyncio
+    async def test_rankings_returns_active_scope_only(
+        self, auth_client, sample_crowd_data
+    ):
+        """AC-01：scope=active 排除被动型，600519 fundCount=2（001001+001004 NULL）"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        data = body["data"]
+
+        assert data["hasData"] is True
+        assert data["currentPeriod"] == "2024-12-31"
+
+        item = _find_item(data["items"], "600519")
+        assert item["fundCount"] == 2
+        # 001004 NULL stk_float_ratio 忽略 → 2.5（仅 001001）
+        assert item["totalFloatRatio"] == 2.5
+
+    @pytest.mark.asyncio
+    async def test_rankings_all_scope_includes_passive(
+        self, auth_client, sample_crowd_data
+    ):
+        """AC-02：scope=all 纳入被动型，600519 fundCount=4（全部 4 只）"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "all"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+
+        item = _find_item(data["items"], "600519")
+        assert item["fundCount"] == 4
+
+    @pytest.mark.asyncio
+    async def test_rankings_order_by_fund_count_desc(
+        self, auth_client, sample_crowd_data
+    ):
+        """AC-01 排序：fund_count DESC，600519(4) 在 000001(2) 之前（scope=all）"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "all", "page_size": 20},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["data"]["items"]
+
+        symbols = [it["stockSymbol"] for it in items]
+        assert symbols.index("600519") < symbols.index("000001"), (
+            f"600519(fundCount=4) 应排在 000001(fundCount=2) 之前，实际顺序: {symbols}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_rankings_total_float_ratio_sum(
+        self, auth_client, sample_crowd_data
+    ):
+        """AC-01 辅指标：scope=all，600519 totalFloatRatio≈4.8（2.5+1.5+0.8+0）"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "all"}
+        )
+        assert resp.status_code == 200
+        item = _find_item(resp.json()["data"]["items"], "600519")
+        assert abs(item["totalFloatRatio"] - 4.8) < 0.0001
+
+    @pytest.mark.asyncio
+    async def test_rankings_change_computation(
+        self, auth_client, sample_crowd_data
+    ):
+        """AC-03：600519 fundCountChange=0（本期 2 - 上期 2）；totalFloatRatioChange≈0.5（2.5-2.0）；
+        000001 isNew=true（上期无记录）"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+
+        assert data["hasPrevPeriod"] is True
+        assert data["prevPeriod"] == "2024-09-30"
+
+        item_519 = _find_item(data["items"], "600519")
+        assert item_519["fundCountChange"] == 0
+        assert abs(item_519["totalFloatRatioChange"] - 0.5) < 0.0001
+        assert item_519["isNew"] is False
+
+        item_001 = _find_item(data["items"], "000001")
+        assert item_001["isNew"] is True
+        assert item_001["fundCountChange"] is None
+        assert item_001["totalFloatRatioChange"] is None
+
+    @pytest.mark.asyncio
+    async def test_rankings_no_prev_period_returns_null_changes(
+        self, auth_client, sample_crowd_data_single_period
+    ):
+        """AC-06：只有一期 → hasPrevPeriod=false，所有 change 字段 null"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+
+        assert data["hasPrevPeriod"] is False
+        assert data["prevPeriod"] is None
+
+        for item in data["items"]:
+            assert item["fundCountChange"] is None
+            assert item["totalFloatRatioChange"] is None
+            assert item["isNew"] is None
+
+    @pytest.mark.asyncio
+    async def test_rankings_empty_portfolio_returns_has_data_false(self, auth_client):
+        """AC-07：空表 → hasData=false、items=[]"""
+        resp = await auth_client.get("/api/v1/fund-crowd-analysis/rankings")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+
+        assert data["hasData"] is False
+        assert data["items"] == []
+        assert data["total"] == 0
+        assert data["hasPrevPeriod"] is False
+
+    @pytest.mark.asyncio
+    async def test_rankings_search_by_code_prefix(
+        self, auth_client, sample_crowd_data
+    ):
+        """AC-08：search=600 → 仅命中 600519，total=1"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "all", "search": "600"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
+        assert data["items"][0]["stockSymbol"] == "600519"
+
+    @pytest.mark.asyncio
+    async def test_rankings_search_by_name_contains(
+        self, auth_client, sample_crowd_data
+    ):
+        """AC-08：search=茅台 → 仅命中 600519（贵州茅台），total=1"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "all", "search": "茅台"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
+        assert data["items"][0]["stockSymbol"] == "600519"
+        assert data["items"][0]["stockName"] == "贵州茅台"
+
+    @pytest.mark.asyncio
+    async def test_rankings_search_no_match(self, auth_client, sample_crowd_data):
+        """AC-08 边界：search=不存在的股票 → items=[]、total=0"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "all", "search": "不存在的股票"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    @pytest.mark.asyncio
+    async def test_rankings_pagination(self, auth_client, sample_crowd_data):
+        """分页：page=1&page_size=1 → items 长度 1、total=2；page=2 → 剩 1 条"""
+        resp1 = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "all", "page": 1, "page_size": 1},
+        )
+        assert resp1.status_code == 200
+        data1 = resp1.json()["data"]
+        assert data1["total"] == 2
+        assert len(data1["items"]) == 1
+        assert data1["page"] == 1
+        assert data1["pageSize"] == 1
+
+        resp2 = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "all", "page": 2, "page_size": 1},
+        )
+        assert resp2.status_code == 200
+        data2 = resp2.json()["data"]
+        assert len(data2["items"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_rankings_requires_auth(self, client):
+        """安全：未认证返回 401"""
+        resp = await client.get("/api/v1/fund-crowd-analysis/rankings")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_rankings_stock_name_null_when_stocks_table_missing(
+        self, auth_client, sample_null_stocks_table
+    ):
+        """L2 降级：stocks 表无该 symbol → stockName=null"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
+        )
+        assert resp.status_code == 200
+        items = resp.json()["data"]["items"]
+        assert len(items) == 1
+        assert items[0]["stockSymbol"] == "999999"
+        assert items[0]["stockName"] is None
+        # fund_count 应仍正常
+        assert items[0]["fundCount"] == 1
+
+    @pytest.mark.asyncio
+    async def test_rankings_total_float_ratio_null_when_all_null(
+        self, auth_client, sample_all_null_ratio
+    ):
+        """L3 降级：所有 stk_float_ratio=None → totalFloatRatio=null，fundCount 正常"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
+        )
+        assert resp.status_code == 200
+        items = resp.json()["data"]["items"]
+        assert len(items) == 1
+        assert items[0]["stockSymbol"] == "600519"
+        assert items[0]["totalFloatRatio"] is None
+        assert items[0]["fundCount"] == 1
+
+    @pytest.mark.asyncio
+    async def test_rankings_search_escapes_like_wildcards(
+        self, auth_client, sample_crowd_data
+    ):
+        """安全：search=% → 不匹配全表（LIKE 通配符被转义），total=0"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "all", "search": "%"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["total"] == 0
+        assert data["items"] == []
+
+
+# ============== Test: GET /industry-distribution — 行业分布 ==============
+
+
+class TestIndustryDistribution:
+    """行业分布端点测试"""
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_active_scope(
+        self, auth_client, sample_industry_data
+    ):
+        """AC-04：600519 归食品饮料+消费龙头，000001 无行业→未分类；
+        percentage = 扎堆股数 / 总扎堆股数 × 100"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        data = body["data"]
+
+        assert data["hasData"] is True
+        assert data["currentPeriod"] == "2024-12-31"
+
+        dist = data["distribution"]
+        by_industry = {d["industry"]: d for d in dist}
+
+        # scope=active: 600519(2 主动基金) + 000001(1 主动基金 001001) = 2 只扎堆股
+        # 600519 → 食品饮料 + 消费龙头（一股多行业，各计 1）
+        # 000001 → 无行业映射 → 未分类
+        assert "食品饮料" in by_industry
+        assert "消费龙头" in by_industry
+        assert "未分类" in by_industry
+
+        food = by_industry["食品饮料"]
+        assert food["stockCount"] == 1
+        assert abs(food["percentage"] - 50.0) < 0.01  # 1 / 2 * 100
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_multi_industries_per_stock(
+        self, auth_client, sample_industry_data
+    ):
+        """AC-04 一股多行业：600519 同时出现在食品饮料和消费龙头两个桶里"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active"},
+        )
+        assert resp.status_code == 200
+        dist = resp.json()["data"]["distribution"]
+
+        industries_with_519 = [
+            d for d in dist if d["stockCount"] >= 1 and d["industry"] in ("食品饮料", "消费龙头")
+        ]
+        assert len(industries_with_519) == 2, (
+            f"600519 应同时归属食品饮料+消费龙头，实际 distribution: {dist}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_empty_when_no_industry_mapping(
+        self, auth_client, sample_crowd_data
+    ):
+        """AC-04 边界：无任何 sector_stocks 关联 → 全部归入"未分类"桶"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active"},
+        )
+        assert resp.status_code == 200
+        dist = resp.json()["data"]["distribution"]
+
+        # 所有扎堆股都应归入"未分类"
+        industries = {d["industry"] for d in dist}
+        assert industries == {"未分类"}, f"应全部归未分类，实际: {industries}"
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_empty_portfolio(self, auth_client):
+        """空表 → hasData=false、distribution=[]"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution"
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["hasData"] is False
+        assert data["distribution"] == []
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_requires_auth(self, client):
+        """安全：未认证返回 401"""
+        resp = await client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution"
+        )
+        assert resp.status_code == 401

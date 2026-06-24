@@ -18,6 +18,7 @@ from .market_index import router as market_index_router
 from .analysis import router as analysis_router  # 板块强度分析
 from .sector_classifications import router as sector_classifications_router  # 板块分类
 from .funds import router as funds_router  # 基金业务 API
+from .fund_crowd_analysis import router as fund_crowd_analysis_router  # 基金扎堆股票分析 API
 from .shareholder_analysis import router as shareholder_analysis_router  # 股东分析聚合查询 API
 from .admin import router as admin_legacy_router  # legacy /v1/admin/data/*
 
@@ -34,6 +35,7 @@ router.include_router(market_index_router)   # /api/v1/market-index/*
 router.include_router(analysis_router)       # /api/v1/analysis/*
 router.include_router(sector_classifications_router)  # /api/v1/sector-classifications/*
 router.include_router(funds_router)              # /api/v1/funds/*
+router.include_router(fund_crowd_analysis_router)  # /api/v1/fund-crowd-analysis/*
 router.include_router(shareholder_analysis_router)  # /api/v1/shareholder-analysis/*
 router.include_router(admin_legacy_router)   # /api/v1/admin/data/* (legacy)
 
