@@ -12,7 +12,7 @@ depends_on: []
 ## 1. 功能概要
 
 - **目标**: 新建 `FundCrowdRepository`（扎堆度聚合查询封装）+ `FundCrowdAnalysisService`（聚合服务：排行榜、环比、行业分布）+ 2 个用户侧 API 端点（`GET /api/v1/fund-crowd-analysis/rankings` + `GET /api/v1/fund-crowd-analysis/industry-distribution`）+ 7 个 Pydantic 响应模型，零存储新增，完全复用 04 期 `fund_portfolio` + `funds` 表和现有 `sectors` / `sector_stocks` / `stocks` 行业体系。同时完成 1 项非阻塞索引优化（聚合查询索引前缀 `(report_period, stock_symbol)`）。
-- **完成后可观察结果**: 登录用户调 `GET /api/v1/fund-crowd-analysis/rankings?scope=active&page=1&page_size=20` 返回最新报告期（`MAX(report_period)`）扎堆度排行榜，按 `fund_count`（COUNT DISTINCT fund_ts_code）降序、`total_float_ratio`（SUM stk_float_ratio）次降序，每条 item 含 `stockSymbol/stockName/industries/fundCount/totalFloatRatio/fundCountChange/totalFloatRatioChange/isNew`；当 `scope=all` 时无 `invest_type` 过滤，当 `scope=active` 时过滤掉被动指数型/增强指数型基金（含 `invest_type IS NULL` 显式处理）；上一报告期（次大值）存在时环比字段按 `stock_symbol` 内存对比（含"新进"判定），上期缺失时 `hasPrevPeriod=false` 且环比字段统一 `null`。调 `GET /api/v1/fund-crowd-analysis/industry-distribution?scope=active` 返回按行业聚合的扎堆股数量占比 + 合计占流通比参考值。`fund_portfolio` 表无数据时 rankings 返回 `hasData=false`、industry-distribution 返回空 distribution。响应统一 `{ success: true, data: {...} }` 包裹，输出字段 camelCase（Pydantic `to_camel` alias），数值字段为 number（Decimal→float）。
+- **完成后可观察结果**: 登录用户调 `GET /api/v1/fund-crowd-analysis/rankings?scope=active&page=1&page_size=20` 返回最新报告期（`MAX(report_period)`）扎堆度排行榜，按 `fund_count`（份额去重后 `COUNT(DISTINCT regexp_replace(Fund.name, '[ACDEHIR]$', ''))`）降序、相同时按 `stock_symbol` 升序次排序，每条 item 含 `stockSymbol/stockName/industries/fundCount/fundCountChange/isNew`；当 `scope=all` 时无 `invest_type` 过滤，当 `scope=active` 时过滤掉被动指数型/增强指数型基金（含 `invest_type IS NULL` 显式处理）；上一报告期（次大值）存在时环比字段按 `stock_symbol` 内存对比（含"新进"判定），上期缺失时 `hasPrevPeriod=false` 且环比字段统一 `null`。调 `GET /api/v1/fund-crowd-analysis/industry-distribution?scope=active` 返回按行业聚合的扎堆股数量占比。`fund_portfolio` 表无数据时 rankings 返回 `hasData=false`、industry-distribution 返回空 distribution。响应统一 `{ success: true, data: {...} }` 包裹，输出字段 camelCase（Pydantic `to_camel` alias），数值字段为 number（Decimal→float）。
 - **依赖**: 无（独立后端功能；测试所需 fixture 自带）
 - **关联验收标准**: [AC-01, AC-02, AC-03, AC-04, AC-06, AC-07, AC-08]
 - **涉及架构模块**: `FundCrowdRepository`（新建）、`FundCrowdAnalysisService`（新建）、用户侧路由 `fund_crowd_analysis.py`（新建）+ v1 路由注册
@@ -53,7 +53,7 @@ depends_on: []
 **复用声明**：
 - `BaseRepository`：`server/src/repositories/base.py:18`，泛型基类，构造函数 `__init__(self, model: Type[ModelType], session: AsyncSession)`（line 29）；本类继承时调用 `super().__init__(FundPortfolio, session)`（参照 `FundRepository.__init__` line 38-39）
 - `FundPortfolio` 模型：`server/src/models/fund_portfolio.py`，字段 `fund_ts_code/report_period/stock_symbol/market_value/amount/stk_mkv_ratio/stk_float_ratio`（line 14-21，已确认满足扎堆度聚合）
-- `Fund` 模型：`server/src/models/fund.py`，字段 `ts_code/invest_type`（用于 JOIN 过滤）
+- `Fund` 模型：`server/src/models/fund.py`，字段 `ts_code/name/invest_type`（JOIN 用于份额去重的 `name` 字段 + `invest_type` 主动/被动过滤）
 - `Sector` / `SectorStock` / `Stock` 模型：JOIN 范式参照 `shareholder_analysis_service.py:304-352`（`_get_industry_for_stocks`）
 
 #### 1.1 `get_report_periods(limit: int = 4) -> list[date]`
@@ -73,17 +73,18 @@ return [row[0] for row in result.all()]
 
 #### 1.2 `get_crowd_aggregation(report_period: date, scope: str) -> dict[str, dict]`
 
-**核心聚合方法**（ADR-2 + ADR-1）。返回 `{ stock_symbol: { "fund_count": int, "total_float_ratio": float | None } }`。
+**核心聚合方法**（ADR-2 + ADR-1，份额去重）。返回 `{ stock_symbol: { "fund_count": int } }`。
 
 ```python
 from sqlalchemy import func, or_
 
-# JOIN funds 取 invest_type（仅 scope=active 时过滤被动型）
+# JOIN funds 取 invest_type 与 name（份额去重依据）；scope=active 时过滤被动型
+# ADR-2：fund_count 按基金名去份额后缀（A/C/E/D/I/H/R）去重，避免同一基金多份额虚高
+deduped_fund = func.regexp_replace(Fund.name, '[ACDEHIR]$', '')
 stmt = (
     select(
         FundPortfolio.stock_symbol,
-        func.count(FundPortfolio.fund_ts_code.distinct()).label("fund_count"),
-        func.sum(FundPortfolio.stk_float_ratio).label("total_float_ratio"),
+        func.count(func.distinct(deduped_fund)).label("fund_count"),
     )
     .select_from(FundPortfolio)
     .join(Fund, Fund.ts_code == FundPortfolio.fund_ts_code)  # inner join：持仓记录必然对应基金
@@ -104,18 +105,18 @@ stmt = stmt.group_by(FundPortfolio.stock_symbol)
 
 result = await self.session.execute(stmt)
 agg: dict = {}
-for symbol, fund_count, total_float_ratio in result.all():
+for symbol, fund_count in result.all():
     agg[symbol] = {
         "fund_count": int(fund_count or 0),
-        # Decimal → float（避免序列化为字符串破坏前端图表）
-        "total_float_ratio": float(total_float_ratio) if total_float_ratio is not None else None,
     }
 return agg
 ```
 
-**JOIN 类型**：`join(Fund, Fund.ts_code == FundPortfolio.fund_ts_code)`（INNER JOIN）—— 04 期同步保证持仓记录必然对应基金主表记录，inner join 性能更优。
+**JOIN 类型**：`join(Fund, Fund.ts_code == FundPortfolio.fund_ts_code)`（INNER JOIN）—— 04 期同步保证持仓记录必然对应基金主表记录，inner join 性能更优；同时 JOIN 是份额去重的必要条件（需要 `Fund.name` 字段做 regexp_replace）。
 
-**NULL 处理**（ADR-1）：`stk_float_ratio` 为 NULL（港股/境外标的）时数据库 SUM 自动忽略 NULL；`fund_count` 仍计入该基金。`invest_type` 为 NULL 时用 `Fund.invest_type.is_(None)` 显式包含到主动型，避免 `NOT IN` 漏掉 NULL。
+**份额去重**（ADR-2）：同一基金的 A/C/E 等份额共享同一份底层持仓，按 `fund_ts_code` 直接 `COUNT DISTINCT` 会虚高约 40%。改用 `COUNT(DISTINCT regexp_replace(Fund.name, '[ACDEHIR]$', ''))` 按基金名去掉份额后缀后去重。funds 表无更可靠的份额字段，基金名份额后缀是当前最稳定的去重依据。
+
+**NULL 处理**（ADR-1）：`invest_type` 为 NULL 时用 `Fund.invest_type.is_(None)` 显式包含到主动型，避免 `NOT IN` 漏掉 NULL。
 
 #### 1.3 `get_industry_for_stocks(symbols: list[str]) -> dict`
 
@@ -162,7 +163,7 @@ return {symbol: name for symbol, name in result.all()}
 **位置**：`server/src/services/fund_crowd_analysis_service.py`。
 
 **复用声明**：
-- `_compute_change_directions` 范式：`shareholder_analysis_service.py:264-302`（Python 内存 dict 对比，按 symbol 维度计算 cur-prev 变化 + "new" 判定）；本 plan 的 `_compute_changes` 是该范式的 08 版（按 `fund_count` 和 `total_float_ratio` 两字段对比，输出 `fund_count_change/total_float_ratio_change/is_new`）
+- `_compute_change_directions` 范式：`shareholder_analysis_service.py:264-302`（Python 内存 dict 对比，按 symbol 维度计算 cur-prev 变化 + "new" 判定）；本 plan 的 `_compute_changes` 是该范式的 08 版（仅按份额去重后的 `fund_count` 对比，输出 `fund_count_change/is_new`；占流通比环比已随指标整体剔除）
 
 ```python
 import logging
@@ -220,7 +221,7 @@ async def get_rankings(self, scope: str, search: Optional[str], page: int, page_
     #       在 SQL WHERE 加 (stock_symbol LIKE 'x%' OR stock_name ILIKE '%x%')
     # （详见 §3 #2.4 search 过滤策略）
 
-    # 7. 排序（fund_count DESC, total_float_ratio DESC，数据库 ORDER BY 双字段保证稳定）
+    # 7. 排序（fund_count DESC, stock_symbol ASC，数据库 ORDER BY 双字段保证稳定）
     items = []
     for symbol, agg in current_agg.items():
         # search 过滤（若 search 未在 SQL 层处理则在此 Python 层兜底；推荐 SQL 层）
@@ -230,17 +231,15 @@ async def get_rankings(self, scope: str, search: Optional[str], page: int, page_
             "stock_name": stock_names.get(symbol),  # None 兜底
             "industries": industry_map.get(symbol, []),
             "fund_count": agg["fund_count"],
-            "total_float_ratio": agg["total_float_ratio"],
             "fund_count_change": ch.get("fund_count_change"),
-            "total_float_ratio_change": ch.get("total_float_ratio_change"),
             "is_new": ch.get("is_new"),
         })
 
     # 应用 search 过滤（如果未在 SQL 层做）
     # items = self._apply_search_filter(items, search)
 
-    # 排序：fund_count DESC, total_float_ratio DESC（None 视为最小）
-    items.sort(key=lambda x: (-x["fund_count"], -(x["total_float_ratio"] or 0)))
+    # 排序：fund_count DESC, stock_symbol ASC（按股票代码升序作 tiebreaker）
+    items.sort(key=lambda x: (-x["fund_count"], x["stock_symbol"]))
 
     # 8. 分页
     total = len(items)
@@ -285,18 +284,19 @@ async def get_rankings(self, scope: str, search: Optional[str], page: int, page_
 
 ```python
 def _compute_changes(self, current_agg, prev_agg, has_prev_period):
-    """复用 06 _compute_change_directions 范式，按 stock_symbol 对比 fund_count / total_float_ratio。
+    """复用 06 _compute_change_directions 范式，按 stock_symbol 对比 fund_count（份额去重后）。
 
-    - has_prev_period=False：所有股票 fund_count_change/total_float_ratio_change/is_new 均为 None
+    - has_prev_period=False：所有股票 fund_count_change/is_new 均为 None
     - symbol not in prev_agg → is_new=True（新进），fund_count_change=None
-    - symbol in prev_agg → 计算 cur - prev（int / float 差值），is_new=False
+    - symbol in prev_agg → 计算 cur - prev（int 差值），is_new=False
+
+    注：占流通比环比（total_float_ratio_change）已随占流通比指标整体剔除，详见 ADR-2/ADR-3。
     """
     changes: dict = {}
     if not has_prev_period:
         for symbol in current_agg:
             changes[symbol] = {
                 "fund_count_change": None,
-                "total_float_ratio_change": None,
                 "is_new": None,  # ADR-3：has_prev_period=false 时 is_new=null
             }
         return changes
@@ -306,24 +306,17 @@ def _compute_changes(self, current_agg, prev_agg, has_prev_period):
         if prev is None:
             changes[symbol] = {
                 "fund_count_change": None,  # 新进无变化数值
-                "total_float_ratio_change": None,
                 "is_new": True,
             }
         else:
-            cur_ratio = cur["total_float_ratio"]
-            prev_ratio = prev["total_float_ratio"]
-            ratio_change = None
-            if cur_ratio is not None and prev_ratio is not None:
-                ratio_change = round(cur_ratio - prev_ratio, 4)
             changes[symbol] = {
                 "fund_count_change": cur["fund_count"] - prev["fund_count"],
-                "total_float_ratio_change": ratio_change,  # 任一为 None → None
                 "is_new": False,
             }
     return changes
 ```
 
-**边界**：`total_float_ratio` 任一为 None 时 ratio_change=None（前端显示"—"），不影响 `fund_count_change`（始终为整数差值）。
+**边界**：`fund_count` 始终为份额去重后的整数，`fund_count_change` 为整数差值，无 None 传播问题（仅 `is_new=true` 时为 None）。
 
 #### 2.4 `get_industry_distribution(scope: str) -> dict`
 
@@ -336,7 +329,7 @@ async def get_industry_distribution(self, scope: str) -> dict:
         return {"has_data": False, "current_period": None, "distribution": []}
     current_period = periods[0]
 
-    # 复用 get_crowd_aggregation 拿到扎堆股集合 + total_float_ratio
+    # 复用 get_crowd_aggregation 拿到扎堆股集合（份额去重后，本接口只需 stock_symbol 集合）
     current_agg = await self.repo.get_crowd_aggregation(current_period, scope)
     all_symbols = list(current_agg.keys())
     if not all_symbols:
@@ -345,28 +338,22 @@ async def get_industry_distribution(self, scope: str) -> dict:
     industry_map = await self.repo.get_industry_for_stocks(all_symbols)
     total_stock_count = len(all_symbols)
 
-    # 按行业分组（一股多行业独立计数，与 06 一致）
-    industry_stats: dict = {}  # { industry: { stock_count: set, total_float_ratio: float } }
+    # 按行业分组（一股多行业独立计数，与 06 一致）；占流通比参考字段已随指标整体剔除（ADR-2/ADR-5）
+    industry_stats: dict = {}  # { industry: set(stock_symbol) }
     for symbol in all_symbols:
         industries = industry_map.get(symbol, [])
         if not industries:
             industries = ["未分类"]
         for ind in industries:
-            if ind not in industry_stats:
-                industry_stats[ind] = {"stock_count": set(), "total_float_ratio": 0.0}
-            industry_stats[ind]["stock_count"].add(symbol)
-            ratio = current_agg[symbol]["total_float_ratio"]
-            if ratio is not None:
-                industry_stats[ind]["total_float_ratio"] += ratio
+            industry_stats.setdefault(ind, set()).add(symbol)
 
     distribution = [
         {
             "industry": ind,
-            "stock_count": len(stats["stock_count"]),  # COUNT DISTINCT stock_symbol
-            "percentage": round(len(stats["stock_count"]) / total_stock_count * 100, 4),
-            "total_float_ratio": round(stats["total_float_ratio"], 4),
+            "stock_count": len(symbols),  # COUNT DISTINCT stock_symbol
+            "percentage": round(len(symbols) / total_stock_count * 100, 4),
         }
-        for ind, stats in industry_stats.items()
+        for ind, symbols in industry_stats.items()
     ]
     # 按 stock_count 降序（前端再 Top N 截断）
     distribution.sort(key=lambda x: -x["stock_count"])
@@ -392,10 +379,8 @@ class RankingItem(BaseModel):
     stock_symbol: str
     stock_name: Optional[str] = None
     industries: List[str] = Field(default_factory=list)
-    fund_count: int
-    total_float_ratio: Optional[float] = None
+    fund_count: int  # 份额去重后基金数（regexp_replace(name, '[ACDEHIR]$', '') 去重）
     fund_count_change: Optional[int] = None
-    total_float_ratio_change: Optional[float] = None
     is_new: Optional[bool] = None
 
 
@@ -416,7 +401,6 @@ class IndustryItem(BaseModel):
     industry: str
     stock_count: int
     percentage: float
-    total_float_ratio: float
 
 
 class IndustryDistributionData(BaseModel):
@@ -426,8 +410,9 @@ class IndustryDistributionData(BaseModel):
     distribution: List[IndustryItem]
 ```
 
-- 字段经 `to_camel` 输出 camelCase（`stockSymbol / stockName / fundCount / totalFloatRatio / fundCountChange / totalFloatRatioChange / isNew / currentPeriod / prevPeriod / hasPrevPeriod / hasData / pageSize / stockCount / totalFloatRatio`）
+- 字段经 `to_camel` 输出 camelCase（`stockSymbol / stockName / fundCount / fundCountChange / isNew / currentPeriod / prevPeriod / hasPrevPeriod / hasData / pageSize / stockCount`）
 - `Optional[bool]` 用于 `is_new`（ADR-3：has_prev_period=false 时为 null）
+- 占流通比相关字段（`totalFloatRatio` / `totalFloatRatioChange`）已随指标整体剔除（ADR-2/ADR-3）
 
 #### 4. 路由层端点（新建于 `fund_crowd_analysis.py`）
 
@@ -489,12 +474,12 @@ async def get_industry_distribution(
 - **路径拼接**：前端 endpoint `/fund-crowd-analysis/rankings?scope=...` × `apiClient.baseURL` `${API_BASE_URL}/api/v1`（`web/src/lib/api.ts:8`）= 后端实际路径 `/api/v1/fund-crowd-analysis/rankings`。v1_router 在 `/v1`（`__init__.py:25`），子 router 在 `/fund-crowd-analysis`（本 plan），最终经 `router.include_router(router, prefix="/api")` 拼出 `/api/v1/fund-crowd-analysis/rankings`，**无重复前缀**
 - **HTTP 方法**：后端 `@router.get` → GET；前端 `apiClient.get` → GET；一致
 - **query 参数命名**：`scope`（小写字符串）、`search`、`page`、`page_size`（snake_case）。**FastAPI Query 参数不经 Pydantic alias 转换**，前端必须传 `page_size`（不是 `pageSize`）—— query 风格与 04 `funds.py:202-203` 的 `page` / `page_size` 一致；响应体字段才经 `to_camel` 转 camelCase
-- **响应字段命名**：外层 `{ success, data }`；`data.items[].stockSymbol/fundCount/totalFloatRatio/fundCountChange/totalFloatRatioChange/isNew`（camelCase）；`data.currentPeriod/prevPeriod/hasPrevPeriod/hasData/pageSize`（camelCase）；前端类型定义必须用这些 camelCase 名
+- **响应字段命名**：外层 `{ success, data }`；`data.items[].stockSymbol/fundCount/fundCountChange/isNew`（camelCase）；`data.currentPeriod/prevPeriod/hasPrevPeriod/hasData/pageSize`（camelCase）；前端类型定义必须用这些 camelCase 名
 
 **序列化约定**（架构 §7.3）：
 - `current_period` 是 `date` 对象 → service 层 `.isoformat()` 转 ISO 字符串（如 `"2026-03-31"`）
-- `total_float_ratio` 是 `Decimal` → service 层 `float(...)` 转 float（避免 Pydantic 把 Decimal 序列化为字符串破坏前端数值运算）
-- `fund_count_change` 是 `int`，`total_float_ratio_change` 是 `float`，`is_new` 是 `bool | None`
+- `fund_count` / `fund_count_change` 是 `int`，`is_new` 是 `bool | None`
+- 份额去重 SQL 通过 `func.regexp_replace` 调用 PostgreSQL 内置函数，返回 `int` 聚合结果，无 Decimal 序列化问题
 
 #### 6. v1 路由注册（`server/src/api/v1/__init__.py`）
 
@@ -553,11 +538,11 @@ async def sample_portfolio(test_session):
 **测试用例（10+ 个）**：
 
 1. `test_rankings_returns_active_scope_only`（AC-01）：`scope=active` 调 `/rankings`，断言 600519 的 `fundCount=2`（仅 001001 主动 + 001004 NULL 主动），排除 001002/001003 被动
-2. `test_rankings_all_scope_includes_passive`（AC-02）：`scope=all` 调 `/rankings`，断言 600519 的 `fundCount=4`（全部 4 只）
+2. `test_rankings_all_scope_includes_passive`（AC-02）：`scope=all` 调 `/rankings`，断言 600519 的 `fundCount=4`（全部 4 只，份额去重后仍为 4，因 fixture 4 只基金名各不相同）
 3. `test_rankings_order_by_fund_count_desc`（AC-01 排序）：断言 600519 在 000001 之前（600519 fundCount=4 > 000001 fundCount=2，scope=all）
-4. `test_rankings_total_float_ratio_sum`（AC-01 辅指标）：`scope=all`，断言 600519 的 `totalFloatRatio≈4.8`（2.5+1.5+0.8+0=NULL 忽略）
-5. `test_rankings_change_computation`（AC-03）：`scope=active`，断言 600519 的 `fundCountChange=0`（本期 2 只主动 - 上期 2 只主动），`totalFloatRatioChange≈0.5`（2.5 - 2.0）；000001 的 `isNew=true`、`fundCountChange=null`（上期无记录）
-6. `test_rankings_no_prev_period_returns_null_changes`（AC-06）：fixture 只插一个报告期 → `hasPrevPeriod=false`，所有 item 的 `fundCountChange/totalFloatRatioChange/isNew` 均为 null
+4. `test_rankings_dedup_by_fund_name_share_suffix`（份额去重，ADR-2）：插入同一基金的 A/C 两份额（基金名 `华夏成长A` / `华夏成长C`，invest_type 均为主动型）持同一股 600519，断言 600519 的 `fundCount=1`（份额去重后只算 1 只）；额外插入独立基金 `易方达蓝筹A` 持 600519，断言 `fundCount=2`（华夏成长去份额后 1 + 易方达蓝筹去份额后 1）
+5. `test_rankings_change_computation`（AC-03）：`scope=active`，断言 600519 的 `fundCountChange=0`（本期 2 只主动 - 上期 2 只主动）；000001 的 `isNew=true`、`fundCountChange=null`（上期无记录）
+6. `test_rankings_no_prev_period_returns_null_changes`（AC-06）：fixture 只插一个报告期 → `hasPrevPeriod=false`，所有 item 的 `fundCountChange/isNew` 均为 null
 7. `test_rankings_empty_portfolio_returns_has_data_false`（AC-07）：空表 → `hasData=false`、`items=[]`
 8. `test_rankings_search_by_code_prefix`（AC-08）：`search=600` → 仅命中 600519，total=1
 9. `test_rankings_search_by_name_contains`（AC-08）：`search=茅台` → 仅命中 600519，total=1
@@ -568,7 +553,6 @@ async def sample_portfolio(test_session):
 14. `test_industry_distribution_empty_when_no_industry_mapping`（AC-04 边界）：无 sector_stocks 关联 → 归入"未分类"桶
 15. `test_rankings_requires_auth`（权限回归）：未注入 auth 的 client → 401
 16. `test_rankings_stock_name_null_when_stocks_table_missing`（L2 降级）：stocks 表无该 symbol → `stockName=null`
-17. `test_rankings_total_float_ratio_null_when_all_null`（L3 降级）：所有记录 stk_float_ratio=None → `totalFloatRatio=null`，`fundCount` 仍正常
 
 **SQL 注入回归测试**（AC 隐含，架构 §8.3）：
 18. `test_rankings_search_escapes_like_wildcards`：`search=%` → 不匹配全表
@@ -614,8 +598,8 @@ async def sample_portfolio(test_session):
 | # | Task | 维度 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
 | 1 | red：新建 `test_fund_crowd_api.py` 追加 10+ pytest 用例 | backend | done | 覆盖 §3 #7 的 18 个测试用例（red 阶段已就位 20 个用例，详见 red 证据）；red 阶段失败原因 = 端点 404 |
-| 2 | 新建 `fund_crowd_repository.py` + 4 个方法 | backend | done | `get_report_periods` / `get_crowd_aggregation`（含 NULL + scope 过滤 + search SQL 层）/ `get_industry_for_stocks`（复用 06 JOIN 范式）/ `get_stock_names` |
-| 3 | 新建 `fund_crowd_analysis_service.py` + 常量 `PASSIVE_INVEST_TYPES` | backend | done | `get_rankings`（报告期判定 + 环比 + 排序 + 分页） / `get_industry_distribution` / `_compute_changes`（复用 06 范式） |
+| 2 | 新建 `fund_crowd_repository.py` + 4 个方法 | backend | done | `get_report_periods` / `get_crowd_aggregation`（份额去重 + NULL + scope 过滤 + search SQL 层，返回 `{ stock_symbol, fund_count }`）/ `get_industry_for_stocks`（复用 06 JOIN 范式）/ `get_stock_names` |
+| 3 | 新建 `fund_crowd_analysis_service.py` + 常量 `PASSIVE_INVEST_TYPES` | backend | done | `get_rankings`（报告期判定 + 环比 + 排序 fund_count DESC/stock_symbol ASC + 分页） / `get_industry_distribution` / `_compute_changes`（复用 06 范式，仅对比 fund_count） |
 | 4 | search 过滤策略实现（路径 A：SQL WHERE 层） | backend | done | `_escape_like_keyword` 转义 + `.like(prefix, escape='\\')` / `.ilike(contains, escape='\\')`；search 在 SQL WHERE 层，分页 total 正确 |
 | 5 | 新建 4 个 Pydantic 响应模型 + `_dict_to_camel` helper | backend | done | `RankingItem` / `RankingsData` / `IndustryItem` / `IndustryDistributionData`（plan §3 #3 列出的 4 类，足够覆盖 7 个语义字段）；camelCase 输出（递归 dict/list） |
 | 6 | 新建 `fund_crowd_analysis.py` 路由 + 2 个端点 | backend | done | `GET /rankings` + `GET /industry-distribution`；`Depends(get_current_user)`；query 参数 snake_case（scope/search/page/page_size） |
@@ -627,11 +611,11 @@ async def sample_portfolio(test_session):
 
 ### 后端核心功能验收
 
-- [ ] AC-01 `GET /rankings?scope=active` 返回最新报告期扎堆度排行榜，按 `fundCount` 降序、`totalFloatRatio` 次降序；每条 item 含 7 个字段（stockSymbol/stockName/industries/fundCount/totalFloatRatio/fundCountChange/totalFloatRatioChange/isNew）
+- [ ] AC-01 `GET /rankings?scope=active` 返回最新报告期扎堆度排行榜，按 `fundCount`（份额去重后）降序、相同时按 `stockSymbol` 升序次排序；每条 item 含 6 个字段（stockSymbol/stockName/industries/fundCount/fundCountChange/isNew）
 - [ ] AC-02 `GET /rankings?scope=all` 纳入被动型基金，相关股票 `fundCount` ≥ `scope=active`；切回 `scope=active` 恢复主动口径
-- [ ] AC-03 上期存在时 `fundCountChange` 为整数差值、`totalFloatRatioChange` 为浮点差值；symbol 上期无记录时 `isNew=true`、`fundCountChange=null`
+- [ ] AC-03 上期存在时 `fundCountChange` 为整数差值；symbol 上期无记录时 `isNew=true`、`fundCountChange=null`
 - [ ] AC-04 `GET /industry-distribution?scope=active` 返回按扎堆股数量占比聚合的行业分布，一股多行业独立计数，按 `stockCount` 降序
-- [ ] AC-06 上期完全缺失时 `hasPrevPeriod=false`，所有 item 的 `fundCountChange/totalFloatRatioChange/isNew` 均为 null，当期排名正常
+- [ ] AC-06 上期完全缺失时 `hasPrevPeriod=false`，所有 item 的 `fundCountChange/isNew` 均为 null，当期排名正常
 - [ ] AC-07 `fund_portfolio` 表无数据时 `hasData=false`、`items=[]`、`hasPrevPeriod=false`
 - [ ] AC-08 `search` 按代码前缀（`stock_symbol LIKE 'x%'`）或名称包含（`stock_name ILIKE '%x%'`）匹配；无匹配 `total=0`；分页 total 是过滤后的数
 
@@ -718,14 +702,14 @@ pytest API 集成测试（参照 `test_fund_api.py`）是后端功能的主质�
   - 分页 total 不对 → search 是否在 SQL WHERE 层过滤（路径 A）；若用 Python 过滤（路径 B）需对过滤后的 items 分页
 - **允许修改的额外文件**:
   - 若 `_dict_to_camel` 已在某个 helper 模块存在（如 `src/api/v1/_helpers.py`），可改为 import 复用而非重复定义
-  - 若 SQLAlchemy 版本对 `func.count(FundPortfolio.fund_ts_code.distinct())` 支持有问题，可改用 `func.count_distinct(FundPortfolio.fund_ts_code)`（视版本而定）
+  - 若 SQLAlchemy 版本对 `func.count(func.distinct(func.regexp_replace(Fund.name, '[ACDEHIR]$', '')))` 嵌套写法支持有问题，可改写为 `select(func.distinct(...))` 子查询再 `count` 或原生 SQL `text()`；`regexp_replace` 为 PostgreSQL 内置函数，asyncpg 驱动直接支持
 - **暂停条件**:
   - alembic 迁移生成受阻（如本地 alembic 配置问题）→ 暂停 Task 9，记录后降级为"运维阶段手动建索引"，不阻塞 plan-01 进入 done
   - JOIN funds 后性能严重退化（> 5s）→ 暂停，向用户确认是否引入 `funds.ts_code` 索引优化或改子查询
 - **E2E 不适用说明**: 后端 FEAT 的 red/green 用 pytest API 集成测试（参照 `test_fund_api.py`），不写 Playwright（参照 MEMORY `后端 FEAT E2E 适配 pytest`）。这是后端测试的既定方案，不是豁免
 - **风险备注**:
   - **NULL 投资类型处理**：`Fund.invest_type` 为 NULL 时必须用 `.is_(None)` 显式包含到主动型，否则 SQL `NOT IN (...)` 会漏掉 NULL 行（ADR-1 风险对策）；测试用例 #1/#4 显式覆盖（001004.OF invest_type=None 归主动）
-  - **stk_float_ratio NULL 累加**：SUM 自动忽略 NULL，但若该股票所有记录均为 NULL → `total_float_ratio=None`（前端显示"—"）；测试用例 #16 覆盖（L3 降级）
+  - **份额去重误伤**：`regexp_replace(Fund.name, '[ACDEHIR]$', '')` 可能误伤基金名恰好以 A/C/E/D/I/H/R 结尾但实为独立基金的情况。对策：实测误伤率低；测试用例 #4 显式覆盖 A/C 份额去重场景；后续若发现具体误伤案例，可在 funds 表补充权威份额字段时切换去重口径
   - **stocks 表缺失兜底**：`get_stock_names` 返回的 dict 缺失某 symbol → service 层 `stock_names.get(symbol)` 返回 None → `stockName=null`；测试用例 #15 覆盖
   - **search 大小写**：stock_symbol 用 `.like('xxx%')`（区分大小写，因股票代码本身大写）；stock_name 用 `.ilike('%xxx%')`（不区分大小写，AC-08 "不区分大小写" 指名称搜索）
 
@@ -735,8 +719,7 @@ pytest API 集成测试（参照 `test_fund_api.py`）是后端功能的主质�
 | --- | --- | --- |
 | `fund_portfolio` 表为空 | `get_report_periods` 返回 `[]` → service 返回 `hasData=false` | done |
 | 只有一个报告期（无上期） | `hasPrevPeriod=false`，所有 item 的 change 字段为 null | done |
-| 某股票上期无记录 | `is_new=true`、`fund_count_change=null`、`total_float_ratio_change=null` | done |
-| `stk_float_ratio` 全 NULL | `total_float_ratio=null`，`fund_count` 正常 | done |
+| 某股票上期无记录 | `is_new=true`、`fund_count_change=null` | done |
 | `invest_type` 为 NULL | 显式归主动型（`.is_(None)` 包含） | done |
 | `stocks` 表缺失某 symbol | `stock_name=null`，不影响扎堆度计算 | done |
 | 某股票无行业关联 | `industries=[]`（rankings）/ 归入"未分类"桶（industry-distribution） | done |

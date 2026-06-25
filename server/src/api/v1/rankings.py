@@ -24,6 +24,7 @@ from src.api.schemas.strength import (
     BatchCalculationItem,
 )
 from src.models.stock import Stock as StockModel
+from src.services.data_acquisition.models import A_STOCK_EXCHANGES
 from src.models.sector import Sector as SectorModel
 from src.models.sector_stock import SectorStock as SectorStockModel
 from src.models.strength_score import StrengthScore as StrengthScoreModel
@@ -117,8 +118,11 @@ async def get_stock_rankings(
             SectorStockModel.sector_code == sector_id
         )
 
-    # 只返回有强度得分的股票
-    stmt = stmt.where(StockModel.strength_score.isnot(None))
+    # 只返回有强度得分的股票（且仅 A 股，排除港股）
+    stmt = stmt.where(
+        StockModel.strength_score.isnot(None),
+        StockModel.exchange.in_(A_STOCK_EXCHANGES),
+    )
 
     # 排序
     if order == "desc":
@@ -149,7 +153,8 @@ async def get_stock_rankings(
 
     # 计算总数
     count_stmt = select(func.count()).select_from(StockModel).where(
-        StockModel.strength_score.isnot(None)
+        StockModel.strength_score.isnot(None),
+        StockModel.exchange.in_(A_STOCK_EXCHANGES),
     )
 
     if sector_id:

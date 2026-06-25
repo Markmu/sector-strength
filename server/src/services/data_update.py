@@ -21,7 +21,7 @@ from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
 from src.models.update_history import UpdateHistory
 from src.services.data_acquisition import DataSourceFactory
-from src.services.data_acquisition.models import DailyQuote
+from src.services.data_acquisition.models import A_STOCK_EXCHANGES, DailyQuote
 
 logger = logging.getLogger(__name__)
 
@@ -606,8 +606,12 @@ class DataUpdateService:
                 return [row[0] for row in result.all()]
 
         else:
-            # 获取所有股票
-            result = await self.session.execute(select(Stock.symbol))
+            # 获取所有股票（仅 A 股，排除港股）
+            result = await self.session.execute(
+                select(Stock.symbol).where(
+                    Stock.exchange.in_(A_STOCK_EXCHANGES)
+                )
+            )
             return [row[0] for row in result.all()]
 
     async def create_update_history(

@@ -7,6 +7,7 @@ import {
   createTestCrowdRankings,
   createTestCrowdIndustryDistribution,
 } from './helpers/mock-fund-crowd-api'
+import { mockReverseLookup, createTestReverseLookup } from './helpers/mock-fund-api'
 
 const FUND_CROWD_ANALYSIS_PAGE = '/dashboard/fund-crowd-analysis'
 
@@ -62,6 +63,8 @@ async function installFullMocks(
 ): Promise<void> {
   await mockCrowdRankings(page, createTestCrowdRankings({ hasPrevPeriod: opts?.hasPrevPeriod ?? true }))
   await mockCrowdIndustryDistribution(page, createTestCrowdIndustryDistribution())
+  // plan-03 TC-3.4 跳转 04 反查页需 mock reverse-lookup，否则 API 无 mock → 401 → 重定向 /login
+  await mockReverseLookup(page, createTestReverseLookup())
 }
 
 // 给等待搜索 debounce 预留 buffer（300ms debounce + 网络 mock 响应，规则 5 race 规避）

@@ -20,6 +20,7 @@ from src.api.schemas.strength import (
 )
 from src.api.exceptions import NotFoundError
 from src.models.stock import Stock as StockModel
+from src.services.data_acquisition.models import A_STOCK_EXCHANGES
 from src.models.sector import Sector as SectorModel
 from src.models.moving_average_data import MovingAverageData as MovingAverageDataModel
 from src.models.period_config import PeriodConfig as PeriodConfigModel
@@ -172,6 +173,9 @@ async def get_strength_list(
             return StrengthListResponse(success=True, data=[])
         if ids:
             stmt = stmt.where(entity_model.id.in_(ids))
+        # entity_type='stock' 时仅返回 A 股，排除港股
+        if entity_type == "stock":
+            stmt = stmt.where(StockModel.exchange.in_(A_STOCK_EXCHANGES))
         stmt = stmt.order_by(desc(entity_model.strength_score)).limit(limit)
     else:
         # 默认返回板块数据

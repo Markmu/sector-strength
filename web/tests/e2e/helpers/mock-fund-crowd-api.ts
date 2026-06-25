@@ -55,9 +55,7 @@ export interface CrowdRankingItemData {
   stockName: string | null
   industries: string[]
   fundCount: number
-  totalFloatRatio: number | null
   fundCountChange: number | null
-  totalFloatRatioChange: number | null
   isNew: boolean | null
 }
 
@@ -76,7 +74,6 @@ export interface CrowdIndustryItemData {
   industry: string
   stockCount: number
   percentage: number
-  totalFloatRatio: number
 }
 
 export interface CrowdIndustryDistributionData {
@@ -111,9 +108,7 @@ export function createTestCrowdRankings(opts?: {
         stockName: '贵州茅台',
         industries: ['食品饮料'],
         fundCount: 286,
-        totalFloatRatio: 8.2,
         fundCountChange: hasPrevPeriod ? 12 : null,
-        totalFloatRatioChange: hasPrevPeriod ? 0.8 : null,
         isNew: hasPrevPeriod ? false : null,
       },
       {
@@ -121,9 +116,7 @@ export function createTestCrowdRankings(opts?: {
         stockName: '宁德时代',
         industries: ['电力设备'],
         fundCount: 198,
-        totalFloatRatio: 5.4,
         fundCountChange: hasPrevPeriod ? -8 : null,
-        totalFloatRatioChange: hasPrevPeriod ? -1.1 : null,
         isNew: hasPrevPeriod ? false : null,
       },
       {
@@ -131,9 +124,7 @@ export function createTestCrowdRankings(opts?: {
         stockName: '中芯国际',
         industries: ['电子'],
         fundCount: 45,
-        totalFloatRatio: 3.1,
         fundCountChange: null,
-        totalFloatRatioChange: null,
         // AC-06：hasPrevPeriod=false 时后端 isNew=null（避免与 true 新进标识混淆）
         isNew: hasPrevPeriod ? true : null,
       },
@@ -164,9 +155,9 @@ export function createTestCrowdIndustryDistribution(): CrowdIndustryDistribution
     hasData: true,
     currentPeriod: '2025-12-31',
     distribution: [
-      { industry: '食品饮料', stockCount: 32, percentage: 16.0, totalFloatRatio: 12.5 },
-      { industry: '电力设备', stockCount: 28, percentage: 14.0, totalFloatRatio: 9.8 },
-      { industry: '银行', stockCount: 20, percentage: 10.0, totalFloatRatio: 7.2 },
+      { industry: '食品饮料', stockCount: 32, percentage: 16.0 },
+      { industry: '电力设备', stockCount: 28, percentage: 14.0 },
+      { industry: '银行', stockCount: 20, percentage: 10.0 },
     ],
   }
 }

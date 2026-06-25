@@ -3,12 +3,12 @@
 /**
  * 扎堆度排行榜表格（plan-02，AC-01/03/06/08）
  *
- * 列：排名 / 代码 / 名称 / 行业 / 持有基金数 / 合计占流通比 / 环比变化 / 操作（反查）
+ * 列：排名 / 代码 / 名称 / 行业 / 持有基金数 / 环比变化 / 操作（反查）
  *
  * 环比列三态渲染（AC-03 + AC-06，先 hasPrevPeriod 再 isNew 再数值）：
  * 1. hasPrevPeriod=false → 统一 "—"
  * 2. isNew=true → "★ 新进"
- * 3. 正常 → 基金 ±N + 占比 ±X%（含方向箭头）
+ * 3. 正常 → 基金 ±N（含方向箭头）
  *
  * data-testid 约定（spec 选择器依赖）：
  * - 表格根容器：crowd-ranking-table
@@ -58,9 +58,8 @@ function renderChangeColumn(
       </span>
     )
   }
-  // AC-03：正常环比（基金数 + 占流通比）
+  // AC-03：正常环比（基金数）
   const countChange = item.fundCountChange
-  const ratioChange = item.totalFloatRatioChange
   const direction =
     countChange !== null && countChange > 0
       ? 'up'
@@ -80,18 +79,11 @@ function renderChangeColumn(
         ? `+${countChange}`
         : `${countChange}`
       : '—'
-  const ratioText =
-    ratioChange !== null
-      ? ratioChange > 0
-        ? `+${ratioChange.toFixed(2)}%`
-        : `${ratioChange.toFixed(2)}%`
-      : '—'
   return (
     <span className={`inline-flex items-center gap-2 text-sm ${colorClass}`}>
       <span>
         基金 {countText} {arrow}
       </span>
-      <span>占比 {ratioText}</span>
     </span>
   )
 }
@@ -142,7 +134,7 @@ export default function CrowdRankingTable({
           <table className="w-full text-sm">
             <thead className="bg-background border-b border-border">
               <tr>
-                {['排名', '代码', '名称', '行业', '持有基金数', '合计占流通比', '环比变化', '操作'].map(
+                {['排名', '代码', '名称', '行业', '持有基金数', '环比变化', '操作'].map(
                   (h) => (
                     <th
                       key={h}
@@ -157,7 +149,7 @@ export default function CrowdRankingTable({
             <tbody className="divide-y divide-secondary">
               {Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i}>
-                  {Array.from({ length: 8 }).map((_, j) => (
+                  {Array.from({ length: 7 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
                       <div className="h-4 bg-secondary/60 rounded animate-pulse" />
                     </td>
@@ -210,9 +202,6 @@ export default function CrowdRankingTable({
                     <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-right">
                       持有基金数
                     </th>
-                    <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-right">
-                      合计占流通比
-                    </th>
                     <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left">
                       环比变化
                     </th>
@@ -243,11 +232,6 @@ export default function CrowdRankingTable({
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-foreground">
                           {item.fundCount}
-                        </td>
-                        <td className="px-4 py-3 text-right text-foreground">
-                          {item.totalFloatRatio !== null
-                            ? `${item.totalFloatRatio.toFixed(1)}%`
-                            : '—'}
                         </td>
                         <td
                           className="px-4 py-3 text-foreground"

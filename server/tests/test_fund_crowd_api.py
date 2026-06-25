@@ -92,14 +92,16 @@ async def sample_crowd_data(test_session):
         - 600519 被 4 只基金全部持有（stk_float_ratio: 2.5 / 1.5 / 0.8 / NULL）
           → scope=active fundCount=2 (001001+001004)
           → scope=all    fundCount=4
-          → totalFloatRatio = 2.5+1.5+0.8+0 = 4.8（NULL 忽略）
         - 000001 被 001001 + 001002 持有（stk_float_ratio: 0.5 / 0.3）
           → scope=active fundCount=1（仅 001001）
           → scope=all    fundCount=2
       上一期 2024-09-30（环比 / 新进）：
-        - 600519 被 001001 + 001004 持有（stk_float_ratio: 2.0 / NULL）
-          → scope=active fundCount=2（本期 2 - 上期 2 = 0；float 2.5 - 2.0 = 0.5）
+        - 600519 被 001001 + 001004 持有
+          → scope=active fundCount=2（本期 2 - 上期 2 = 0）
         - 000001 无任何记录 → isNew=true
+
+    注：plan-01 口径已修订（份额去重 + 去掉合计占流通比）。
+    fixture 基金名互不相同且无份额后缀，故不影响 fund_count。
     """
     funds = [
         Fund(ts_code="001001.OF", name="华夏成长", invest_type="普通股票型"),
@@ -231,18 +233,71 @@ async def sample_null_stocks_table(test_session):
 
 
 @pytest_asyncio.fixture
-async def sample_all_null_ratio(test_session):
-    """所有持仓 stk_float_ratio=None（验证 totalFloatRatio=null，fundCount 正常）"""
-    funds = [Fund(ts_code="004001.OF", name="全 NULL 基金", invest_type="普通股票型")]
+async def sample_share_class_data(test_session):
+    """
+    份额去重专项 fixture：同一只基金的 A/C/E 三份额，fund_ts_code 不同、
+    name 去份额后缀（[ACDEHIR]$）后完全相同，三份额都持 600519。
+
+    期望：份额去重后 fund_count=1（而非 3）。
+    """
+    funds = [
+        Fund(ts_code="005001.OF", name="份额去重基金A", invest_type="普通股票型"),
+        Fund(ts_code="005002.OF", name="份额去重基金C", invest_type="普通股票型"),
+        Fund(ts_code="005003.OF", name="份额去重基金E", invest_type="普通股票型"),
+    ]
     portfolios = [
         FundPortfolio(
-            fund_ts_code="004001.OF",
+            fund_ts_code="005001.OF",
             report_period=date(2024, 12, 31),
             stock_symbol="600519",
-            stk_float_ratio=None,
+            stk_float_ratio=Decimal("1.0"),
+        ),
+        FundPortfolio(
+            fund_ts_code="005002.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("2.0"),
+        ),
+        FundPortfolio(
+            fund_ts_code="005003.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("3.0"),
         ),
     ]
     stocks = [Stock(symbol="600519", name="贵州茅台")]
+    test_session.add_all(funds + portfolios + stocks)
+    await test_session.commit()
+    return {"funds": funds, "portfolios": portfolios, "stocks": stocks}
+
+
+@pytest_asyncio.fixture
+async def sample_tiebreaker_data(test_session):
+    """
+    排序 tiebreaker fixture：两只股票 fund_count 相同（=1，仅被同一只基金持有），
+    验证 fund_count 相同时按 stock_symbol ASC 排序。
+    """
+    funds = [
+        Fund(ts_code="006001.OF", name="Tiebreaker 基金", invest_type="普通股票型"),
+    ]
+    portfolios = [
+        FundPortfolio(
+            fund_ts_code="006001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="000002",
+            stk_float_ratio=Decimal("1.0"),
+        ),
+        FundPortfolio(
+            fund_ts_code="006001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600300",
+            stk_float_ratio=Decimal("1.0"),
+        ),
+    ]
+    stocks = [
+        Stock(symbol="000002", name="万科A"),
+        Stock(symbol="600300", name="维维股份"),
+    ]
     test_session.add_all(funds + portfolios + stocks)
     await test_session.commit()
     return {"funds": funds, "portfolios": portfolios, "stocks": stocks}
@@ -269,7 +324,7 @@ class TestRankings:
     async def test_rankings_returns_active_scope_only(
         self, auth_client, sample_crowd_data
     ):
-        """AC-01：scope=active 排除被动型，600519 fundCount=2（001001+001004 NULL）"""
+        """AC-01：scope=active 排除被动型，600519 fundCount=2（001001+001004）"""
         resp = await auth_client.get(
             "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
         )
@@ -283,8 +338,8 @@ class TestRankings:
 
         item = _find_item(data["items"], "600519")
         assert item["fundCount"] == 2
-        # 001004 NULL stk_float_ratio 忽略 → 2.5（仅 001001）
-        assert item["totalFloatRatio"] == 2.5
+        # 口径修订：已删除 totalFloatRatio 字段，不应再返回
+        assert "totalFloatRatio" not in item
 
     @pytest.mark.asyncio
     async def test_rankings_all_scope_includes_passive(
@@ -304,7 +359,7 @@ class TestRankings:
     async def test_rankings_order_by_fund_count_desc(
         self, auth_client, sample_crowd_data
     ):
-        """AC-01 排序：fund_count DESC，600519(4) 在 000001(2) 之前（scope=all）"""
+        """AC-01 排序：fund_count DESC, stock_symbol ASC，600519(4) 在 000001(2) 之前（scope=all）"""
         resp = await auth_client.get(
             "/api/v1/fund-crowd-analysis/rankings",
             params={"scope": "all", "page_size": 20},
@@ -318,23 +373,27 @@ class TestRankings:
         )
 
     @pytest.mark.asyncio
-    async def test_rankings_total_float_ratio_sum(
-        self, auth_client, sample_crowd_data
+    async def test_rankings_order_tiebreaker_by_stock_symbol_asc(
+        self, auth_client, sample_tiebreaker_data
     ):
-        """AC-01 辅指标：scope=all，600519 totalFloatRatio≈4.8（2.5+1.5+0.8+0）"""
+        """AC-01 tiebreaker：fund_count 相同时按 stock_symbol ASC（同 fundCount 的两只股）"""
         resp = await auth_client.get(
-            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "all"}
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "active", "page_size": 20},
         )
         assert resp.status_code == 200
-        item = _find_item(resp.json()["data"]["items"], "600519")
-        assert abs(item["totalFloatRatio"] - 4.8) < 0.0001
+        items = resp.json()["data"]["items"]
+        symbols = [it["stockSymbol"] for it in items]
+        # 两只都被同一只基金持有 → fund_count 相同（=1），按 symbol ASC
+        assert symbols == sorted(symbols), (
+            f"fund_count 相同时应按 stock_symbol ASC，实际顺序: {symbols}"
+        )
 
     @pytest.mark.asyncio
     async def test_rankings_change_computation(
         self, auth_client, sample_crowd_data
     ):
-        """AC-03：600519 fundCountChange=0（本期 2 - 上期 2）；totalFloatRatioChange≈0.5（2.5-2.0）；
-        000001 isNew=true（上期无记录）"""
+        """AC-03：600519 fundCountChange=0（本期 2 - 上期 2）；000001 isNew=true（上期无记录）"""
         resp = await auth_client.get(
             "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
         )
@@ -346,13 +405,13 @@ class TestRankings:
 
         item_519 = _find_item(data["items"], "600519")
         assert item_519["fundCountChange"] == 0
-        assert abs(item_519["totalFloatRatioChange"] - 0.5) < 0.0001
         assert item_519["isNew"] is False
+        # 口径修订：已删除 totalFloatRatioChange
+        assert "totalFloatRatioChange" not in item_519
 
         item_001 = _find_item(data["items"], "000001")
         assert item_001["isNew"] is True
         assert item_001["fundCountChange"] is None
-        assert item_001["totalFloatRatioChange"] is None
 
     @pytest.mark.asyncio
     async def test_rankings_no_prev_period_returns_null_changes(
@@ -370,7 +429,6 @@ class TestRankings:
 
         for item in data["items"]:
             assert item["fundCountChange"] is None
-            assert item["totalFloatRatioChange"] is None
             assert item["isNew"] is None
 
     @pytest.mark.asyncio
@@ -475,21 +533,6 @@ class TestRankings:
         assert items[0]["fundCount"] == 1
 
     @pytest.mark.asyncio
-    async def test_rankings_total_float_ratio_null_when_all_null(
-        self, auth_client, sample_all_null_ratio
-    ):
-        """L3 降级：所有 stk_float_ratio=None → totalFloatRatio=null，fundCount 正常"""
-        resp = await auth_client.get(
-            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
-        )
-        assert resp.status_code == 200
-        items = resp.json()["data"]["items"]
-        assert len(items) == 1
-        assert items[0]["stockSymbol"] == "600519"
-        assert items[0]["totalFloatRatio"] is None
-        assert items[0]["fundCount"] == 1
-
-    @pytest.mark.asyncio
     async def test_rankings_search_escapes_like_wildcards(
         self, auth_client, sample_crowd_data
     ):
@@ -502,6 +545,26 @@ class TestRankings:
         data = resp.json()["data"]
         assert data["total"] == 0
         assert data["items"] == []
+
+    @pytest.mark.asyncio
+    async def test_rankings_dedup_fund_share_classes(
+        self, auth_client, sample_share_class_data
+    ):
+        """份额去重：A/C/E 三份额（不同 fund_ts_code、name 去后缀相同）持 600519
+        → fund_count=1（按基金名 regexp_replace 去重，而非 fund_ts_code）"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
+        )
+        assert resp.status_code == 200
+        items = resp.json()["data"]["items"]
+        assert len(items) == 1
+        item = items[0]
+        assert item["stockSymbol"] == "600519"
+        # 关键断言：份额去重后 fund_count=1，而非未去重的 3
+        assert item["fundCount"] == 1, (
+            f"份额去重后 fund_count 应为 1（同一只基金的 A/C/E 三份额合并），"
+            f"实际: {item['fundCount']}"
+        )
 
 
 # ============== Test: GET /industry-distribution — 行业分布 ==============

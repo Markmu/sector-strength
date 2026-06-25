@@ -47,15 +47,12 @@ class RankingItem(BaseModel):
     stock_symbol: str = Field(..., description="股票代码")
     stock_name: Optional[str] = Field(None, description="股票名称（stocks 表缺失为 null）")
     industries: list[str] = Field(default_factory=list, description="行业列表（一股多行业）")
-    fund_count: int = Field(..., description="被多少只基金持有（COUNT DISTINCT fund_ts_code）")
-    total_float_ratio: Optional[float] = Field(
-        None, description="合计占流通比（SUM stk_float_ratio，全 NULL 为 null）"
+    fund_count: int = Field(
+        ...,
+        description="被多少只基金持有（份额去重 COUNT DISTINCT regexp_replace(Fund.name, '[ACDEHIR]$', ''))",
     )
     fund_count_change: Optional[int] = Field(
         None, description="环比变化基金数（上期无记录或无上期为 null）"
-    )
-    total_float_ratio_change: Optional[float] = Field(
-        None, description="环比变化占流通比（任一为 null 时为 null）"
     )
     is_new: Optional[bool] = Field(
         None, description="是否本期新进（has_prev_period=false 时为 null）"
@@ -85,7 +82,6 @@ class IndustryItem(BaseModel):
     industry: str
     stock_count: int = Field(..., description="该行业扎堆股数量（COUNT DISTINCT）")
     percentage: float = Field(..., description="扎堆股数量占比（%）")
-    total_float_ratio: float = Field(..., description="该行业合计占流通比参考值")
 
 
 class IndustryDistributionData(BaseModel):
@@ -148,9 +144,10 @@ async def get_rankings(
     """
     扎堆度排行榜（AC-01/02/03/06/07/08）
 
-    返回最新报告期扎堆度排行榜，按 fund_count（COUNT DISTINCT fund_ts_code）降序、
-    total_float_ratio（SUM stk_float_ratio）次降序。scope=active 排除被动型基金；
-    上一期存在时环比字段按 stock_symbol 内存对比（含"新进"判定）。
+    返回最新报告期扎堆度排行榜，按 fund_count（份额去重 COUNT DISTINCT
+    regexp_replace(Fund.name, '[ACDEHIR]$', '')）降序、相同时按 stock_symbol 升序
+    次排序。scope=active 排除被动型基金；上一期存在时环比字段按 stock_symbol
+    内存对比（含"新进"判定）。
     """
     # scope 容错（边界场景：非 active/all → 默认 active）
     if scope not in ("active", "all"):
@@ -174,7 +171,7 @@ async def get_industry_distribution(
     """
     行业分布（AC-04）
 
-    按行业聚合扎堆股数量占比 + 合计占流通比参考值；一股多行业独立计数；
+    按行业聚合扎堆股数量占比；一股多行业独立计数；
     无行业关联归「未分类」桶；按 stock_count 降序。
     """
     if scope not in ("active", "all"):

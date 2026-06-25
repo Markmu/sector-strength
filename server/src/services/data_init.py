@@ -19,7 +19,7 @@ from src.models.stock import Stock
 from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
 from src.services.data_acquisition import DataSourceFactory
-from src.services.data_acquisition.models import StockInfo, SectorInfo, DailyQuote
+from src.services.data_acquisition.models import A_STOCK_EXCHANGES, StockInfo, SectorInfo, DailyQuote
 from src.repositories.symbol_repository import SectorStockRepository
 
 logger = logging.getLogger(__name__)
@@ -471,22 +471,42 @@ class DataInitService:
 
     async def init_stocks(self) -> dict:
         """
-        初始化股票数据
+        初始化股票数据（A 股 + 港股）
 
         Returns:
             初始化结果字典
         """
         self._cancelled = False
-        logger.info("开始初始化股票数据")
+        logger.info("开始初始化股票数据（A 股 + 港股）")
 
         try:
-            # 从数据源获取股票列表
+            # 从数据源获取 A 股列表
             stocks = self.data_source.get_stock_list()
             self._check_cancelled()
+
+            # 拉取港股列表（失败不阻断 A 股初始化）
+            hk_stocks: list = []
+            hk_total = 0
+            hk_fetch_ok = True
+            try:
+                await self._update_progress(0, 0, "正在拉取港股基础信息...")
+                hk_stocks = self.data_source.get_hk_stock_list()
+                hk_total = len(hk_stocks)
+                self._check_cancelled()
+            except InterruptedError:
+                raise
+            except Exception as e:
+                logger.error(f"拉取港股列表失败（不影响 A 股初始化）: {e}")
+                hk_stocks = []
+                hk_total = 0
+                hk_fetch_ok = False
+
+            all_stocks = stocks + hk_stocks
 
             created = 0
             updated = 0
             skipped = 0
+            hk_created = 0
             errors = []
 
             # 需要同步的基础字段列表
@@ -496,9 +516,10 @@ class DataInitService:
                 "list_date", "delist_date", "is_hs", "act_name", "act_ent_type",
             ]
 
-            for i, stock_info in enumerate(stocks, 1):
+            for i, stock_info in enumerate(all_stocks, 1):
                 self._check_cancelled()
-                await self._update_progress(i, len(stocks), f"正在处理股票: {stock_info.symbol} - {stock_info.name}")
+                is_hk = stock_info.exchange == "HKEX"
+                await self._update_progress(i, len(all_stocks), f"正在处理股票: {stock_info.symbol} - {stock_info.name}")
 
                 try:
                     # 使用 savepoint 隔离每个股票的操作
@@ -551,12 +572,21 @@ class DataInitService:
                             )
                             self.session.add(stock)
                             created += 1
+                            if is_hk:
+                                hk_created += 1
                             logger.debug(f"创建股票: {stock_info.symbol} - {stock_info.name}")
 
                 except Exception as e:
                     error_msg = f"处理股票失败 {stock_info.symbol}: {e}"
                     errors.append(error_msg)
                     logger.error(error_msg)
+
+            # ============ set-diff 清理：删除数据源已消失的股票 ============
+            # 港股拉取失败（hk_fetch_ok=False）时不删港股，避免误删全部港股
+            cleanup = await self._cleanup_disappeared_stocks(
+                a_source_symbols={s.symbol for s in stocks},
+                hk_source_symbols={s.symbol for s in hk_stocks} if hk_fetch_ok else None,
+            )
 
             # 提交事务
             await self.session.commit()
@@ -567,10 +597,19 @@ class DataInitService:
                 "updated": updated,
                 "skipped": skipped,
                 "errors": errors,
-                "total": len(stocks)
+                "total": len(all_stocks),
+                "hk_total": hk_total,
+                "hk_created": hk_created,
+                "deleted": cleanup["deleted_symbols"],
+                "deleted_count": len(cleanup["deleted_symbols"]),
+                "cleanup_errors": cleanup["cleanup_errors"],
             }
 
-            logger.info(f"股票初始化完成: 创建 {created}, 更新 {updated}, 跳过 {skipped}, 错误 {len(errors)}")
+            logger.info(
+                f"股票初始化完成: 创建 {created}(其中港股 {hk_created}), "
+                f"更新 {updated}, 跳过 {skipped}, "
+                f"删除 {len(cleanup['deleted_symbols'])}, 错误 {len(errors)}"
+            )
             return result
 
         except InterruptedError:
@@ -581,6 +620,119 @@ class DataInitService:
             await self.session.rollback()
             logger.error(f"股票初始化失败: {e}")
             return {"success": False, "error": str(e)}
+
+    async def _cleanup_disappeared_stocks(
+        self,
+        a_source_symbols: set,
+        hk_source_symbols: Optional[set],
+    ) -> dict:
+        """
+        清理数据源已消失的股票（set-diff），级联删衍生数据，带误删防护。
+
+        Args:
+            a_source_symbols: 数据源 A 股 symbol 集合
+            hk_source_symbols: 数据源港股 symbol 集合；None 表示港股拉取失败，跳过港股清理
+
+        Returns:
+            {"deleted_symbols": list, "cleanup_errors": list}
+        """
+        deleted_symbols: list = []
+        cleanup_errors: list = []
+
+        a_deleted, a_err = await self._cleanup_one_market(
+            exchanges=A_STOCK_EXCHANGES,
+            source_symbols=a_source_symbols,
+            label="A 股",
+        )
+        deleted_symbols.extend(a_deleted)
+        cleanup_errors.extend(a_err)
+
+        if hk_source_symbols is not None:
+            hk_deleted, hk_err = await self._cleanup_one_market(
+                exchanges=("HKEX",),
+                source_symbols=hk_source_symbols,
+                label="港股",
+            )
+            deleted_symbols.extend(hk_deleted)
+            cleanup_errors.extend(hk_err)
+
+        return {"deleted_symbols": deleted_symbols, "cleanup_errors": cleanup_errors}
+
+    async def _cleanup_one_market(
+        self,
+        exchanges: tuple,
+        source_symbols: set,
+        label: str,
+    ) -> tuple:
+        """对单一市场做 set-diff 清理，带 sanity check 防误删。
+
+        若待删数量超过该市场库存的 5%（且库存 > 100），视为数据源返回不完整，
+        拒绝删除以防止误删。
+        """
+        self._check_cancelled()
+        rows = (await self.session.execute(
+            select(Stock.id, Stock.symbol).where(Stock.exchange.in_(exchanges))
+        )).all()
+        db_map = {r.symbol: r.id for r in rows}
+
+        to_delete = set(db_map) - set(source_symbols)
+        if not to_delete:
+            return [], []
+
+        if len(db_map) > 100 and len(to_delete) > len(db_map) * 0.05:
+            err = (
+                f"{label}清理中止：待删除 {len(to_delete)}/{len(db_map)} "
+                f"超过 5% 阈值，疑似数据源返回不完整，已跳过删除"
+            )
+            logger.error(err)
+            return [], [err]
+
+        deleted_ids = [db_map[s] for s in to_delete]
+        deleted_symbols = sorted(to_delete)
+
+        await self._cascade_delete_stock_data(deleted_ids, deleted_symbols)
+        logger.info(
+            f"{label}清理：删除 {len(deleted_symbols)} 只数据源已消失的股票: "
+            f"{deleted_symbols}"
+        )
+        return deleted_symbols, []
+
+    async def _cascade_delete_stock_data(
+        self,
+        stock_ids: list,
+        symbols: list,
+    ) -> None:
+        """
+        级联删除股票的衍生数据。
+
+        stocks 表无外键约束（衍生表均为软关联），需手动清理避免孤儿：
+          - daily_market_data / moving_average_data / strength_scores：按 entity_type='stock' + entity_id
+          - sector_stocks：按 stock_code（symbol）
+          - top10_float_holders：按 symbol
+          - stocks 本身
+        """
+        from src.models.moving_average_data import MovingAverageData
+        from src.models.strength_score import StrengthScore
+        from src.models.top10_float_holder import Top10FloatHolder
+
+        for model in (DailyMarketData, MovingAverageData, StrengthScore):
+            await self.session.execute(
+                delete(model).where(
+                    and_(
+                        model.entity_type == "stock",
+                        model.entity_id.in_(stock_ids),
+                    )
+                )
+            )
+        await self.session.execute(
+            delete(SectorStock).where(SectorStock.stock_code.in_(symbols))
+        )
+        await self.session.execute(
+            delete(Top10FloatHolder).where(Top10FloatHolder.symbol.in_(symbols))
+        )
+        await self.session.execute(
+            delete(Stock).where(Stock.id.in_(stock_ids))
+        )
 
     async def init_historical_data(
         self,
@@ -612,8 +764,12 @@ class DataInitService:
                 # 使用过滤列表
                 symbols = symbol_filter
             else:
-                # 获取所有股票
-                result = await self.session.execute(select(Stock.symbol))
+                # 获取所有股票（仅 A 股，排除港股）
+                result = await self.session.execute(
+                    select(Stock.symbol).where(
+                        Stock.exchange.in_(A_STOCK_EXCHANGES)
+                    )
+                )
                 symbols = [row[0] for row in result.all()]
 
             self._check_cancelled()
@@ -743,8 +899,12 @@ class DataInitService:
                 # 使用过滤列表
                 symbols = symbol_filter
             else:
-                # 获取所有股票
-                result = await self.session.execute(select(Stock.symbol))
+                # 获取所有股票（仅 A 股，排除港股）
+                result = await self.session.execute(
+                    select(Stock.symbol).where(
+                        Stock.exchange.in_(A_STOCK_EXCHANGES)
+                    )
+                )
                 symbols = [row[0] for row in result.all()]
 
             self._check_cancelled()

@@ -245,6 +245,75 @@ class TushareDataSource(BaseDataSource):
         )
         return stocks
 
+    def get_hk_stock_list(self) -> List[StockInfo]:
+        """获取港股基础信息列表 — 提取 hk_basic 字段
+
+        - hk_basic 不返回 exchange，统一设为 HKEX
+        - 字段名 cn_spell（带下划线）映射到 cnspell
+        - trade_unit/isin 为港股特有字段，stocks 表不存储，丢弃
+        - industry/area/is_hs/act_name/act_ent_type 港股无对应，留空
+        """
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info("[Tushare] 正在获取港股列表...")
+            fields = (
+                "ts_code,name,fullname,enname,cn_spell,market,"
+                "list_status,list_date,delist_date,curr_type"
+            )
+            return pro.hk_basic(exchange="", list_status="L", fields=fields)
+
+        df = self._execute_with_retry(_fetch)
+        stocks: List[StockInfo] = []
+        errors = 0
+
+        import pandas as pd
+
+        for _, row in df.iterrows():
+            try:
+                ts_code = str(row["ts_code"])
+                symbol = ts_code.split(".")[0]
+                name = str(row["name"])
+
+                fullname = str(row.get("fullname", "")) or None if pd.notna(row.get("fullname")) else None
+                enname = str(row.get("enname", "")) or None if pd.notna(row.get("enname")) else None
+                cnspell = str(row.get("cn_spell", "")) or None if pd.notna(row.get("cn_spell")) else None
+                market = str(row.get("market", "")) or None if pd.notna(row.get("market")) else None
+                curr_type = str(row.get("curr_type", "")) or None if pd.notna(row.get("curr_type")) else None
+                list_status = str(row.get("list_status", "")) or None if pd.notna(row.get("list_status")) else None
+
+                list_date = None
+                if pd.notna(row.get("list_date")):
+                    list_date = datetime.strptime(str(row["list_date"]), "%Y%m%d").date()
+
+                delist_date = None
+                if pd.notna(row.get("delist_date")):
+                    delist_date = datetime.strptime(str(row["delist_date"]), "%Y%m%d").date()
+
+                stocks.append(
+                    StockInfo(
+                        symbol=symbol,
+                        name=name,
+                        ts_code=ts_code,
+                        fullname=fullname,
+                        enname=enname,
+                        cnspell=cnspell,
+                        market=market,
+                        exchange="HKEX",  # hk_basic 不返回 exchange，统一标记港交所
+                        curr_type=curr_type,
+                        list_status=list_status,
+                        list_date=list_date,
+                        delist_date=delist_date,
+                    )
+                )
+            except (ValidationError, ValueError):
+                errors += 1
+
+        logger.info(
+            f"[Tushare] 成功转换 {len(stocks)} 只港股，忽略 {errors} 条异常数据"
+        )
+        return stocks
+
     def get_sector_list(self, sector_type: Optional[str] = None) -> List[SectorInfo]:
         """获取板块列表"""
         pro = self._get_pro_api()

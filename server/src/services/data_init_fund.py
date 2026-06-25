@@ -349,6 +349,9 @@ class FundDataInitService:
                             if "." in stock_symbol_raw
                             else stock_symbol_raw
                         )
+                        # 港股代码补齐5位（Tushare 港股4位如 0700 → 00700；A股6位不动）
+                        if len(stock_symbol) < 5 and stock_symbol.isdigit():
+                            stock_symbol = stock_symbol.rjust(5, "0")
 
                         ann_date = self._parse_date(record.get("ann_date"))
                         market_value = self._parse_float(record.get("mkv"))

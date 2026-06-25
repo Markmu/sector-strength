@@ -28,6 +28,8 @@ def mock_session():
 def mock_data_source(mock_session):
     """模拟 DataSourceFactory.create() 返回的数据源"""
     mock_source = MagicMock()
+    # init_stocks 现在同时拉取 A 股 + 港股，默认港股返回空以隔离 A 股路径测试
+    mock_source.get_hk_stock_list.return_value = []
     with patch('src.services.data_init.DataSourceFactory') as mock_factory:
         mock_factory.create.return_value = mock_source
         yield mock_source

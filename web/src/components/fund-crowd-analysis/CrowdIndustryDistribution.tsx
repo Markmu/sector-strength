@@ -3,7 +3,7 @@
 /**
  * 行业分布水平条形图（plan-02，AC-04）
  *
- * 主指标 = 扎堆股数量占比（percentage），辅以合计占流通比参考。
+ * 主指标 = 扎堆股数量占比。
  * 复用 shareholder-analysis/IndustryDistribution.tsx 的 ECharts + 双轨标签范式：
  * - ECharts 动态导入（ssr: false）
  * - canvas 旁渲染可点击 DOM button（兼容 spec getByTestId 点击，规避 canvas 点击不稳定）
@@ -76,8 +76,7 @@ export default function CrowdIndustryDistribution({
           if (!item) return ''
           return `<div>${item.industry}</div>
             <div>扎堆股数：${item.stockCount}</div>
-            <div>占比：${item.percentage.toFixed(1)}%</div>
-            <div>合计占流通比：${item.totalFloatRatio.toFixed(2)}%</div>`
+            <div>占比：${item.percentage.toFixed(1)}%</div>`
         },
       },
       grid: { left: '15%', right: '8%', top: 10, bottom: 20, containLabel: true },
@@ -155,7 +154,7 @@ export default function CrowdIndustryDistribution({
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            仅展示扎堆股数前 {TOP_N} 行业（按数量占比，辅以合计占流通比参考）。
+            仅展示扎堆股数前 {TOP_N} 行业（按数量占比）。
           </p>
         </>
       )}

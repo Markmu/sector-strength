@@ -992,9 +992,7 @@ export interface CrowdRankingItem {
   stockName: string | null
   industries: string[]
   fundCount: number
-  totalFloatRatio: number | null
   fundCountChange: number | null
-  totalFloatRatioChange: number | null
   /** 三态：true（新进）/ false（正常环比）/ null（hasPrevPeriod=false 时后端统一 null） */
   isNew: boolean | null
 }
@@ -1014,7 +1012,6 @@ export interface CrowdIndustryItem {
   industry: string
   stockCount: number
   percentage: number
-  totalFloatRatio: number
 }
 
 export interface CrowdIndustryDistributionResponse {

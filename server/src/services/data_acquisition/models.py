@@ -12,6 +12,10 @@ from pydantic import BaseModel, Field, field_validator
 from .sector_types import SECTOR_TYPES
 
 
+# A 股交易所集合：在全表扫描 stocks 时用于排除港股（HKEX）等非 A 股标的
+A_STOCK_EXCHANGES = ("SSE", "SZSE", "BSE")
+
+
 class StockInfo(BaseModel):
     """股票基本信息 — 与 Tushare stock_basic 输出字段对齐"""
 
@@ -48,10 +52,10 @@ class StockInfo(BaseModel):
     @field_validator("exchange")
     @classmethod
     def validate_exchange(cls, v: Optional[str]) -> Optional[str]:
-        """验证交易所代码"""
+        """验证交易所代码（A 股 SSE/SZSE/BSE + 港股 HKEX）"""
         if v is not None:
             v = v.strip().upper()
-            if v not in ("SSE", "SZSE", "BSE", ""):
+            if v not in ("SSE", "SZSE", "BSE", "HKEX", ""):
                 raise ValueError(f"无效的交易所代码: {v}")
         return v
 

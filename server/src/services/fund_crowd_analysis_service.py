@@ -139,17 +139,13 @@ class FundCrowdAnalysisService:
                     "stock_name": stock_names.get(symbol),  # None 兜底
                     "industries": industry_map.get(symbol, []),
                     "fund_count": agg["fund_count"],
-                    "total_float_ratio": agg["total_float_ratio"],
                     "fund_count_change": ch.get("fund_count_change"),
-                    "total_float_ratio_change": ch.get("total_float_ratio_change"),
                     "is_new": ch.get("is_new"),
                 }
             )
 
-        # 7. 排序：fund_count DESC, total_float_ratio DESC（None 视为最小）
-        items.sort(
-            key=lambda x: (-x["fund_count"], -(x["total_float_ratio"] or 0))
-        )
+        # 7. 排序：fund_count DESC, stock_symbol ASC（tiebreaker）
+        items.sort(key=lambda x: (-x["fund_count"], x["stock_symbol"]))
 
         # 8. 分页（search 已在 SQL WHERE 层过滤 → total = len(current_agg)）
         total = len(items)
@@ -174,8 +170,7 @@ class FundCrowdAnalysisService:
         has_prev_period: bool,
     ) -> dict[str, dict]:
         """
-        复用 06 _compute_change_directions 范式，按 stock_symbol 对比
-        fund_count / total_float_ratio。
+        复用 06 _compute_change_directions 范式，按 stock_symbol 对比 fund_count。
 
         - has_prev_period=False：所有股票 change 字段统一 None（ADR-3）
         - symbol not in prev_agg → is_new=True（新进），fund_count_change=None
@@ -187,7 +182,6 @@ class FundCrowdAnalysisService:
             for symbol in current_agg:
                 changes[symbol] = {
                     "fund_count_change": None,
-                    "total_float_ratio_change": None,
                     "is_new": None,  # ADR-3：has_prev_period=false 时 is_new=null
                 }
             return changes
@@ -197,25 +191,18 @@ class FundCrowdAnalysisService:
             if prev is None:
                 changes[symbol] = {
                     "fund_count_change": None,  # 新进无变化数值
-                    "total_float_ratio_change": None,
                     "is_new": True,
                 }
             else:
-                cur_ratio = cur["total_float_ratio"]
-                prev_ratio = prev["total_float_ratio"]
-                ratio_change: Optional[float] = None
-                if cur_ratio is not None and prev_ratio is not None:
-                    ratio_change = round(cur_ratio - prev_ratio, 4)
                 changes[symbol] = {
                     "fund_count_change": cur["fund_count"] - prev["fund_count"],
-                    "total_float_ratio_change": ratio_change,  # 任一为 None → None
                     "is_new": False,
                 }
         return changes
 
     async def get_industry_distribution(self, scope: str) -> dict:
         """
-        行业分布（AC-04 + ADR-5）：按行业聚合扎堆股数量占比 + 合计占流通比参考值。
+        行业分布（AC-04 + ADR-5）：按行业聚合扎堆股数量占比。
 
         - 一股多行业独立计数（与 06 一致）
         - 无行业关联归「未分类」桶
@@ -246,32 +233,23 @@ class FundCrowdAnalysisService:
         total_stock_count = len(all_symbols)
 
         # 按行业分组（一股多行业独立计数，与 06 一致）
-        industry_stats: dict[str, dict] = {}
+        industry_stats: dict[str, set[str]] = {}
         for symbol in all_symbols:
             industries = industry_map.get(symbol, [])
             if not industries:
                 industries = ["未分类"]
             for ind in industries:
                 if ind not in industry_stats:
-                    industry_stats[ind] = {
-                        "stock_count": set(),
-                        "total_float_ratio": 0.0,
-                    }
-                industry_stats[ind]["stock_count"].add(symbol)
-                ratio = current_agg[symbol]["total_float_ratio"]
-                if ratio is not None:
-                    industry_stats[ind]["total_float_ratio"] += ratio
+                    industry_stats[ind] = set()
+                industry_stats[ind].add(symbol)
 
         distribution = [
             {
                 "industry": ind,
-                "stock_count": len(stats["stock_count"]),  # COUNT DISTINCT stock_symbol
-                "percentage": round(
-                    len(stats["stock_count"]) / total_stock_count * 100, 4
-                ),
-                "total_float_ratio": round(stats["total_float_ratio"], 4),
+                "stock_count": len(symbols),  # COUNT DISTINCT stock_symbol
+                "percentage": round(len(symbols) / total_stock_count * 100, 4),
             }
-            for ind, stats in industry_stats.items()
+            for ind, symbols in industry_stats.items()
         ]
         # 按 stock_count 降序（前端再 Top N 截断）
         distribution.sort(key=lambda x: -x["stock_count"])

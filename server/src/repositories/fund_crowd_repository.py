@@ -63,20 +63,25 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
             escaped_search: 已转义 LIKE 通配符的 search 关键词
 
         Returns:
-            { stock_symbol: { "fund_count": int, "total_float_ratio": float | None } }
+            { stock_symbol: { "fund_count": int } }
             空表 / 无匹配返回 {}
 
         护栏：
         - 持仓计入无阈值（ADR-2，存在即重仓）
         - 主动型 = invest_type NOT IN (...) OR invest_type IS NULL（必须 .is_(None)）
-        - stk_float_ratio NULL 自动被 SUM 忽略（ADR-1）
+        - 份额去重：fund_count = COUNT(DISTINCT regexp_replace(Fund.name, '[ACDEHIR]$', ''))
+          （A/C/D/E/H/I/R 等份额后缀合并为同一基金）
         - search 在 SQL WHERE 层过滤（路径 A），保证分页 total 正确
         """
         stmt = (
             select(
                 FundPortfolio.stock_symbol,
-                func.count(FundPortfolio.fund_ts_code.distinct()).label("fund_count"),
-                func.sum(FundPortfolio.stk_float_ratio).label("total_float_ratio"),
+                # 份额去重：按基金名去份额后缀后再 DISTINCT 计数（PostgreSQL regexp_replace 透传）
+                func.count(
+                    func.distinct(
+                        func.regexp_replace(Fund.name, "[ACDEHIR]$", "")
+                    )
+                ).label("fund_count"),
             )
             .select_from(FundPortfolio)
             .join(Fund, Fund.ts_code == FundPortfolio.fund_ts_code)
@@ -108,13 +113,9 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
 
         result = await self.session.execute(stmt)
         agg: dict[str, dict] = {}
-        for symbol, fund_count, total_float_ratio in result.all():
+        for symbol, fund_count in result.all():
             agg[symbol] = {
                 "fund_count": int(fund_count or 0),
-                # Decimal → float（避免序列化为字符串破坏前端图表）
-                "total_float_ratio": (
-                    float(total_float_ratio) if total_float_ratio is not None else None
-                ),
             }
         return agg
 

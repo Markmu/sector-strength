@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.stock import Stock
 from src.models.top10_float_holder import Top10FloatHolder
 from src.services.data_acquisition import DataSourceFactory
+from src.services.data_acquisition.models import A_STOCK_EXCHANGES
 from src.services.data_acquisition.tushare_client import TushareDataSource
 
 logger = logging.getLogger(__name__)
@@ -96,9 +97,11 @@ class Top10HolderDataInitService:
              "failed_stocks": [{"symbol": str, "reason": str}]}
         """
         # 1. 查询在市股票列表（ts_code 非空即有效股票，不依赖 list_status）
+        #    仅 A 股：十大流通股东接口面向 A 股，排除港股（HKEX）
         stock_rows = await self.session.execute(
             select(Stock.symbol, Stock.ts_code).where(
-                Stock.ts_code.isnot(None)
+                Stock.ts_code.isnot(None),
+                Stock.exchange.in_(A_STOCK_EXCHANGES),
             )
         )
         stocks = stock_rows.all()
