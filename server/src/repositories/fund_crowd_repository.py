@@ -68,6 +68,8 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
 
         护栏：
         - 持仓计入无阈值（ADR-2，存在即重仓）
+        - 仅 A 股：length(stock_symbol)=6 排除港股（港股代码补齐5位，见 data_init_fund.py）
+        - QDII 基金整体排除：fund_type IS DISTINCT FROM 'QDII'（兼容 NULL）
         - 主动型 = invest_type NOT IN (...) OR invest_type IS NULL（必须 .is_(None)）
         - 份额去重：fund_count = COUNT(DISTINCT regexp_replace(Fund.name, '[ACDEHIR]$', ''))
           （A/C/D/E/H/I/R 等份额后缀合并为同一基金）
@@ -86,6 +88,12 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
             .select_from(FundPortfolio)
             .join(Fund, Fund.ts_code == FundPortfolio.fund_ts_code)
             .where(FundPortfolio.report_period == report_period)
+            # 护栏：仅 A 股持仓计入扎堆，排除港股。
+            #   A 股代码统一 6 位，港股代码补齐 5 位（见 data_init_fund.py 港股代码补齐5位）。
+            .where(func.length(FundPortfolio.stock_symbol) == 6)
+            # 护栏：排除 QDII 基金（投资海外的基金，持仓多为港股/美股，不应计入 A 股扎堆）。
+            #   is_distinct_from 兼容 fund_type IS NULL（现有数据可能未填 fund_type，仍计入）。
+            .where(Fund.fund_type.is_distinct_from("QDII"))
         )
 
         if scope == "active":

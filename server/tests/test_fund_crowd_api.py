@@ -303,6 +303,58 @@ async def sample_tiebreaker_data(test_session):
     return {"funds": funds, "portfolios": portfolios, "stocks": stocks}
 
 
+@pytest_asyncio.fixture
+async def sample_hk_qdii_exclusion_data(test_session):
+    """
+    港股持仓 + QDII 基金排除专项 fixture：
+      - 007001.OF 沪港深基金（混合型）：持 A 股 600519 + 港股 00700
+      - 007002.OF QDII 基金（fund_type=QDII）：持 A 股 600519（应整体排除）
+      - 007003.OF 正常基金（普通股票型）：持 A 股 600519
+
+    期望（scope=all）：
+      - 600519 fund_count=2（007001 + 007003；007002 QDII 排除）
+      - 00700 港股（5位）不出现在榜单
+    """
+    funds = [
+        Fund(ts_code="007001.OF", name="沪港深精选", invest_type="混合型", fund_type="混合型"),
+        Fund(ts_code="007002.OF", name="海外QDII基金", invest_type="QDII", fund_type="QDII"),
+        Fund(ts_code="007003.OF", name="正常股票基金", invest_type="普通股票型", fund_type="股票型"),
+    ]
+    portfolios = [
+        FundPortfolio(
+            fund_ts_code="007001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("1.0"),
+        ),
+        FundPortfolio(
+            fund_ts_code="007001.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="00700",  # 港股（5位）→ 应排除
+            stk_float_ratio=Decimal("1.0"),
+        ),
+        FundPortfolio(
+            fund_ts_code="007002.OF",  # QDII 基金 → 整体排除
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("1.0"),
+        ),
+        FundPortfolio(
+            fund_ts_code="007003.OF",
+            report_period=date(2024, 12, 31),
+            stock_symbol="600519",
+            stk_float_ratio=Decimal("1.0"),
+        ),
+    ]
+    stocks = [
+        Stock(symbol="600519", name="贵州茅台", exchange="SSE"),
+        Stock(symbol="00700", name="腾讯控股", exchange="HKEX"),
+    ]
+    test_session.add_all(funds + portfolios + stocks)
+    await test_session.commit()
+    return {"funds": funds, "portfolios": portfolios, "stocks": stocks}
+
+
 # ============== Helper ==============
 
 
@@ -563,6 +615,38 @@ class TestRankings:
         # 关键断言：份额去重后 fund_count=1，而非未去重的 3
         assert item["fundCount"] == 1, (
             f"份额去重后 fund_count 应为 1（同一只基金的 A/C/E 三份额合并），"
+            f"实际: {item['fundCount']}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_rankings_excludes_hk_stock_holdings(
+        self, auth_client, sample_hk_qdii_exclusion_data
+    ):
+        """护栏：港股持仓（5位代码如 00700 腾讯）不计入扎堆，不出现在榜单"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "all"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        symbols = [it["stockSymbol"] for it in data["items"]]
+        assert "00700" not in symbols, (
+            f"港股 00700 不应出现在扎堆榜单，实际: {symbols}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_rankings_excludes_qdii_fund(
+        self, auth_client, sample_hk_qdii_exclusion_data
+    ):
+        """护栏：QDII 基金（fund_type=QDII）整体排除，其 A 股持仓不计入 fund_count。
+        600519 仅被沪港深基金(007001) + 正常基金(007003) 持有 → fund_count=2（不含 QDII 007002）"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "all"}
+        )
+        assert resp.status_code == 200
+        items = resp.json()["data"]["items"]
+        item = _find_item(items, "600519")
+        assert item["fundCount"] == 2, (
+            f"QDII 基金应被排除，600519 fund_count 应为 2（不含 QDII 007002），"
             f"实际: {item['fundCount']}"
         )
 
