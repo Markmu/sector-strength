@@ -5,7 +5,7 @@
  *
  * 列：股票代码 | 名称 | 持股数量 | 占流通比 | 较上期（变动方向） | 行业
  * 顶部筛选栏：行业下拉（全部 + 各行业） | 变动方向下拉（全部/增持/减持/新进/退出）
- * 分页：复用 funds/Pagination 组件
+ * 分页：复用 ui/Pagination 组件
  *
  * 变动方向渲染：↑增持(绿) | ↓减持(红) | ★新进(蓝) | ✕退出(灰) | —无数据（无上期或 unchanged 也归为 —）
  *
@@ -15,7 +15,7 @@
  * - 行业筛选 testid="industry-filter"，变动方向 testid="change-direction-filter"
  */
 import React from 'react'
-import Pagination from '@/components/funds/Pagination'
+import Pagination from '@/components/ui/Pagination'
 import SimpleSelect from './SimpleSelect'
 import { cn } from '@/lib/utils'
 import type { ShareholderHoldingItem, ShareholderChangeDirection } from '@/lib/api'
@@ -34,6 +34,8 @@ export interface HoldingsTableProps {
   filters: HoldingsTableFilters
   onFiltersChange: (filters: HoldingsTableFilters) => void
   onPageChange: (page: number) => void
+  /** 每页条数变化回调（对齐基金分析页分页器） */
+  onPageSizeChange: (size: number) => void
   hasPrevPeriod: boolean
 }
 
@@ -95,6 +97,7 @@ export default function HoldingsTable({
   filters,
   onFiltersChange,
   onPageChange,
+  onPageSizeChange,
   hasPrevPeriod,
 }: HoldingsTableProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -210,6 +213,9 @@ export default function HoldingsTable({
         total={total}
         pageSize={pageSize}
         onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        showPageSizeSelector
+        showJumpToPage
       />
     </div>
   )

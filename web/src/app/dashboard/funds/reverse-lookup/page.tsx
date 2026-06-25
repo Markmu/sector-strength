@@ -12,7 +12,7 @@ import { DashboardLayout, DashboardHeader, ErrorState } from '@/components/dashb
 import { Disclaimer } from '@/components/ui/Disclaimer'
 import { useReverseLookup } from '@/hooks/useFunds'
 import ReverseLookupTable from '@/components/funds/ReverseLookupTable'
-import Pagination from '@/components/funds/Pagination'
+import Pagination from '@/components/ui/Pagination'
 import { FUND_TYPE_OPTIONS, MARKET_OPTIONS } from '@/components/funds/FundFilterPanel'
 import { Checkbox } from '@/components/ui/Checkbox'
 import SearchDropdownInput from '@/components/ui/SearchDropdownInput'

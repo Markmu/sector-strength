@@ -19,7 +19,7 @@
  */
 import React from 'react'
 import { SearchIcon } from 'lucide-react'
-import Pagination from '@/components/funds/Pagination'
+import Pagination from '@/components/ui/Pagination'
 import type { CrowdRankingItem } from '@/lib/api'
 
 export interface CrowdRankingTableProps {
@@ -34,6 +34,8 @@ export interface CrowdRankingTableProps {
   search: string
   onSearchChange: (value: string) => void
   onPageChange: (page: number) => void
+  /** 每页条数变化回调（对齐基金分析页分页器） */
+  onPageSizeChange: (size: number) => void
   /** 反查回调：父组件 wire 到 plan-03 的路由跳转；plan-02 仅渲染按钮 + 触发回调 */
   onReverseLookup: (stockSymbol: string) => void
 }
@@ -99,6 +101,7 @@ export default function CrowdRankingTable({
   search,
   onSearchChange,
   onPageChange,
+  onPageSizeChange,
   onReverseLookup,
 }: CrowdRankingTableProps) {
   const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1
@@ -264,6 +267,9 @@ export default function CrowdRankingTable({
             total={total}
             pageSize={pageSize}
             onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+            showPageSizeSelector
+            showJumpToPage
           />
         </>
       )}

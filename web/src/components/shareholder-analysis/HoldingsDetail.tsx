@@ -66,6 +66,7 @@ export default function HoldingsDetail({
     undefined
   )
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   const groupIdsStr = useMemo(() => groupIds?.join(',') ?? '', [groupIds])
 
@@ -115,7 +116,7 @@ export default function HoldingsDetail({
             industry,
             change_direction: changeDirection,
             page,
-            pageSize: DEFAULT_PAGE_SIZE,
+            pageSize,
           }
         : {
             group_ids: groupIdsStr,
@@ -123,9 +124,9 @@ export default function HoldingsDetail({
             industry,
             change_direction: changeDirection,
             page,
-            pageSize: DEFAULT_PAGE_SIZE,
+            pageSize,
           },
-    [holderName, groupIdsStr, reportPeriod, industry, changeDirection, page]
+    [holderName, groupIdsStr, reportPeriod, industry, changeDirection, page, pageSize]
   )
 
   const { summary: summaryData, isLoading: summaryLoading, isError: summaryError } =
@@ -168,6 +169,11 @@ export default function HoldingsDetail({
     // toggle：再点同一个 → 取消
     setIndustry((prev) => (prev === ind ? undefined : ind))
     setPage(1)
+  }
+
+  const handlePageSizeChange = (nextSize: number) => {
+    setPageSize(nextSize)
+    setPage(1) // 切换每页条数重置到第 1 页
   }
 
   const summary = summaryData?.summary
@@ -295,11 +301,12 @@ export default function HoldingsDetail({
             holdings={holdings}
             total={total}
             page={page}
-            pageSize={DEFAULT_PAGE_SIZE}
+            pageSize={pageSize}
             industries={industryOptions}
             filters={{ industry, changeDirection }}
             onFiltersChange={handleFiltersChange}
             onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
             hasPrevPeriod={summaryHasPrevPeriod}
           />
         )}

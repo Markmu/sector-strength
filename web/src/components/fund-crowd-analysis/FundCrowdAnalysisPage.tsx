@@ -39,6 +39,7 @@ export default function FundCrowdAnalysisPage() {
   const [search, setSearch] = useState('') // AC-08 搜索词（即时）
   const [debouncedSearch, setDebouncedSearch] = useState('') // debounce 后传给 API
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   // AC-05 scroll 恢复（plan-03 Task 5，arch-check 非阻塞改进项）：
   // 把返回时要恢复的 scroll 位置挂在 ref 上，等 rankings 数据加载完成后由独立 useEffect 恢复。
   // 直接在 mount useEffect 里 scrollTo 会在 SWR 数据未到达、DOM 高度未恢复时滚动无效。
@@ -95,7 +96,7 @@ export default function FundCrowdAnalysisPage() {
     scope,
     search: debouncedSearch || undefined,
     page,
-    pageSize: DEFAULT_PAGE_SIZE,
+    pageSize,
   }
   const { rankings, isLoading, isError } = useFundCrowdRankings(rankingsParams)
   const {
@@ -141,6 +142,11 @@ export default function FundCrowdAnalysisPage() {
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
+  }
+
+  const handlePageSizeChange = (nextSize: number) => {
+    setPageSize(nextSize)
+    setPage(1) // 切换每页条数重置到第 1 页
   }
 
   // AC-05 反查跳转（plan-03 Task 4）：记录当前口径/页码/搜索词/滚动位置到 sessionStorage，
@@ -256,6 +262,7 @@ export default function FundCrowdAnalysisPage() {
             search={search}
             onSearchChange={setSearch}
             onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
             onReverseLookup={handleReverseLookup}
           />
         )}

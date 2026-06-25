@@ -22,7 +22,7 @@ import FundFilterPanel, {
 } from '@/components/funds/FundFilterPanel'
 import FundListTable from '@/components/funds/FundListTable'
 import ReverseLookupTable from '@/components/funds/ReverseLookupTable'
-import Pagination from '@/components/funds/Pagination'
+import Pagination from '@/components/ui/Pagination'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { ArrowLeftIcon } from 'lucide-react'
 
