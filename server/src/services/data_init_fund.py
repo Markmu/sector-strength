@@ -313,9 +313,10 @@ class FundDataInitService:
 
         # 2. 逐个基金拉取并写入
         for i, (ts_code, fund_name) in enumerate(funds, 1):
-            # 每 50 只基金检查一次是否被取消
-            if i % 50 == 0:
-                await self._check_cancelled()
+            # 每只基金都检查是否被取消：取消检查是一次带索引的轻量 SELECT，
+            # 相对每只基金的 Tushare 同步拉取（秒级）开销可忽略，且能让取消
+            # 在当前基金处理完后立即生效。
+            await self._check_cancelled()
 
             try:
                 records = tushare.get_fund_portfolio_by_code(ts_code, period)

@@ -9,8 +9,10 @@ from datetime import date
 from typing import Dict, Any
 from enum import Enum
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.models.async_task import AsyncTask
 from src.services.task_executor import TaskRegistry
 from src.services.task_manager import TaskManager
 from src.services.data_init import DataInitService
@@ -96,7 +98,7 @@ async def init_sectors_task(
 
     Args:
         task_id: 任务ID
-        params: 任务参数 {"sector_type": "industry"|"concept"|"region"|"feature"|"style"|"theme"|None}
+        params: 任务参数 {"sector_type": "industry"|"concept"|"region"|None}
         manager: 任务管理器
     """
     # 使用 TaskManager 的会话，而不是创建新的会话
@@ -1121,10 +1123,15 @@ async def sync_fund_portfolio_task(
     callback = await _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
-    # 设置取消检查：查询数据库中的任务状态
+    # 设置取消检查：直接查 status 标量列。
+    # 注意：不能用 manager.get_task() —— 它返回的 ORM 对象会留在执行器 session 的
+    # identity map 里（且 expire_on_commit=False），任务期间外部取消 API 用独立
+    # session 写入的 cancelled 状态永远读不到，导致"取消后任务一直跑"。
     async def _check_cancelled():
-        task = await manager.get_task(task_id)
-        return task is not None and task.status == "cancelled"
+        result = await manager.db.execute(
+            select(AsyncTask.status).where(AsyncTask.task_id == task_id)
+        )
+        return result.scalar_one_or_none() == "cancelled"
 
     service.set_cancel_check(_check_cancelled)
 
@@ -1192,10 +1199,15 @@ async def sync_top10_holders_task(
     callback = await _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
-    # 设置取消检查（async 闭包查询 DB 状态）
+    # 设置取消检查：直接查 status 标量列。
+    # 注意：不能用 manager.get_task() —— 它返回的 ORM 对象会留在执行器 session 的
+    # identity map 里（且 expire_on_commit=False），任务期间外部取消 API 用独立
+    # session 写入的 cancelled 状态永远读不到，导致"取消后任务一直跑"。
     async def _check_cancelled():
-        task = await manager.get_task(task_id)
-        return task is not None and task.status == "cancelled"
+        result = await manager.db.execute(
+            select(AsyncTask.status).where(AsyncTask.task_id == task_id)
+        )
+        return result.scalar_one_or_none() == "cancelled"
 
     service.set_cancel_check(_check_cancelled)
 

@@ -122,9 +122,10 @@ class Top10HolderDataInitService:
 
         # 3. 遍历股票列表
         for i, (symbol, ts_code) in enumerate(stocks, 1):
-            # 每 50 只检查一次取消
-            if i % 50 == 0:
-                await self._check_cancelled()
+            # 每只股票都检查是否被取消：取消检查是一次带索引的轻量 SELECT，
+            # 相对每只股票的 Tushare 同步拉取（秒级）开销可忽略，且能让取消
+            # 在当前股票处理完后立即生效。
+            await self._check_cancelled()
 
             # ts_code 为空时尝试转换
             if not ts_code:
