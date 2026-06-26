@@ -149,3 +149,6 @@ web/playwright-report/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+
+.zcode
