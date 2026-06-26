@@ -27,6 +27,7 @@ const SWR_OPTIONS = {
 export interface UseFundCrowdRankingsParams {
   scope: CrowdScope
   sectorType?: SectorType
+  sectorName?: string
   search?: string
   page?: number
   pageSize?: number

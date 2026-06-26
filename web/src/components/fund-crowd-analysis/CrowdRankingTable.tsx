@@ -20,6 +20,8 @@
 import React from 'react'
 import { SearchIcon } from 'lucide-react'
 import Pagination from '@/components/ui/Pagination'
+import SimpleSelect from '@/components/ui/SimpleSelect'
+import type { SimpleSelectOption } from '@/components/ui/SimpleSelect'
 import type { CrowdRankingItem } from '@/lib/api'
 
 export interface CrowdRankingTableProps {
@@ -34,7 +36,13 @@ export interface CrowdRankingTableProps {
   search: string
   /** 板块分类列标题（随 sector_type 切换：行业/概念/地域/特色/风格/主题） */
   sectorTypeLabel: string
+  /** 板块筛选当前值（undefined = 全部） */
+  sectorName?: string
+  /** 板块筛选下拉选项（随 sector_type 变化） */
+  sectorOptions: SimpleSelectOption[]
   onSearchChange: (value: string) => void
+  /** 板块筛选变化回调 */
+  onSectorNameChange: (value: string) => void
   onPageChange: (page: number) => void
   /** 每页条数变化回调（对齐基金分析页分页器） */
   onPageSizeChange: (size: number) => void
@@ -102,7 +110,10 @@ export default function CrowdRankingTable({
   hasPrevPeriod,
   search,
   sectorTypeLabel,
+  sectorName,
+  sectorOptions,
   onSearchChange,
+  onSectorNameChange,
   onPageChange,
   onPageSizeChange,
   onReverseLookup,
@@ -111,27 +122,36 @@ export default function CrowdRankingTable({
 
   return (
     <div data-testid="crowd-ranking-table" className="space-y-3">
-      {/* 搜索框（AC-08） */}
-      <div className="flex items-center gap-2">
-        <SearchIcon className="w-4 h-4 text-muted-foreground" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="搜索股票代码或名称"
-          className="block w-64 text-sm border rounded-lg px-3 py-2 border-border bg-card text-foreground placeholder-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/40"
-          data-testid="crowd-search-input"
+      {/* 搜索框 + 板块筛选（AC-08） */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <SearchIcon className="w-4 h-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="搜索股票代码或名称"
+            className="block w-64 text-sm border rounded-lg px-3 py-2 border-border bg-card text-foreground placeholder-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            data-testid="crowd-search-input"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => onSearchChange('')}
+              className="text-sm text-muted-foreground hover:text-foreground"
+              data-testid="crowd-search-clear"
+            >
+              清空
+            </button>
+          )}
+        </div>
+        <SimpleSelect
+          value={sectorName ?? ''}
+          options={sectorOptions}
+          onChange={onSectorNameChange}
+          ariaLabel="板块筛选"
+          testId="crowd-sector-filter"
         />
-        {search && (
-          <button
-            type="button"
-            onClick={() => onSearchChange('')}
-            className="text-sm text-muted-foreground hover:text-foreground"
-            data-testid="crowd-search-clear"
-          >
-            清空
-          </button>
-        )}
       </div>
 
       {/* 加载骨架 */}

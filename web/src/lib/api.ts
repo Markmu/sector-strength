@@ -1035,6 +1035,7 @@ export const fundCrowdAnalysisApi = {
   getRankings: (params: {
     scope: CrowdScope
     sectorType?: SectorType
+    sectorName?: string
     search?: string
     page?: number
     pageSize?: number
@@ -1048,6 +1049,7 @@ export const fundCrowdAnalysisApi = {
       page: params.page || 1,
       page_size: params.pageSize || 20,
       sector_type: params.sectorType,
+      sector_name: params.sectorName,
     }),
 
   // 行业分布（AC-04）

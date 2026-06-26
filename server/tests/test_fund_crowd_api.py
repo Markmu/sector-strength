@@ -791,6 +791,68 @@ class TestRankings:
         assert data["items"] == []
         assert data["total"] == 0
 
+    @pytest.mark.asyncio
+    async def test_rankings_filter_by_sector_name(
+        self, auth_client, sample_industry_data
+    ):
+        """板块名称筛选：industry 维度下 sector_name=食品饮料 只返回含该板块的股票。
+        sample_industry_data：600519→食品饮料+消费龙头，000001→无行业。"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "active", "sector_type": "industry",
+                    "sector_name": "食品饮料"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        symbols = {it["stockSymbol"] for it in data["items"]}
+        assert "600519" in symbols  # 含食品饮料
+        assert "000001" not in symbols  # 无行业关联，被过滤
+        assert data["total"] == 1
+
+    @pytest.mark.asyncio
+    async def test_rankings_sector_name_no_match(
+        self, auth_client, sample_industry_data
+    ):
+        """板块名称筛选：传不存在的板块名 → items 空、total=0"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "active", "sector_type": "industry",
+                    "sector_name": "不存在的板块"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    @pytest.mark.asyncio
+    async def test_rankings_sector_name_respects_sector_type(
+        self, auth_client, sample_multi_sector_type_data
+    ):
+        """sector_name 只在当前 sector_type 维度生效：
+        新能源 是 concept 板块 → concept 维度命中；industry 维度下不命中。"""
+        # concept 维度：600519→新能源，命中
+        resp_concept = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "active", "sector_type": "concept",
+                    "sector_name": "新能源"},
+        )
+        assert resp_concept.status_code == 200
+        symbols_concept = {
+            it["stockSymbol"] for it in resp_concept.json()["data"]["items"]
+        }
+        assert "600519" in symbols_concept
+
+        # industry 维度：新能源不是行业板块 → 不命中（600519 的行业是食品饮料）
+        resp_industry = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "active", "sector_type": "industry",
+                    "sector_name": "新能源"},
+        )
+        assert resp_industry.status_code == 200
+        data_industry = resp_industry.json()["data"]
+        assert data_industry["items"] == []
+        assert data_industry["total"] == 0
+
 
 # ============== Test: GET /industry-distribution — 行业分布 ==============
 

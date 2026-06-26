@@ -52,6 +52,7 @@ class FundCrowdAnalysisService:
         page: int,
         page_size: int,
         sector_type: str = "industry",
+        sector_name: Optional[str] = None,
     ) -> dict:
         """
         扎堆度排行榜（AC-01/02/03/06/07/08）。
@@ -149,7 +150,16 @@ class FundCrowdAnalysisService:
             else {}
         )
 
-        # 8. 组装 item（用过滤后 current_agg；name 从 agg 取，industries 从全集取）
+        # 8. 板块名称筛选（内存层，复用 industry_map_all；与 search 过滤范式一致，
+        #    仅保留属于该板块的股票，不进缓存 key）
+        if sector_name:
+            current_agg = {
+                sym: agg
+                for sym, agg in current_agg.items()
+                if sector_name in industry_map_all.get(sym, [])
+            }
+
+        # 9. 组装 item（用过滤后 current_agg；name 从 agg 取，industries 从全集取）
         items = []
         for symbol, agg in current_agg.items():
             ch = changes.get(symbol, {})
@@ -164,10 +174,10 @@ class FundCrowdAnalysisService:
                 }
             )
 
-        # 9. 排序：fund_count DESC, stock_symbol ASC（tiebreaker）
+        # 10. 排序：fund_count DESC, stock_symbol ASC（tiebreaker）
         items.sort(key=lambda x: (-x["fund_count"], x["stock_symbol"]))
 
-        # 10. 分页（search 已在内存过滤 → total = len(current_agg)）
+        # 11. 分页（search 已在内存过滤 → total = len(current_agg)）
         total = len(items)
         offset = (page - 1) * page_size
         page_items = items[offset : offset + page_size]

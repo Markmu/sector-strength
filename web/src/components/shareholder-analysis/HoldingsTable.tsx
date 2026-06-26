@@ -16,7 +16,7 @@
  */
 import React from 'react'
 import Pagination from '@/components/ui/Pagination'
-import SimpleSelect from './SimpleSelect'
+import SimpleSelect from '@/components/ui/SimpleSelect'
 import { cn } from '@/lib/utils'
 import type { ShareholderHoldingItem, ShareholderChangeDirection } from '@/lib/api'
 

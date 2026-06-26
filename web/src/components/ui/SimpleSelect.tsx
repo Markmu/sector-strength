@@ -1,14 +1,13 @@
 'use client'
 
 /**
- * 股东分析面板内部使用的轻量下拉选择器
+ * 轻量下拉选择器（公共通用组件）
  *
- * 满足 E2E spec（web/tests/e2e/shareholder-analysis.spec.ts）的选择器：
+ * 满足 E2E spec 的选择器约定：
  * - trigger 为 <button role="combobox">（spec 用 getByRole('button').filter({ hasText }) 命中）
  * - 选项为 <div role="option">（spec 用 getByRole('option', { name }) 命中）
  *
- * 项目无 shadcn Select / radix Select，故自实现一个最小可用版本，
- * 仅供本面板使用（不污染 ui/ 全局组件）。
+ * 项目无 shadcn Select / radix Select，故自实现一个最小可用版本。
  */
 import React, { useEffect, useRef, useState } from 'react'
 import { ChevronDownIcon } from 'lucide-react'

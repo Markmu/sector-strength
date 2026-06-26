@@ -146,6 +146,9 @@ async def get_rankings(
         None,
         description="板块类型: industry/concept/region/feature/style/theme（默认 industry）",
     ),
+    sector_name: Optional[str] = Query(
+        None, description="板块名称筛选（按当前 sector_type 精确匹配板块名，可选）"
+    ),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict:
@@ -171,6 +174,7 @@ async def get_rankings(
         page=page,
         page_size=page_size,
         sector_type=sector_type,
+        sector_name=sector_name,
     )
     return {"success": True, "data": _dict_to_camel(result)}
 

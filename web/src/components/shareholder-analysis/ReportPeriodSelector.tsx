@@ -11,7 +11,7 @@
  * 实现：基于 SimpleSelect，trigger 为 button，选项为 role=option（spec 选择器）
  */
 import React from 'react'
-import SimpleSelect from './SimpleSelect'
+import SimpleSelect from '@/components/ui/SimpleSelect'
 
 export interface ReportPeriodSelectorProps {
   periods: string[]

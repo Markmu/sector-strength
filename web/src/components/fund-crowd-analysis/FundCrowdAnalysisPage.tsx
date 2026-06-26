@@ -17,7 +17,7 @@
  * - AC-07：rankings.hasData=false（持仓未同步）→ 整页空状态
  * - plan-03 接入：RETURN_STATE_STORAGE_KEY sessionStorage 返回状态恢复（本 plan 预留读取入口）
  */
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   useFundCrowdRankings,
@@ -44,6 +44,7 @@ export default function FundCrowdAnalysisPage() {
   const router = useRouter()
   const [scope, setScope] = useState<CrowdScope>('active') // AC-02 默认仅主动
   const [sectorType, setSectorType] = useState<FundCrowdSectorType>('industry') // 板块维度（分布图 + 排行榜分类列联动，仅行业/概念/地域）
+  const [sectorName, setSectorName] = useState<string | undefined>(undefined) // 板块筛选（随 sectorType 变化，切换维度时清空）
   const [search, setSearch] = useState('') // AC-08 搜索词（即时）
   const [debouncedSearch, setDebouncedSearch] = useState('') // debounce 后传给 API
   const [page, setPage] = useState(1)
@@ -117,6 +118,7 @@ export default function FundCrowdAnalysisPage() {
   const rankingsParams = {
     scope,
     sectorType,
+    sectorName,
     search: debouncedSearch || undefined,
     page,
     pageSize,
@@ -127,6 +129,15 @@ export default function FundCrowdAnalysisPage() {
     isLoading: isIndustryLoading,
     totalStockCount,
   } = useFundCrowdIndustryDistribution(scope, sectorType)
+
+  // 板块筛选选项：随 sectorType 变化（选行业列行业、选概念列概念），数据来自分布接口
+  const sectorOptions = useMemo(
+    () => [
+      { value: '', label: `全部${SECTOR_TYPE_LABELS[sectorType]}` },
+      ...distribution.map((d) => ({ value: d.industry, label: d.industry })),
+    ],
+    [distribution, sectorType]
+  )
 
   // AC-05 scroll 恢复触发（plan-03 Task 5）：
   // 监听 rankings 加载完成（!isLoading 且有数据），DOM 高度恢复后再恢复滚动位置。
@@ -163,7 +174,14 @@ export default function FundCrowdAnalysisPage() {
 
   const handleSectorTypeChange = (nextSectorType: FundCrowdSectorType) => {
     setSectorType(nextSectorType)
+    // 切换维度时清空板块筛选：不同维度的板块名互不相通（如"银行业"只在行业维度）
+    setSectorName(undefined)
     // 不重置 page：sector_type 只改分类列，不改扎堆股集合（fundCount/total 不变）
+  }
+
+  const handleSectorNameChange = (nextSectorName: string) => {
+    setSectorName(nextSectorName || undefined)
+    setPage(1) // 板块筛选变化时重置到第 1 页
   }
 
   const handlePageChange = (nextPage: number) => {
@@ -302,7 +320,10 @@ export default function FundCrowdAnalysisPage() {
             hasPrevPeriod={rankings?.hasPrevPeriod ?? false}
             search={search}
             sectorTypeLabel={SECTOR_TYPE_LABELS[sectorType]}
+            sectorName={sectorName}
+            sectorOptions={sectorOptions}
             onSearchChange={setSearch}
+            onSectorNameChange={handleSectorNameChange}
             onPageChange={handlePageChange}
             onPageSizeChange={handlePageSizeChange}
             onReverseLookup={handleReverseLookup}
