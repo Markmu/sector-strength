@@ -128,16 +128,17 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
         return agg
 
     async def get_industry_for_stocks(
-        self, symbols: list[str]
+        self, symbols: list[str], sector_type: str = "industry"
     ) -> dict[str, list[str]]:
         """
-        批量获取股票的行业关联（复用 06 _get_industry_for_stocks 范式）。
+        批量获取股票的板块关联（复用 06 _get_industry_for_stocks 范式）。
 
-        一只股票可关联多个行业板块，全部返回（ADR-5）。
-        stocks 表缺失的 symbol 在结果中不存在，由 Service 层兜底为 []。
+        sector_type 控制取哪个 type 的板块（industry/concept/region/feature/
+        style/theme），默认 industry。一只股票可关联多个该 type 板块，全部返回
+        （ADR-5）。stocks 表缺失的 symbol 在结果中不存在，由 Service 层兜底为 []。
 
         Returns:
-            { symbol: [industry_name, ...] }
+            { symbol: [sector_name, ...] }
         """
         if not symbols:
             return {}
@@ -148,7 +149,7 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
             .outerjoin(SectorStock, SectorStock.stock_code == Stock.symbol)
             .outerjoin(
                 Sector,
-                and_(Sector.code == SectorStock.sector_code, Sector.type == "industry"),
+                and_(Sector.code == SectorStock.sector_code, Sector.type == sector_type),
             )
             .where(Stock.symbol.in_(symbols))
         )

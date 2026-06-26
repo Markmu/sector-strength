@@ -42,6 +42,7 @@ class FundCrowdAnalysisService:
         search: Optional[str],
         page: int,
         page_size: int,
+        sector_type: str = "industry",
     ) -> dict:
         """
         扎堆度排行榜（AC-01/02/03/06/07/08）。
@@ -54,11 +55,12 @@ class FundCrowdAnalysisService:
             全部 snake_case，由路由层 _dict_to_camel 转 camelCase。
         """
         logger.info(
-            "get_rankings called, scope=%s, search=%s, page=%d, page_size=%d",
+            "get_rankings called, scope=%s, search=%s, page=%d, page_size=%d, sector_type=%s",
             scope,
             search,
             page,
             page_size,
+            sector_type,
         )
 
         # search 转义（若非空）
@@ -126,7 +128,11 @@ class FundCrowdAnalysisService:
             await self.repo.get_stock_names(all_symbols) if all_symbols else {}
         )
         industry_map = (
-            await self.repo.get_industry_for_stocks(all_symbols) if all_symbols else {}
+            await self.repo.get_industry_for_stocks(
+                all_symbols, sector_type=sector_type
+            )
+            if all_symbols
+            else {}
         )
 
         # 6. 组装 item
@@ -200,7 +206,9 @@ class FundCrowdAnalysisService:
                 }
         return changes
 
-    async def get_industry_distribution(self, scope: str) -> dict:
+    async def get_industry_distribution(
+        self, scope: str, sector_type: str = "industry"
+    ) -> dict:
         """
         行业分布（AC-04 + ADR-5）：按行业聚合扎堆股数量占比。
 
@@ -208,7 +216,11 @@ class FundCrowdAnalysisService:
         - 无行业关联归「未分类」桶
         - 按 stock_count 降序（前端再 Top N 截断）
         """
-        logger.info("get_industry_distribution called, scope=%s", scope)
+        logger.info(
+            "get_industry_distribution called, scope=%s, sector_type=%s",
+            scope,
+            sector_type,
+        )
 
         periods = await self.repo.get_report_periods(limit=2)
         if not periods:
@@ -229,7 +241,9 @@ class FundCrowdAnalysisService:
                 "distribution": [],
             }
 
-        industry_map = await self.repo.get_industry_for_stocks(all_symbols)
+        industry_map = await self.repo.get_industry_for_stocks(
+            all_symbols, sector_type=sector_type
+        )
         total_stock_count = len(all_symbols)
 
         # 按行业分组（一股多行业独立计数，与 06 一致）

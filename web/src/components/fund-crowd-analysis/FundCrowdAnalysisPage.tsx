@@ -24,7 +24,9 @@ import {
   useFundCrowdIndustryDistribution,
 } from '@/hooks/useFundCrowdAnalysis'
 import type { CrowdScope } from '@/lib/api'
+import { SECTOR_TYPE_LABELS, type SectorType } from '@/types/sectorTypes'
 import CrowdScopeSelector from './CrowdScopeSelector'
+import CrowdSectorTypeSelector from './CrowdSectorTypeSelector'
 import CrowdIndustryDistribution from './CrowdIndustryDistribution'
 import CrowdRankingTable from './CrowdRankingTable'
 
@@ -36,6 +38,7 @@ const RETURN_STATE_STORAGE_KEY = 'fund-crowd-return-state'
 export default function FundCrowdAnalysisPage() {
   const router = useRouter()
   const [scope, setScope] = useState<CrowdScope>('active') // AC-02 默认仅主动
+  const [sectorType, setSectorType] = useState<SectorType>('industry') // 板块维度（分布图 + 排行榜分类列联动）
   const [search, setSearch] = useState('') // AC-08 搜索词（即时）
   const [debouncedSearch, setDebouncedSearch] = useState('') // debounce 后传给 API
   const [page, setPage] = useState(1)
@@ -54,12 +57,14 @@ export default function FundCrowdAnalysisPage() {
     try {
       const state = JSON.parse(saved) as {
         scope?: CrowdScope
+        sectorType?: SectorType
         page?: number
         search?: string
         scrollX?: number
         scrollY?: number
       }
       if (state.scope) setScope(state.scope)
+      if (state.sectorType) setSectorType(state.sectorType)
       if (state.page) setPage(state.page)
       if (state.search) {
         setSearch(state.search)
@@ -94,6 +99,7 @@ export default function FundCrowdAnalysisPage() {
   // 数据获取（rankings + industry-distribution 联动，scope 变化时两者都重发）
   const rankingsParams = {
     scope,
+    sectorType,
     search: debouncedSearch || undefined,
     page,
     pageSize,
@@ -102,7 +108,7 @@ export default function FundCrowdAnalysisPage() {
   const {
     distribution,
     isLoading: isIndustryLoading,
-  } = useFundCrowdIndustryDistribution(scope)
+  } = useFundCrowdIndustryDistribution(scope, sectorType)
 
   // AC-05 scroll 恢复触发（plan-03 Task 5）：
   // 监听 rankings 加载完成（!isLoading 且有数据），DOM 高度恢复后再恢复滚动位置。
@@ -137,6 +143,11 @@ export default function FundCrowdAnalysisPage() {
     // search 保留（用户搜索意图跨口径保持）
   }
 
+  const handleSectorTypeChange = (nextSectorType: SectorType) => {
+    setSectorType(nextSectorType)
+    // 不重置 page：sector_type 只改分类列，不改扎堆股集合（fundCount/total 不变）
+  }
+
   const handlePageChange = (nextPage: number) => {
     setPage(nextPage)
     if (typeof window !== 'undefined') {
@@ -159,6 +170,7 @@ export default function FundCrowdAnalysisPage() {
     const main = document.querySelector('main')
     const returnState = {
       scope,
+      sectorType,
       page,
       search, // 记录原始 search（非 debounced），返回后同步设置 debouncedSearch 避免闪烁
       scrollX: 0,
@@ -222,14 +234,24 @@ export default function FundCrowdAnalysisPage() {
         </div>
       </header>
 
-      {/* 行业分布（AC-04） */}
+      {/* 板块分布（AC-04，sector_type 切换联动分布图 + 排行榜分类列） */}
       <section className="bg-card rounded-xl border border-border shadow-sm p-4">
-        <h2 className="text-base font-semibold text-foreground mb-3">
-          行业分布（按扎堆股数量占比）
-        </h2>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2
+            data-testid="crowd-distribution-title"
+            className="text-base font-semibold text-foreground"
+          >
+            {SECTOR_TYPE_LABELS[sectorType]}分布（按扎堆股数量占比）
+          </h2>
+          <CrowdSectorTypeSelector
+            value={sectorType}
+            onChange={handleSectorTypeChange}
+          />
+        </div>
         <CrowdIndustryDistribution
           distribution={distribution}
           isLoading={isIndustryLoading}
+          sectorTypeLabel={SECTOR_TYPE_LABELS[sectorType]}
         />
       </section>
 
@@ -260,6 +282,7 @@ export default function FundCrowdAnalysisPage() {
             isError={isError}
             hasPrevPeriod={rankings?.hasPrevPeriod ?? false}
             search={search}
+            sectorTypeLabel={SECTOR_TYPE_LABELS[sectorType]}
             onSearchChange={setSearch}
             onPageChange={handlePageChange}
             onPageSizeChange={handlePageSizeChange}

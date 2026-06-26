@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_current_user, get_session
 from src.models.user import User
 from src.services.fund_crowd_analysis_service import FundCrowdAnalysisService
+from src.services.data_acquisition.sector_types import is_valid_sector_type
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,10 @@ async def get_rankings(
     ),
     page: int = Query(1, ge=1, description="页码（1-based）"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    sector_type: Optional[str] = Query(
+        None,
+        description="板块类型: industry/concept/region/feature/style/theme（默认 industry）",
+    ),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict:
@@ -152,10 +157,17 @@ async def get_rankings(
     # scope 容错（边界场景：非 active/all → 默认 active）
     if scope not in ("active", "all"):
         scope = "active"
+    # sector_type 容错（None/非法 → 默认 industry，与 scope 容错范式一致）
+    if sector_type is None or not is_valid_sector_type(sector_type):
+        sector_type = "industry"
 
     service = FundCrowdAnalysisService(session)
     result = await service.get_rankings(
-        scope=scope, search=search, page=page, page_size=page_size
+        scope=scope,
+        search=search,
+        page=page,
+        page_size=page_size,
+        sector_type=sector_type,
     )
     return {"success": True, "data": _dict_to_camel(result)}
 
@@ -164,6 +176,10 @@ async def get_rankings(
 async def get_industry_distribution(
     scope: str = Query(
         "active", description="基金口径：active=仅主动基金（默认），all=全部基金"
+    ),
+    sector_type: Optional[str] = Query(
+        None,
+        description="板块类型: industry/concept/region/feature/style/theme（默认 industry）",
     ),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -176,7 +192,11 @@ async def get_industry_distribution(
     """
     if scope not in ("active", "all"):
         scope = "active"
+    if sector_type is None or not is_valid_sector_type(sector_type):
+        sector_type = "industry"
 
     service = FundCrowdAnalysisService(session)
-    result = await service.get_industry_distribution(scope=scope)
+    result = await service.get_industry_distribution(
+        scope=scope, sector_type=sector_type
+    )
     return {"success": True, "data": _dict_to_camel(result)}

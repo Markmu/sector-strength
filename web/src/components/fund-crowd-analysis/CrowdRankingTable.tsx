@@ -32,6 +32,8 @@ export interface CrowdRankingTableProps {
   /** AC-06：false 时环比列统一 "—" */
   hasPrevPeriod: boolean
   search: string
+  /** 板块分类列标题（随 sector_type 切换：行业/概念/地域/特色/风格/主题） */
+  sectorTypeLabel: string
   onSearchChange: (value: string) => void
   onPageChange: (page: number) => void
   /** 每页条数变化回调（对齐基金分析页分页器） */
@@ -99,6 +101,7 @@ export default function CrowdRankingTable({
   isError,
   hasPrevPeriod,
   search,
+  sectorTypeLabel,
   onSearchChange,
   onPageChange,
   onPageSizeChange,
@@ -137,7 +140,7 @@ export default function CrowdRankingTable({
           <table className="w-full text-sm">
             <thead className="bg-background border-b border-border">
               <tr>
-                {['排名', '代码', '名称', '行业', '持有基金数', '环比变化', '操作'].map(
+                {['排名', '代码', '名称', sectorTypeLabel, '持有基金数', '环比变化', '操作'].map(
                   (h) => (
                     <th
                       key={h}
@@ -199,8 +202,11 @@ export default function CrowdRankingTable({
                     <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left">
                       名称
                     </th>
-                    <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left">
-                      行业
+                    <th
+                      data-testid="crowd-ranking-column-sector"
+                      className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left"
+                    >
+                      {sectorTypeLabel}
                     </th>
                     <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-right">
                       持有基金数

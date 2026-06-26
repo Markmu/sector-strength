@@ -16,6 +16,7 @@ import {
   type CrowdIndustryDistributionResponse,
   type CrowdScope,
 } from '@/lib/api'
+import type { SectorType } from '@/types/sectorTypes'
 
 const SWR_OPTIONS = {
   revalidateOnFocus: false,
@@ -25,6 +26,7 @@ const SWR_OPTIONS = {
 
 export interface UseFundCrowdRankingsParams {
   scope: CrowdScope
+  sectorType?: SectorType
   search?: string
   page?: number
   pageSize?: number
@@ -62,15 +64,18 @@ export function useFundCrowdRankings(params: UseFundCrowdRankingsParams) {
 /**
  * 行业分布（与排行榜联动，scope 变化时同步重发）
  */
-export function useFundCrowdIndustryDistribution(scope: CrowdScope) {
+export function useFundCrowdIndustryDistribution(
+  scope: CrowdScope,
+  sectorType?: SectorType
+) {
   const { data, error, isLoading, mutate } = useSWR<{
     success: boolean
     data: CrowdIndustryDistributionResponse
   }>(
-    ['fundCrowdIndustryDistribution', scope],
+    ['fundCrowdIndustryDistribution', scope, sectorType],
     () =>
       fundCrowdAnalysisApi
-        .getIndustryDistribution({ scope })
+        .getIndustryDistribution({ scope, sectorType })
         .then((res) => res.data as unknown as {
           success: boolean
           data: CrowdIndustryDistributionResponse

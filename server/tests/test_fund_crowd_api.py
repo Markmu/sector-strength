@@ -215,6 +215,35 @@ async def sample_industry_data(test_session, sample_crowd_data):
 
 
 @pytest_asyncio.fixture
+async def sample_multi_sector_type_data(test_session, sample_crowd_data):
+    """
+    多板块类型 fixture：600519 同时关联三种 type 的板块，验证 sector_type 切换。
+      - industry: 食品饮料 (IND_FOOD)
+      - concept:  新能源 (CON_NEW)
+      - region:   贵州 (REG_GZ)
+    000001 无任何板块关联（验证各 type 下均归「未分类」）。
+    scope=active 扎堆股集合 = {600519, 000001}（同 sample_crowd_data）。
+    """
+    sectors = [
+        Sector(name="食品饮料", code="IND_FOOD", type="industry"),
+        Sector(name="新能源", code="CON_NEW", type="concept"),
+        Sector(name="贵州", code="REG_GZ", type="region"),
+    ]
+    test_session.add_all(sectors)
+    await test_session.flush()
+
+    sector_stocks = [
+        SectorStock(sector_code="IND_FOOD", stock_code="600519"),
+        SectorStock(sector_code="CON_NEW", stock_code="600519"),
+        SectorStock(sector_code="REG_GZ", stock_code="600519"),
+        # 000001 无任何板块映射
+    ]
+    test_session.add_all(sector_stocks)
+    await test_session.commit()
+    return {"sectors": sectors, "sector_stocks": sector_stocks}
+
+
+@pytest_asyncio.fixture
 async def sample_null_stocks_table(test_session):
     """持仓的股票不在 stocks 表中（验证 stockName=null 降级）"""
     funds = [Fund(ts_code="003001.OF", name="Null Stocks 基金", invest_type="普通股票型")]
@@ -650,6 +679,31 @@ class TestRankings:
             f"实际: {item['fundCount']}"
         )
 
+    @pytest.mark.asyncio
+    async def test_rankings_industries_field_changes_with_sector_type(
+        self, auth_client, sample_multi_sector_type_data
+    ):
+        """sector_type 切换联动：600519 的 industries 随 type 变，fundCount 不变"""
+        # concept → 新能源
+        resp_concept = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings",
+            params={"scope": "active", "sector_type": "concept"},
+        )
+        assert resp_concept.status_code == 200
+        item_concept = _find_item(resp_concept.json()["data"]["items"], "600519")
+        assert item_concept["industries"] == ["新能源"]
+        assert item_concept["fundCount"] == 2
+
+        # industry（默认）→ 食品饮料
+        resp_industry = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
+        )
+        assert resp_industry.status_code == 200
+        item_industry = _find_item(resp_industry.json()["data"]["items"], "600519")
+        assert item_industry["industries"] == ["食品饮料"]
+        # sector_type 只影响 industries 列，不影响 fund_count（聚合层不碰 sectors）
+        assert item_industry["fundCount"] == 2
+
 
 # ============== Test: GET /industry-distribution — 行业分布 ==============
 
@@ -707,6 +761,68 @@ class TestIndustryDistribution:
         assert len(industries_with_519) == 2, (
             f"600519 应同时归属食品饮料+消费龙头，实际 distribution: {dist}"
         )
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_defaults_to_industry(
+        self, auth_client, sample_multi_sector_type_data
+    ):
+        """sector_type 默认 industry：含食品饮料，不含 concept/region 的板块"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active"},
+        )
+        assert resp.status_code == 200
+        by_industry = {d["industry"]: d for d in resp.json()["data"]["distribution"]}
+        assert "食品饮料" in by_industry
+        assert "新能源" not in by_industry
+        assert "贵州" not in by_industry
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_concept_type(
+        self, auth_client, sample_multi_sector_type_data
+    ):
+        """sector_type=concept：600519→新能源；无概念关联的 000001 归未分类"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active", "sector_type": "concept"},
+        )
+        assert resp.status_code == 200
+        by_industry = {d["industry"]: d for d in resp.json()["data"]["distribution"]}
+        assert "新能源" in by_industry
+        assert by_industry["新能源"]["stockCount"] == 1
+        assert "食品饮料" not in by_industry
+        assert "贵州" not in by_industry
+        # 000001 无概念关联 → 未分类
+        assert "未分类" in by_industry
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_region_type(
+        self, auth_client, sample_multi_sector_type_data
+    ):
+        """sector_type=region：600519→贵州"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active", "sector_type": "region"},
+        )
+        assert resp.status_code == 200
+        by_industry = {d["industry"]: d for d in resp.json()["data"]["distribution"]}
+        assert "贵州" in by_industry
+        assert "食品饮料" not in by_industry
+        assert "新能源" not in by_industry
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_invalid_type_falls_back_to_industry(
+        self, auth_client, sample_multi_sector_type_data
+    ):
+        """非法 sector_type 容错回退 industry：200（非 422）+ 含食品饮料"""
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active", "sector_type": "foobar"},
+        )
+        assert resp.status_code == 200
+        by_industry = {d["industry"]: d for d in resp.json()["data"]["distribution"]}
+        assert "食品饮料" in by_industry
+        assert "新能源" not in by_industry
 
     @pytest.mark.asyncio
     async def test_industry_distribution_empty_when_no_industry_mapping(

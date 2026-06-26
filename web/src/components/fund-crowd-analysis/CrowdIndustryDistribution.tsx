@@ -36,6 +36,8 @@ const TOP_N = 10
 export interface CrowdIndustryDistributionProps {
   distribution: CrowdIndustryItem[]
   isLoading?: boolean
+  /** 板块维度标签（随 sector_type 切换，用于空状态/说明文案） */
+  sectorTypeLabel?: string
   /**
    * 行业点击回调（首版仅作可视化交互入口预留，不联动排行榜筛选）。
    * 联动筛选是 PRD §3.3 后续迭代项，不在 plan-02 范围。
@@ -46,6 +48,7 @@ export interface CrowdIndustryDistributionProps {
 export default function CrowdIndustryDistribution({
   distribution,
   isLoading,
+  sectorTypeLabel = '行业',
   onIndustryClick,
 }: CrowdIndustryDistributionProps) {
   // 按扎堆股数量（stockCount）降序，占比次降序；截 Top N
@@ -117,7 +120,7 @@ export default function CrowdIndustryDistribution({
         className="flex flex-col items-center justify-center py-10 text-muted-foreground"
       >
         <BarChart3Icon className="w-10 h-10 mb-2 opacity-50" />
-        <p className="text-sm">暂无行业分布数据</p>
+        <p className="text-sm">暂无{sectorTypeLabel}分布数据</p>
       </div>
     )
   }
@@ -154,7 +157,7 @@ export default function CrowdIndustryDistribution({
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            仅展示扎堆股数前 {TOP_N} 行业（按数量占比）。
+            仅展示扎堆股数前 {TOP_N} {sectorTypeLabel}（按数量占比）。
           </p>
         </>
       )}

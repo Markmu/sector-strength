@@ -171,6 +171,50 @@ export function createTestCrowdIndustryDistributionEmpty(): CrowdIndustryDistrib
   }
 }
 
+/**
+ * 按板块类型生成行业分布测试数据（验证 sector_type 切换联动分布图）。
+ * concept/region 用与 industry 差异化的标签，便于断言切换后标签变化（避免重名）。
+ */
+export function createTestCrowdIndustryDistributionByType(
+  sectorType: string
+): CrowdIndustryDistributionData {
+  const distributionByType: Record<string, CrowdIndustryItemData[]> = {
+    concept: [
+      { industry: '新能源', stockCount: 30, percentage: 15.0 },
+      { industry: '芯片', stockCount: 24, percentage: 12.0 },
+    ],
+    region: [
+      { industry: '贵州', stockCount: 28, percentage: 14.0 },
+      { industry: '深圳', stockCount: 22, percentage: 11.0 },
+    ],
+  }
+  return {
+    hasData: true,
+    currentPeriod: '2025-12-31',
+    distribution: distributionByType[sectorType] ?? [],
+  }
+}
+
+/**
+ * 按板块类型映射排行榜 item 的 industries（验证 sector_type 切换联动排行榜分类列）。
+ * industry 不调用此函数（保留原始 industries）；concept/region 返回差异化标签。
+ */
+function mapIndustriesBySectorType(stockSymbol: string, sectorType: string): string[] {
+  if (sectorType === 'concept') {
+    return (
+      { '600519': ['新能源'], '300750': ['锂电池'], '688981': ['芯片'] }[stockSymbol] ?? [
+        '概念',
+      ]
+    )
+  }
+  if (sectorType === 'region') {
+    return { '600519': ['贵州'], '300750': ['福建'], '688981': ['上海'] }[stockSymbol] ?? [
+      '地域',
+    ]
+  }
+  return []
+}
+
 // ---------- Mock Helpers ----------
 
 /**
@@ -194,11 +238,19 @@ export async function mockCrowdRankings(
       const query = parseQuery(route.request().url())
       const scope = (query.get('scope') as CrowdScope) || 'active'
       const search = query.get('search') || ''
+      const sectorType = query.get('sector_type') || 'industry'
 
       let items = [...data.items]
       // scope=all 模拟：fundCount 翻倍（被动型纳入）
       if (scope === 'all') {
         items = items.map((it) => ({ ...it, fundCount: it.fundCount * 2 }))
+      }
+      // sector_type 切换：industries 按 type 重新映射（模拟后端按 Sector.type 过滤）
+      if (sectorType !== 'industry') {
+        items = items.map((it) => ({
+          ...it,
+          industries: mapIndustriesBySectorType(it.stockSymbol, sectorType),
+        }))
       }
       // search 过滤（代码前缀 OR 名称包含，不区分大小写）
       if (search) {
@@ -252,10 +304,17 @@ export async function mockCrowdIndustryDistribution(
         await route.fallback()
         return
       }
+      const query = parseQuery(route.request().url())
+      const sectorType = query.get('sector_type') || 'industry'
+      // 默认（industry）用传入 data；其它 type 用按 type 生成的差异化数据
+      const responseData =
+        sectorType === 'industry'
+          ? data
+          : createTestCrowdIndustryDistributionByType(sectorType)
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, data }),
+        body: JSON.stringify({ success: true, data: responseData }),
       })
     }
   )

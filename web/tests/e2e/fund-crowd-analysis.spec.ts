@@ -231,6 +231,55 @@ test.describe('AC-01/02/03/04/06/07/08：基金扎堆分析页（plan-02）', ()
 })
 
 // ============================================================================
+// 板块类型切换联动（AC-04 扩展）：sector_type 切换分布图 + 排行榜分类列
+// 复用 authedPage fixture + installFullMocks；mock handler 按 query sector_type 分支
+// ============================================================================
+
+test.describe('板块类型切换联动（AC-04 扩展）', () => {
+  test('TC-2.8 切换概念板块→分布图标题与数据联动', async ({ page }) => {
+    await installFullMocks(page, { hasPrevPeriod: true })
+    await page.goto(FUND_CROWD_ANALYSIS_PAGE)
+
+    // 默认「行业分布」标题 + 食品饮料标签
+    await expect(page.getByTestId('crowd-distribution-title')).toContainText('行业分布')
+    await expect(page.getByTestId('crowd-industry-bar-食品饮料')).toBeVisible()
+
+    // 切换为概念
+    await page.getByTestId('crowd-sector-type-concept').click()
+    await expect(page.getByTestId('crowd-sector-type-concept')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    // 标题变「概念分布」
+    await expect(page.getByTestId('crowd-distribution-title')).toContainText('概念分布')
+    // 数据联动：新能源标签出现，食品饮料消失（mock 按 concept 返回差异化数据）
+    await expect(page.getByTestId('crowd-industry-bar-新能源')).toBeVisible()
+    await expect(page.getByTestId('crowd-industry-bar-食品饮料')).toHaveCount(0)
+  })
+
+  test('TC-2.9 切换地域板块→排行榜分类列标题与数据联动', async ({ page }) => {
+    await installFullMocks(page, { hasPrevPeriod: true })
+    await page.goto(FUND_CROWD_ANALYSIS_PAGE)
+
+    // 默认列标题「行业」
+    await expect(page.getByTestId('crowd-ranking-column-sector')).toHaveText('行业')
+
+    // 切换为地域
+    await page.getByTestId('crowd-sector-type-region').click()
+    await expect(page.getByTestId('crowd-sector-type-region')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    // 列标题变「地域」
+    await expect(page.getByTestId('crowd-ranking-column-sector')).toHaveText('地域')
+    // 首行（600519）industries 随 type 变为「贵州」（mock 按 region 映射）
+    await expect(
+      page.locator('[data-testid="crowd-ranking-table"] tbody tr').first()
+    ).toContainText('贵州')
+  })
+})
+
+// ============================================================================
 // plan-03 / AC-05：下钻反查跳转 + 返回状态恢复（扎堆分析页侧）
 // 2 个场景：反查按钮点击跳转 04 反查页 / 返回后口径页码搜索 scroll 恢复
 // 复用 plan-02 的 authedPage fixture + installFullMocks + RETURN_STATE_STORAGE_KEY 约定

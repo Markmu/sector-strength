@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { handleUnauthorizedRedirect } from './authRedirect'
+import type { SectorType } from '@/types/sectorTypes'
 
 // API 基础配置
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -1031,6 +1032,7 @@ export const fundCrowdAnalysisApi = {
   // 扎堆度排行榜（AC-01/02/03/06/07/08）
   getRankings: (params: {
     scope: CrowdScope
+    sectorType?: SectorType
     search?: string
     page?: number
     pageSize?: number
@@ -1043,14 +1045,16 @@ export const fundCrowdAnalysisApi = {
       search: params.search || undefined,
       page: params.page || 1,
       page_size: params.pageSize || 20,
+      sector_type: params.sectorType,
     }),
 
   // 行业分布（AC-04）
-  getIndustryDistribution: (params: { scope: CrowdScope }) =>
+  getIndustryDistribution: (params: { scope: CrowdScope; sectorType?: SectorType }) =>
     apiClient.get<{
       success: boolean
       data: CrowdIndustryDistributionResponse
     }>('/fund-crowd-analysis/industry-distribution', {
       scope: params.scope,
+      sector_type: params.sectorType,
     }),
 }
