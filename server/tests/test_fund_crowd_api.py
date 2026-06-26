@@ -826,6 +826,9 @@ class TestIndustryDistribution:
         assert "消费龙头" in by_industry
         assert "未分类" in by_industry
 
+        # 占比分母 = 扎堆股总数 2（前端展示「分子/分母」依赖此字段）
+        assert data["totalStockCount"] == 2
+
         food = by_industry["食品饮料"]
         assert food["stockCount"] == 1
         assert abs(food["percentage"] - 50.0) < 0.01  # 1 / 2 * 100
@@ -982,6 +985,7 @@ class TestIndustryDistribution:
         data = resp.json()["data"]
         assert data["hasData"] is False
         assert data["distribution"] == []
+        assert data["totalStockCount"] == 0
 
     @pytest.mark.asyncio
     async def test_industry_distribution_requires_auth(self, client):

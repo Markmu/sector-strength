@@ -92,6 +92,9 @@ class IndustryDistributionData(BaseModel):
 
     has_data: bool
     current_period: Optional[str] = None
+    total_stock_count: int = Field(
+        ..., description="占比分母：当前报告期+口径下全部基金持仓的不同股票总数"
+    )
     distribution: list[IndustryItem]
 
 

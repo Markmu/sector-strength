@@ -250,6 +250,7 @@ class FundCrowdAnalysisService:
         - 一股多行业独立计数（与 06 一致）
         - 无行业关联归「未分类」桶
         - 按 stock_count 降序（前端再 Top N 截断）
+        - total_stock_count：占比分母（全部基金持仓的不同股票数），供前端展示「分子/分母」
         """
         logger.info(
             "get_industry_distribution called, scope=%s, sector_type=%s",
@@ -261,7 +262,12 @@ class FundCrowdAnalysisService:
             lambda: self.repo.get_report_periods(limit=4)
         )
         if not periods:
-            return {"has_data": False, "current_period": None, "distribution": []}
+            return {
+                "has_data": False,
+                "current_period": None,
+                "total_stock_count": 0,
+                "distribution": [],
+            }
 
         current_period: date = periods[0]
 
@@ -275,6 +281,7 @@ class FundCrowdAnalysisService:
             return {
                 "has_data": True,
                 "current_period": current_period.isoformat(),
+                "total_stock_count": 0,
                 "distribution": [],
             }
 
@@ -316,5 +323,6 @@ class FundCrowdAnalysisService:
         return {
             "has_data": True,
             "current_period": current_period.isoformat(),
+            "total_stock_count": total_stock_count,
             "distribution": distribution,
         }

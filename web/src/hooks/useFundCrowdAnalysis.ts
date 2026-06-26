@@ -87,6 +87,7 @@ export function useFundCrowdIndustryDistribution(
     distribution: data?.data?.distribution ?? [],
     currentPeriod: data?.data?.currentPeriod ?? null,
     hasData: data?.data?.hasData ?? false,
+    totalStockCount: data?.data?.totalStockCount ?? 0,
     isLoading,
     isError: error,
     mutate,

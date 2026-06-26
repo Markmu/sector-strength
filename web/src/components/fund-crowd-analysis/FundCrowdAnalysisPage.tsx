@@ -125,6 +125,7 @@ export default function FundCrowdAnalysisPage() {
   const {
     distribution,
     isLoading: isIndustryLoading,
+    totalStockCount,
   } = useFundCrowdIndustryDistribution(scope, sectorType)
 
   // AC-05 scroll 恢复触发（plan-03 Task 5）：
@@ -267,6 +268,7 @@ export default function FundCrowdAnalysisPage() {
         </div>
         <CrowdIndustryDistribution
           distribution={distribution}
+          totalStockCount={totalStockCount}
           isLoading={isIndustryLoading}
           sectorTypeLabel={SECTOR_TYPE_LABELS[sectorType]}
         />

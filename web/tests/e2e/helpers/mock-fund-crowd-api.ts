@@ -79,6 +79,7 @@ export interface CrowdIndustryItemData {
 export interface CrowdIndustryDistributionData {
   hasData: boolean
   currentPeriod: string | null
+  totalStockCount: number
   distribution: CrowdIndustryItemData[]
 }
 
@@ -154,6 +155,7 @@ export function createTestCrowdIndustryDistribution(): CrowdIndustryDistribution
   return {
     hasData: true,
     currentPeriod: '2025-12-31',
+    totalStockCount: 200,
     distribution: [
       { industry: '食品饮料', stockCount: 32, percentage: 16.0 },
       { industry: '电力设备', stockCount: 28, percentage: 14.0 },
@@ -167,6 +169,7 @@ export function createTestCrowdIndustryDistributionEmpty(): CrowdIndustryDistrib
   return {
     hasData: true,
     currentPeriod: '2025-12-31',
+    totalStockCount: 0,
     distribution: [],
   }
 }
@@ -191,6 +194,7 @@ export function createTestCrowdIndustryDistributionByType(
   return {
     hasData: true,
     currentPeriod: '2025-12-31',
+    totalStockCount: 200,
     distribution: distributionByType[sectorType] ?? [],
   }
 }

@@ -35,6 +35,12 @@ const TOP_N = 20
 
 export interface CrowdIndustryDistributionProps {
   distribution: CrowdIndustryItem[]
+  /**
+   * 占比分母：当前报告期+口径下全部基金持仓的不同股票总数。
+   * 来自后端 totalStockCount（一股多行业独立计数时前端无法从分布项求和还原，
+   * concept 维度还会排除 融资融券/沪股通/深股通，故必须由后端提供）。
+   */
+  totalStockCount?: number
   isLoading?: boolean
   /** 板块维度标签（随 sector_type 切换，用于空状态/说明文案） */
   sectorTypeLabel?: string
@@ -47,6 +53,7 @@ export interface CrowdIndustryDistributionProps {
 
 export default function CrowdIndustryDistribution({
   distribution,
+  totalStockCount,
   isLoading,
   sectorTypeLabel = '行业',
   onIndustryClick,
@@ -77,8 +84,9 @@ export default function CrowdIndustryDistribution({
           if (idx === undefined) return ''
           const item = displayed[displayed.length - 1 - idx]
           if (!item) return ''
+          const denom = totalStockCount ?? 0
           return `<div>${item.industry}</div>
-            <div>扎堆股数：${item.stockCount}</div>
+            <div>扎堆股数：${item.stockCount} / ${denom}</div>
             <div>占比：${item.percentage.toFixed(1)}%</div>`
         },
       },
@@ -110,7 +118,7 @@ export default function CrowdIndustryDistribution({
         },
       ],
     }
-  }, [displayed])
+  }, [displayed, totalStockCount])
 
   // 空状态（distribution 完全为空）
   if (!isLoading && sorted.length === 0) {

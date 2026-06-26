@@ -1018,6 +1018,8 @@ export interface CrowdIndustryItem {
 export interface CrowdIndustryDistributionResponse {
   hasData: boolean
   currentPeriod: string | null
+  /** 占比分母：当前报告期+口径下全部基金持仓的不同股票总数 */
+  totalStockCount: number
   distribution: CrowdIndustryItem[]
 }
 
