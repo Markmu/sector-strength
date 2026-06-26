@@ -3,9 +3,11 @@
 /**
  * 板块类型切换控件
  *
- * 切换分布图 + 排行榜分类列的板块维度（行业/概念/地域/特色/风格/主题），
+ * 切换分布图 + 排行榜分类列的板块维度（行业/概念/地域），
  * 对应后端 Sector.type 字段。默认选中 'industry'。
  * 复用 CrowdScopeSelector 的 segmented control 范式 + web/src/types/sectorTypes 常量。
+ *
+ * 不含 theme/feature/style：扎堆页板块维度只保留行业/概念/地域（见 sectorTypes.ts 注释）。
  *
  * data-testid 约定（spec 选择器依赖）：
  * - 容器：crowd-sector-type-selector
@@ -13,11 +15,14 @@
  */
 import React from 'react'
 import { cn } from '@/lib/utils'
-import { SECTOR_TYPE_OPTIONS, type SectorType } from '@/types/sectorTypes'
+import {
+  FUND_CROWD_SECTOR_OPTIONS,
+  type FundCrowdSectorType,
+} from '@/types/sectorTypes'
 
 export interface CrowdSectorTypeSelectorProps {
-  value: SectorType
-  onChange: (sectorType: SectorType) => void
+  value: FundCrowdSectorType
+  onChange: (sectorType: FundCrowdSectorType) => void
   disabled?: boolean
 }
 
@@ -33,7 +38,7 @@ export default function CrowdSectorTypeSelector({
       role="group"
       aria-label="板块类型切换"
     >
-      {SECTOR_TYPE_OPTIONS.map((opt) => {
+      {FUND_CROWD_SECTOR_OPTIONS.map((opt) => {
         const isActive = value === opt.value
         return (
           <button

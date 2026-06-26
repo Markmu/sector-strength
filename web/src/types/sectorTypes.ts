@@ -47,3 +47,31 @@ export const SECTOR_TYPE_OPTIONS: {
   label: SECTOR_TYPE_LABELS[t],
   display: SECTOR_TYPE_DISPLAY[t],
 }))
+
+/**
+ * 基金扎堆分析支持的板块维度子集（仅行业/概念/地域）。
+ *
+ * 扎堆页只展示行业、概念、地域三种板块维度，排除 theme/feature/style。
+ * 排除 theme：Tushare 同花顺「主题」(TH) 分类仅有 10 个特殊旗舰主题指数
+ * （同花顺金仓30/50/100/200 + 茅指数 + 宁组合），成分股去重仅 ~223 只，
+ * 而扎堆股集合约 3100 只 → ~93% 股票无主题归属、归「未分类」，分布无分析价值。
+ * 其余页面（sector-analysis/heatmap/rankings 等）仍使用全量 SECTOR_TYPES，不受影响。
+ */
+export const FUND_CROWD_SECTOR_TYPES = [
+  'industry',
+  'concept',
+  'region',
+] as const
+
+export type FundCrowdSectorType = (typeof FUND_CROWD_SECTOR_TYPES)[number]
+
+// 扎堆页板块选项（仅行业/概念/地域）
+export const FUND_CROWD_SECTOR_OPTIONS: {
+  value: FundCrowdSectorType
+  label: string
+  display: string
+}[] = FUND_CROWD_SECTOR_TYPES.map((t) => ({
+  value: t,
+  label: SECTOR_TYPE_LABELS[t],
+  display: SECTOR_TYPE_DISPLAY[t],
+}))

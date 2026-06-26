@@ -24,7 +24,12 @@ import {
   useFundCrowdIndustryDistribution,
 } from '@/hooks/useFundCrowdAnalysis'
 import type { CrowdScope } from '@/lib/api'
-import { SECTOR_TYPE_LABELS, type SectorType } from '@/types/sectorTypes'
+import {
+  SECTOR_TYPE_LABELS,
+  FUND_CROWD_SECTOR_TYPES,
+  type SectorType,
+  type FundCrowdSectorType,
+} from '@/types/sectorTypes'
 import CrowdScopeSelector from './CrowdScopeSelector'
 import CrowdSectorTypeSelector from './CrowdSectorTypeSelector'
 import CrowdIndustryDistribution from './CrowdIndustryDistribution'
@@ -38,7 +43,7 @@ const RETURN_STATE_STORAGE_KEY = 'fund-crowd-return-state'
 export default function FundCrowdAnalysisPage() {
   const router = useRouter()
   const [scope, setScope] = useState<CrowdScope>('active') // AC-02 默认仅主动
-  const [sectorType, setSectorType] = useState<SectorType>('industry') // 板块维度（分布图 + 排行榜分类列联动）
+  const [sectorType, setSectorType] = useState<FundCrowdSectorType>('industry') // 板块维度（分布图 + 排行榜分类列联动，仅行业/概念/地域）
   const [search, setSearch] = useState('') // AC-08 搜索词（即时）
   const [debouncedSearch, setDebouncedSearch] = useState('') // debounce 后传给 API
   const [page, setPage] = useState(1)
@@ -50,6 +55,11 @@ export default function FundCrowdAnalysisPage() {
 
   // AC-05 返回状态恢复：plan-03 在离开时写入 sessionStorage，本页加载时读取并恢复。
   // scope/page/search 恢复由 plan-02 实现；plan-03 追加 scroll 恢复（arch-check 非阻塞改进项）。
+  // 刻意用 effect 而非 useState lazy initializer：本组件经 dashboard 路由参与 SSR，lazy initializer
+  // 在服务端（window 未定义→默认值）与客户端 hydration（读到 sessionStorage→非默认值）间会触发
+  // hydration mismatch；effect 在 hydration 后执行，可安全 setState 且无 mismatch。此为
+  // react-hooks/set-state-in-effect 的正当 escape hatch，故对该 effect 局部禁用。
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (typeof window === 'undefined') return
     const saved = window.sessionStorage.getItem(RETURN_STATE_STORAGE_KEY)
@@ -64,7 +74,13 @@ export default function FundCrowdAnalysisPage() {
         scrollY?: number
       }
       if (state.scope) setScope(state.scope)
-      if (state.sectorType) setSectorType(state.sectorType)
+      // 恢复 sectorType 时校验仍在扎堆子集内（兼容旧 sessionStorage 残留的 theme）
+      if (
+        state.sectorType &&
+        (FUND_CROWD_SECTOR_TYPES as readonly string[]).includes(state.sectorType)
+      ) {
+        setSectorType(state.sectorType as FundCrowdSectorType)
+      }
       if (state.page) setPage(state.page)
       if (state.search) {
         setSearch(state.search)
@@ -82,6 +98,7 @@ export default function FundCrowdAnalysisPage() {
       window.sessionStorage.removeItem(RETURN_STATE_STORAGE_KEY)
     }
   }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // debounce search（AC-08 实时过滤，避免逐字请求）
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -143,7 +160,7 @@ export default function FundCrowdAnalysisPage() {
     // search 保留（用户搜索意图跨口径保持）
   }
 
-  const handleSectorTypeChange = (nextSectorType: SectorType) => {
+  const handleSectorTypeChange = (nextSectorType: FundCrowdSectorType) => {
     setSectorType(nextSectorType)
     // 不重置 page：sector_type 只改分类列，不改扎堆股集合（fundCount/total 不变）
   }
