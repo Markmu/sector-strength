@@ -34,7 +34,7 @@ export interface CrowdRankingTableProps {
   /** AC-06：false 时环比列统一 "—" */
   hasPrevPeriod: boolean
   search: string
-  /** 板块分类列标题（随 sector_type 切换：行业/概念/地域/特色/风格/主题） */
+  /** 板块分类列标题（随 sector_type 切换：行业/概念/地域） */
   sectorTypeLabel: string
   /** 板块筛选当前值（undefined = 全部） */
   sectorName?: string

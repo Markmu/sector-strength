@@ -25,7 +25,7 @@ router = APIRouter(prefix="/analysis", tags=["analysis"])
 async def get_sector_scatter_data(
     x_axis: str = Query("short", description="X轴维度: short/medium/long/composite"),
     y_axis: str = Query("medium", description="Y轴维度: short/medium/long/composite"),
-    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region/feature/style/theme"),
+    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region"),
     min_grade: Optional[str] = Query(None, description="最低等级: D/C/B/A/A+/S/S+"),
     max_grade: Optional[str] = Query(None, description="最高等级: D/C/B/A/A+/S/S+"),
     offset: int = Query(0, ge=0, description="分页偏移"),
@@ -84,7 +84,7 @@ async def get_sector_scatter_data(
 
 @router.get("/sector-grade-table", response_model=ApiResponse[SectorGradeTableResponse])
 async def get_sector_grade_table_data(
-    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region/feature/style/theme"),
+    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region"),
     calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),

@@ -43,7 +43,7 @@ router = APIRouter(prefix="/sectors", tags=["sectors"])
 
 @router.get("", response_model=SectorListResponse)
 async def get_sectors(
-    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region/feature/style/theme"),
+    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region"),
     min_strength_score: Optional[float] = Query(None, ge=0, le=100, description="最小强度分数"),
     max_strength_score: Optional[float] = Query(None, ge=0, le=100, description="最大强度分数"),
     sort_by: str = Query("strength_score", description="排序字段"),
@@ -156,7 +156,7 @@ async def get_sectors(
 @router.get("/search", response_model=ApiResponse[List[dict]])
 async def search_sectors(
     keyword: str = Query(..., min_length=1, description="搜索关键词（板块名称或代码）"),
-    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region/feature/style/theme"),
+    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region"),
     limit: int = Query(20, ge=1, le=100, description="返回结果数量限制"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),

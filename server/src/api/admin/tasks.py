@@ -16,6 +16,7 @@ from src.api.schemas.response import ApiResponse
 from src.services.task_manager import TaskManager
 from src.services.task_executor import TaskRegistry
 from src.models.async_task import AsyncTask
+from src.services.data_acquisition.sector_types import SECTOR_TYPES
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -87,8 +88,9 @@ def _validate_task_create_request(request: CreateTaskRequest) -> Optional[str]:
 
     if request.task_type == "init_sectors":
         sector_type = params.get("sector_type")
-        if sector_type is not None and sector_type not in {"industry", "concept", "region", "feature", "style", "theme"}:
-            return "init_sectors 的 sector_type 仅支持 industry/concept/region/feature/style/theme。"
+        if sector_type is not None and sector_type not in SECTOR_TYPES:
+            allowed = "/".join(SECTOR_TYPES)
+            return f"init_sectors 的 sector_type 仅支持 {allowed}。"
 
     if request.task_type == "init_sector_historical_data":
         has_days = params.get("days") is not None

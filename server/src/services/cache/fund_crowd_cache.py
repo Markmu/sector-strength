@@ -41,7 +41,7 @@ AGG_TTL = 86400  # 核心聚合：同 period 恒定，24h 兜底
 INDUSTRY_TTL = 3600  # 行业映射：sectors/sector_stocks 偶有手动维护
 
 # 内存缓存容量：命名空间内 key 数量有限（periods 1 + agg 2scope×N期 +
-# industry 2scope×N期×6type，N≤4 ≈ 57），200 足够
+# industry 2scope×N期×3type，N≤4 ≈ 33），200 足够
 _IN_MEMORY_CACHE_MAX = 200
 
 

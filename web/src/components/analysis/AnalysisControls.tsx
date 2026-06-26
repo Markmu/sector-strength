@@ -11,9 +11,6 @@ import {
   BuildingOfficeIcon,
   LightBulbIcon,
   MapIcon,
-  SparklesIcon,
-  AdjustmentsHorizontalIcon,
-  TagIcon,
 } from '@heroicons/react/24/outline'
 import type { AxisType } from '@/types/scatter'
 import { AXIS_CONFIG, GRADE_RANGE_MAP } from '@/types/scatter'
@@ -41,9 +38,6 @@ const SECTOR_TYPE_OPTIONS: {
   { value: 'industry', label: '行业板块', icon: BuildingOfficeIcon },
   { value: 'concept', label: '概念板块', icon: LightBulbIcon },
   { value: 'region', label: '地域板块', icon: MapIcon },
-  { value: 'feature', label: '特色板块', icon: SparklesIcon },
-  { value: 'style', label: '风格板块', icon: AdjustmentsHorizontalIcon },
-  { value: 'theme', label: '主题板块', icon: TagIcon },
 ]
 
 // 维度选项

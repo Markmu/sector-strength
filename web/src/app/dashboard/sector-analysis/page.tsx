@@ -12,7 +12,7 @@ import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
 import { Disclaimer } from '@/components/ui/Disclaimer'
 import { sectorsApi } from '@/lib/api'
 import type { Sector } from '@/types'
-import { SECTOR_TYPE_DISPLAY, SECTOR_TYPE_LABELS, type SectorType } from '@/types/sectorTypes'
+import { SECTOR_TYPES, SECTOR_TYPE_DISPLAY, SECTOR_TYPE_LABELS, type SectorType } from '@/types/sectorTypes'
 import {
   LineChartIcon,
   TrendingUpIcon,
@@ -283,7 +283,7 @@ export default function SectorAnalysisListPage() {
                 >
                   全部
                 </button>
-                {(['industry', 'concept', 'region', 'feature', 'style', 'theme'] as const).map((t, i, arr) => (
+                {SECTOR_TYPES.map((t) => (
                   <button
                     key={t}
                     type="button"

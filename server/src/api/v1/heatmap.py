@@ -49,7 +49,7 @@ def _get_color_for_strength(strength: float) -> str:
 
 @router.get("", response_model=HeatmapResponse)
 async def get_heatmap_data(
-    sector_type: Optional[str] = Query(None, description="板块类型筛选: industry/concept/region/feature/style/theme"),
+    sector_type: Optional[str] = Query(None, description="板块类型筛选: industry/concept/region"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> HeatmapResponse:

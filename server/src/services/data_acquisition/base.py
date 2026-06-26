@@ -59,7 +59,7 @@ class BaseDataSource(ABC):
         获取行业板块或概念板块的信息。
 
         Args:
-            sector_type: 板块类型过滤 (industry/concept/region/feature/style/theme)，None 表示获取所有
+            sector_type: 板块类型过滤 (industry/concept/region)，None 表示获取所有
 
         Returns:
             板块信息列表，包含板块代码、名称、类型等
@@ -142,7 +142,7 @@ class BaseDataSource(ABC):
 
         Args:
             sector_name: 板块名称
-            sector_type: 板块类型（industry/concept/region/feature/style/theme）
+            sector_type: 板块类型（industry/concept/region）
             start_date: 开始日期
             end_date: 结束日期
 

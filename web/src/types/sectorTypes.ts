@@ -10,9 +10,6 @@ export const SECTOR_TYPES = [
   'industry',
   'concept',
   'region',
-  'feature',
-  'style',
-  'theme',
 ] as const
 
 export type SectorType = (typeof SECTOR_TYPES)[number]
@@ -22,9 +19,6 @@ export const SECTOR_TYPE_LABELS: Record<SectorType, string> = {
   industry: '行业',
   concept: '概念',
   region: '地域',
-  feature: '特色',
-  style: '风格',
-  theme: '主题',
 }
 
 // 内部 key → 完整中文显示标签
@@ -32,9 +26,6 @@ export const SECTOR_TYPE_DISPLAY: Record<SectorType, string> = {
   industry: '行业板块',
   concept: '概念板块',
   region: '地域板块',
-  feature: '特色板块',
-  style: '风格板块',
-  theme: '主题板块',
 }
 
 // 类型选项数组（用于 UI 遍历渲染）
@@ -49,13 +40,10 @@ export const SECTOR_TYPE_OPTIONS: {
 }))
 
 /**
- * 基金扎堆分析支持的板块维度子集（仅行业/概念/地域）。
+ * 基金扎堆分析支持的板块维度子集（行业/概念/地域）。
  *
- * 扎堆页只展示行业、概念、地域三种板块维度，排除 theme/feature/style。
- * 排除 theme：Tushare 同花顺「主题」(TH) 分类仅有 10 个特殊旗舰主题指数
- * （同花顺金仓30/50/100/200 + 茅指数 + 宁组合），成分股去重仅 ~223 只，
- * 而扎堆股集合约 3100 只 → ~93% 股票无主题归属、归「未分类」，分布无分析价值。
- * 其余页面（sector-analysis/heatmap/rankings 等）仍使用全量 SECTOR_TYPES，不受影响。
+ * 当前与全量 SECTOR_TYPES 一致；保留独立常量是为了扎堆页有稳定的
+ * 维度类型边界，便于后续在全量类型调整时隔离影响。
  */
 export const FUND_CROWD_SECTOR_TYPES = [
   'industry',
@@ -65,7 +53,7 @@ export const FUND_CROWD_SECTOR_TYPES = [
 
 export type FundCrowdSectorType = (typeof FUND_CROWD_SECTOR_TYPES)[number]
 
-// 扎堆页板块选项（仅行业/概念/地域）
+// 扎堆页板块选项（行业/概念/地域）
 export const FUND_CROWD_SECTOR_OPTIONS: {
   value: FundCrowdSectorType
   label: string

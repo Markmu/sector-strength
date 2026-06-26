@@ -273,7 +273,7 @@ class SectorScatterData(BaseModel):
     """板块散点图数据点"""
     symbol: str = Field(..., description="板块代码")
     name: str = Field(..., description="板块名称")
-    sector_type: str = Field(..., description="板块类型: industry/concept/region/feature/style/theme")
+    sector_type: str = Field(..., description="板块类型: industry/concept/region")
     x: float = Field(..., description="X轴数值")
     y: float = Field(..., description="Y轴数值")
     size: float = Field(default=20.0, description="气泡大小 (strong_stock_ratio，默认20)")

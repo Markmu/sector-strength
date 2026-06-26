@@ -170,7 +170,7 @@ class DataInitService:
            - 数据源已移除的成分股 → DELETE
 
         Args:
-            sector_type: 板块类型过滤 (industry/concept/region/feature/style/theme)，None 表示获取所有
+            sector_type: 板块类型过滤 (industry/concept/region)，None 表示获取所有
 
         Returns:
             初始化结果字典: {

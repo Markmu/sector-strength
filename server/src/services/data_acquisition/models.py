@@ -85,7 +85,7 @@ class SectorInfo(BaseModel):
 
     code: str = Field(..., description="板块代码")
     name: str = Field(..., description="板块名称")
-    type: str = Field(..., description="板块类型: industry/concept/region/feature/style/theme")
+    type: str = Field(..., description="板块类型: industry/concept/region")
     description: Optional[str] = Field(None, description="板块描述")
 
     @field_validator("code")
