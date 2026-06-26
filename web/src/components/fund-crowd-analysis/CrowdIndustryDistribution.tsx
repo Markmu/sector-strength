@@ -31,7 +31,7 @@ const ReactECharts = dynamic(
 )
 
 // 仅渲染 Top N（后端 distribution 返回全量，前端截断展示；长尾行业不撑爆图表）
-const TOP_N = 10
+const TOP_N = 20
 
 export interface CrowdIndustryDistributionProps {
   distribution: CrowdIndustryItem[]

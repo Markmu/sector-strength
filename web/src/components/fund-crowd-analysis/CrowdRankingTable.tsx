@@ -144,7 +144,9 @@ export default function CrowdRankingTable({
                   (h) => (
                     <th
                       key={h}
-                      className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left"
+                      className={`px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left${
+                        h === '名称' ? ' min-w-[7rem] whitespace-nowrap' : ''
+                      }`}
                     >
                       {h}
                     </th>
@@ -199,7 +201,7 @@ export default function CrowdRankingTable({
                     <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left">
                       代码
                     </th>
-                    <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left">
+                    <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-left min-w-[7rem] whitespace-nowrap">
                       名称
                     </th>
                     <th
@@ -231,7 +233,7 @@ export default function CrowdRankingTable({
                         <td className="px-4 py-3 font-mono text-foreground">
                           {item.stockSymbol}
                         </td>
-                        <td className="px-4 py-3 text-foreground">
+                        <td className="px-4 py-3 text-foreground min-w-[7rem] whitespace-nowrap">
                           {item.stockName ?? '—'}
                         </td>
                         <td className="px-4 py-3 text-foreground">

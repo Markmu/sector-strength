@@ -30,6 +30,12 @@ logger = logging.getLogger(__name__)
 # ADR-1：被动型 invest_type 枚举（后端定义为常量便于调整，ADR-6 风险对策）
 PASSIVE_INVEST_TYPES: tuple[str, ...] = ("被动指数型", "增强指数型")
 
+# 概念分布默认排除项：融资融券/沪股通/深股通 覆盖面过广、信号弱，不计入概念分布
+EXCLUDED_CONCEPTS: tuple[str, ...] = ("融资融券", "沪股通", "深股通")
+
+# 扎堆度阈值：持有基金数大于该值才视为"扎堆"计入排行榜
+MIN_CROWD_FUND_COUNT = 20
+
 
 class FundCrowdAnalysisService:
     """基金扎堆度聚合查询服务（两级缓存 + 内存 search 过滤）。"""
@@ -118,10 +124,17 @@ class FundCrowdAnalysisService:
         else:
             current_agg = current_agg_all
 
-        # 5. 环比对比（ADR-3，Python 内存，复用 06 范式）
+        # 5. 扎堆阈值过滤：仅保留持有基金数大于阈值的（数据本身含小持仓，需过滤后才算"扎堆"）
+        current_agg = {
+            sym: agg
+            for sym, agg in current_agg.items()
+            if agg["fund_count"] > MIN_CROWD_FUND_COUNT
+        }
+
+        # 6. 环比对比（ADR-3，Python 内存，复用 06 范式）
         changes = self._compute_changes(current_agg, prev_agg, has_prev_period)
 
-        # 6. JOIN sectors 取 industries（全集缓存，按 sector_type 分 key）
+        # 7. JOIN sectors 取 industries（全集缓存，按 sector_type 分 key）
         all_symbols = list(current_agg_all.keys())
         industry_map_all = (
             await self._cache.get_or_compute_industry(
@@ -136,7 +149,7 @@ class FundCrowdAnalysisService:
             else {}
         )
 
-        # 7. 组装 item（用过滤后 current_agg；name 从 agg 取，industries 从全集取）
+        # 8. 组装 item（用过滤后 current_agg；name 从 agg 取，industries 从全集取）
         items = []
         for symbol, agg in current_agg.items():
             ch = changes.get(symbol, {})
@@ -151,10 +164,10 @@ class FundCrowdAnalysisService:
                 }
             )
 
-        # 8. 排序：fund_count DESC, stock_symbol ASC（tiebreaker）
+        # 9. 排序：fund_count DESC, stock_symbol ASC（tiebreaker）
         items.sort(key=lambda x: (-x["fund_count"], x["stock_symbol"]))
 
-        # 9. 分页（search 已在内存过滤 → total = len(current_agg)）
+        # 10. 分页（search 已在内存过滤 → total = len(current_agg)）
         total = len(items)
         offset = (page - 1) * page_size
         page_items = items[offset : offset + page_size]
@@ -282,6 +295,9 @@ class FundCrowdAnalysisService:
             if not industries:
                 industries = ["未分类"]
             for ind in industries:
+                # 概念分布排除默认忽略项（融资融券/沪股通/深股通）
+                if sector_type == "concept" and ind in EXCLUDED_CONCEPTS:
+                    continue
                 if ind not in industry_stats:
                     industry_stats[ind] = set()
                 industry_stats[ind].add(symbol)

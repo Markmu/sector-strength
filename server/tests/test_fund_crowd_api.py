@@ -240,7 +240,7 @@ async def sample_multi_sector_type_data(test_session, sample_crowd_data):
     """
     多板块类型 fixture：600519 同时关联三种 type 的板块，验证 sector_type 切换。
       - industry: 食品饮料 (IND_FOOD)
-      - concept:  新能源 (CON_NEW)
+      - concept:  新能源 (CON_NEW)、融资融券 (CON_MR，用于验证概念分布默认排除)
       - region:   贵州 (REG_GZ)
     000001 无任何板块关联（验证各 type 下均归「未分类」）。
     scope=active 扎堆股集合 = {600519, 000001}（同 sample_crowd_data）。
@@ -248,6 +248,7 @@ async def sample_multi_sector_type_data(test_session, sample_crowd_data):
     sectors = [
         Sector(name="食品饮料", code="IND_FOOD", type="industry"),
         Sector(name="新能源", code="CON_NEW", type="concept"),
+        Sector(name="融资融券", code="CON_MR", type="concept"),
         Sector(name="贵州", code="REG_GZ", type="region"),
     ]
     test_session.add_all(sectors)
@@ -256,6 +257,7 @@ async def sample_multi_sector_type_data(test_session, sample_crowd_data):
     sector_stocks = [
         SectorStock(sector_code="IND_FOOD", stock_code="600519"),
         SectorStock(sector_code="CON_NEW", stock_code="600519"),
+        SectorStock(sector_code="CON_MR", stock_code="600519"),
         SectorStock(sector_code="REG_GZ", stock_code="600519"),
         # 000001 无任何板块映射
     ]
@@ -421,6 +423,16 @@ def _find_item(items: list, stock_symbol: str) -> dict:
 
 class TestRankings:
     """扎堆度排行榜端点测试"""
+
+    @pytest.fixture(autouse=True)
+    def _disable_crowd_threshold(self, monkeypatch):
+        """既有语义测试 fixture 的 fund_count 均为个位数（≤20），
+        将扎堆阈值临时降为 0 以排除阈值过滤的干扰；阈值本身由专项测试覆盖。"""
+        from src.services import fund_crowd_analysis_service
+
+        monkeypatch.setattr(
+            fund_crowd_analysis_service, "MIN_CROWD_FUND_COUNT", 0
+        )
 
     @pytest.mark.asyncio
     async def test_rankings_returns_active_scope_only(
@@ -705,14 +717,14 @@ class TestRankings:
         self, auth_client, sample_multi_sector_type_data
     ):
         """sector_type 切换联动：600519 的 industries 随 type 变，fundCount 不变"""
-        # concept → 新能源
+        # concept → 新能源、融资融券（rankings 不过滤，返回原始概念全量）
         resp_concept = await auth_client.get(
             "/api/v1/fund-crowd-analysis/rankings",
             params={"scope": "active", "sector_type": "concept"},
         )
         assert resp_concept.status_code == 200
         item_concept = _find_item(resp_concept.json()["data"]["items"], "600519")
-        assert item_concept["industries"] == ["新能源"]
+        assert item_concept["industries"] == ["新能源", "融资融券"]
         assert item_concept["fundCount"] == 2
 
         # industry（默认）→ 食品饮料
@@ -756,7 +768,28 @@ class TestRankings:
         assert call_count == first_count
         # 缓存返回的数据与首次一致
         assert resp2.json()["data"]["items"] == resp1.json()["data"]["items"]
-        assert resp2.json()["data"]["total"] == resp1.json()["data"]["total"]
+        assert resp2.json()["data"]["total"] == resp2.json()["data"]["total"]
+
+    @pytest.mark.asyncio
+    async def test_rankings_filters_below_crowd_threshold(
+        self, auth_client, sample_crowd_data, monkeypatch
+    ):
+        """扎堆阈值：持有基金数 ≤ MIN_CROWD_FUND_COUNT 的不计入排行榜。
+        autouse fixture 已把阈值降为 0，此处恢复默认阈值 20 验证过滤。"""
+        from src.services import fund_crowd_analysis_service
+
+        monkeypatch.setattr(
+            fund_crowd_analysis_service, "MIN_CROWD_FUND_COUNT", 20
+        )
+
+        # sample_crowd_data 中 600519 active fund_count=2、000001=1，均 ≤20 → 应被全部过滤
+        resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/rankings", params={"scope": "active"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 # ============== Test: GET /industry-distribution — 行业分布 ==============
@@ -835,7 +868,7 @@ class TestIndustryDistribution:
     async def test_industry_distribution_concept_type(
         self, auth_client, sample_multi_sector_type_data
     ):
-        """sector_type=concept：600519→新能源；无概念关联的 000001 归未分类"""
+        """sector_type=concept：600519→新能源（融资融券被默认排除）；无概念关联的 000001 归未分类"""
         resp = await auth_client.get(
             "/api/v1/fund-crowd-analysis/industry-distribution",
             params={"scope": "active", "sector_type": "concept"},
@@ -844,10 +877,55 @@ class TestIndustryDistribution:
         by_industry = {d["industry"]: d for d in resp.json()["data"]["distribution"]}
         assert "新能源" in by_industry
         assert by_industry["新能源"]["stockCount"] == 1
+        # 分母仍为扎堆股总数 2，新能源占比 50%
+        assert by_industry["新能源"]["percentage"] == 50.0
         assert "食品饮料" not in by_industry
         assert "贵州" not in by_industry
+        # 默认排除项不出现
+        assert "融资融券" not in by_industry
+        assert "沪股通" not in by_industry
+        assert "深股通" not in by_industry
         # 000001 无概念关联 → 未分类
         assert "未分类" in by_industry
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_concept_excludes_default(
+        self, auth_client, sample_multi_sector_type_data
+    ):
+        """概念分布默认排除 融资融券/沪股通/深股通；industry/region 查询不受影响"""
+        # 概念：融资融券 被过滤，新能源 保留
+        concept_resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active", "sector_type": "concept"},
+        )
+        assert concept_resp.status_code == 200
+        concept_names = {
+            d["industry"] for d in concept_resp.json()["data"]["distribution"]
+        }
+        assert "融资融券" not in concept_names
+        assert "新能源" in concept_names
+
+        # industry 查询不受排除项影响：食品饮料 正常出现
+        industry_resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active", "sector_type": "industry"},
+        )
+        assert industry_resp.status_code == 200
+        industry_names = {
+            d["industry"] for d in industry_resp.json()["data"]["distribution"]
+        }
+        assert "食品饮料" in industry_names
+
+        # region 查询不受排除项影响：贵州 正常出现
+        region_resp = await auth_client.get(
+            "/api/v1/fund-crowd-analysis/industry-distribution",
+            params={"scope": "active", "sector_type": "region"},
+        )
+        assert region_resp.status_code == 200
+        region_names = {
+            d["industry"] for d in region_resp.json()["data"]["distribution"]
+        }
+        assert "贵州" in region_names
 
     @pytest.mark.asyncio
     async def test_industry_distribution_region_type(
