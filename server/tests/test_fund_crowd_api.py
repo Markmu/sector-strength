@@ -73,6 +73,27 @@ async def auth_client(client: AsyncClient, test_session, normal_user):
     _fastapi_app.dependency_overrides.pop(get_current_user, None)
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _isolate_fund_crowd_cache():
+    """
+    每个测试前后清 fund_crowd 缓存（L2 DB CacheEntry + L1 内存单例），
+    防止不同 sample data 共享相同 (period, scope) key 跨测试串数据。
+
+    缓存独立于 test_session（db_cache 用独立 AsyncSessionLocal 真实 commit），
+    故必须显式清，不会被测试事务回滚。
+    """
+    from src.services.cache.fund_crowd_cache import (
+        get_fund_crowd_cache,
+        reset_fund_crowd_cache,
+    )
+
+    await get_fund_crowd_cache().invalidate_all()
+    reset_fund_crowd_cache()
+    yield
+    await get_fund_crowd_cache().invalidate_all()
+    reset_fund_crowd_cache()
+
+
 # ============== Sample data fixtures ==============
 
 
@@ -703,6 +724,39 @@ class TestRankings:
         assert item_industry["industries"] == ["食品饮料"]
         # sector_type 只影响 industries 列，不影响 fund_count（聚合层不碰 sectors）
         assert item_industry["fundCount"] == 2
+
+    @pytest.mark.asyncio
+    async def test_rankings_cache_hit_skips_recomputation(
+        self, auth_client, sample_crowd_data, monkeypatch
+    ):
+        """ADR-6 修订：同 params 二次请求命中缓存，核心聚合不重算"""
+        from src.repositories.fund_crowd_repository import FundCrowdRepository
+
+        original = FundCrowdRepository.get_crowd_aggregation
+        call_count = 0
+
+        async def _spy(self, *args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return await original(self, *args, **kwargs)
+
+        monkeypatch.setattr(FundCrowdRepository, "get_crowd_aggregation", _spy)
+
+        url = "/api/v1/fund-crowd-analysis/rankings"
+        params = {"scope": "active", "page": 1, "pageSize": 20}
+
+        resp1 = await auth_client.get(url, params=params)
+        assert resp1.status_code == 200
+        first_count = call_count
+        assert first_count > 0  # 首次 miss 触发计算
+
+        # 同 params 二次请求：应命中缓存，聚合调用次数不再增加
+        resp2 = await auth_client.get(url, params=params)
+        assert resp2.status_code == 200
+        assert call_count == first_count
+        # 缓存返回的数据与首次一致
+        assert resp2.json()["data"]["items"] == resp1.json()["data"]["items"]
+        assert resp2.json()["data"]["total"] == resp1.json()["data"]["total"]
 
 
 # ============== Test: GET /industry-distribution — 行业分布 ==============

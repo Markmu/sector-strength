@@ -1,13 +1,19 @@
 """
 基金扎堆度聚合查询服务
 
-实时聚合（无缓存），完全复用 04 期 fund_portfolio + funds + sectors + sector_stocks
-+ stocks 数据源。覆盖 AC-01/02/03/04/06/07/08 的后端语义。
+带两级缓存（ADR-6 修订）：L1 内存 FIFO + L2 数据库 CacheEntry，缓存报告期列表、
+核心聚合（含 stock_name）、行业映射。消除扎堆度聚合的高频重复计算——核心聚合
+COUNT(DISTINCT regexp_replace(Fund.name,...)) 对最新期约 15 万行 CPU 密集、索引
+无法加速，且翻页/切换 sector_type/distribution 均重算恒定结果。季度更新数据天然
+按 report_period 版本化 → 缓存命中率极高，持仓同步后主动失效。
+
+search 从 SQL WHERE 层移至本服务内存层过滤（基于全量缓存 agg 子集，语义等价
+symbol LIKE 'xxx%' OR name ILIKE '%xxx%'，total = len(过滤后) 仍正确）。
 
 复用声明：
 - _compute_change_directions 范式：src/services/shareholder_analysis_service.py:264-302
   （Python 内存 dict 对比，按 symbol 维度计算 cur-prev 变化 + "new" 判定）
-- _escape_like_keyword：src/services/shareholder_group_service.py:86-95
+- 缓存范式：src/services/cache/strength_cache.py（L1 OrderedDict + L2 CacheManager）
 """
 
 import logging
@@ -17,6 +23,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.repositories.fund_crowd_repository import FundCrowdRepository
+from src.services.cache.fund_crowd_cache import get_fund_crowd_cache
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +31,13 @@ logger = logging.getLogger(__name__)
 PASSIVE_INVEST_TYPES: tuple[str, ...] = ("被动指数型", "增强指数型")
 
 
-def _escape_like_keyword(keyword: str) -> str:
-    """转义 LIKE 关键词中的 % 和 _ 通配符（架构 §8.3 安全要求）。"""
-    return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 class FundCrowdAnalysisService:
-    """基金扎堆度聚合查询服务（实时聚合，无缓存）。"""
+    """基金扎堆度聚合查询服务（两级缓存 + 内存 search 过滤）。"""
 
     def __init__(self, session: AsyncSession):
         self.session = session
         self.repo = FundCrowdRepository(session)
+        self._cache = get_fund_crowd_cache()
 
     async def get_rankings(
         self,
@@ -63,17 +66,14 @@ class FundCrowdAnalysisService:
             sector_type,
         )
 
-        # search 转义（若非空）
-        escaped_search: Optional[str] = None
+        # search 预处理：strip，空串归 None（内存过滤，无需转义 SQL 通配符）
         if search:
-            search_stripped = search.strip()
-            if search_stripped:
-                escaped_search = _escape_like_keyword(search_stripped)
-            else:
-                search = None
+            search = search.strip() or None
 
-        # 1. 确定报告期（最新期 + 上一期）
-        periods = await self.repo.get_report_periods(limit=4)
+        # 1. 报告期（缓存；统一 limit=4，供 rankings/distribution 共用同一 key）
+        periods = await self._cache.get_or_compute_periods(
+            lambda: self.repo.get_report_periods(limit=4)
+        )
         if not periods:
             logger.info("get_rankings: no report periods, returning has_data=False")
             return {
@@ -91,69 +91,70 @@ class FundCrowdAnalysisService:
         prev_period: Optional[date] = periods[1] if len(periods) >= 2 else None
         has_prev_period = prev_period is not None
 
-        # 2. current 期聚合（含 search SQL 层过滤，路径 A）
-        try:
-            current_agg = await self.repo.get_crowd_aggregation(
-                current_period,
-                scope,
-                PASSIVE_INVEST_TYPES,
-                search=search,
-                escaped_search=escaped_search,
-            )
-        except Exception:
-            logger.exception(
-                "get_rankings: current aggregation failed, period=%s, scope=%s",
-                current_period,
-                scope,
-            )
-            raise
-
-        # 3. prev 期聚合（仅 has_prev_period 时；环比对比不应用 search 过滤，
-        #    因为 is_new 判定需要全集对比，且 prev 期本身就是历史基准）
+        # 2. current 期聚合（含 stock_name，缓存；search 在内存层过滤）
+        current_agg_all = await self._cache.get_or_compute_agg(
+            current_period,
+            scope,
+            lambda: self._compute_agg_with_names(current_period, scope),
+        )
+        # 3. prev 期聚合（历史恒定数据，缓存长期复用）
         if has_prev_period:
-            prev_agg = await self.repo.get_crowd_aggregation(
+            prev_agg = await self._cache.get_or_compute_agg(
                 prev_period,
                 scope,
-                PASSIVE_INVEST_TYPES,
+                lambda: self._compute_agg_with_names(prev_period, scope),
             )
         else:
             prev_agg = {}
 
-        # 4. 环比对比（ADR-3，Python 内存，复用 06 _compute_change_directions 范式）
+        # 4. search 内存过滤（基于全量缓存 agg 子集）
+        if search:
+            s_lower = search.lower()
+            current_agg = {
+                sym: agg
+                for sym, agg in current_agg_all.items()
+                if sym.startswith(search) or s_lower in (agg.get("name") or "").lower()
+            }
+        else:
+            current_agg = current_agg_all
+
+        # 5. 环比对比（ADR-3，Python 内存，复用 06 范式）
         changes = self._compute_changes(current_agg, prev_agg, has_prev_period)
 
-        # 5. JOIN stocks 取 stock_name + JOIN sectors 取 industries
-        all_symbols = list(current_agg.keys())
-        stock_names = (
-            await self.repo.get_stock_names(all_symbols) if all_symbols else {}
-        )
-        industry_map = (
-            await self.repo.get_industry_for_stocks(
-                all_symbols, sector_type=sector_type
+        # 6. JOIN sectors 取 industries（全集缓存，按 sector_type 分 key）
+        all_symbols = list(current_agg_all.keys())
+        industry_map_all = (
+            await self._cache.get_or_compute_industry(
+                current_period,
+                scope,
+                sector_type,
+                lambda: self.repo.get_industry_for_stocks(
+                    all_symbols, sector_type=sector_type
+                ),
             )
             if all_symbols
             else {}
         )
 
-        # 6. 组装 item
+        # 7. 组装 item（用过滤后 current_agg；name 从 agg 取，industries 从全集取）
         items = []
         for symbol, agg in current_agg.items():
             ch = changes.get(symbol, {})
             items.append(
                 {
                     "stock_symbol": symbol,
-                    "stock_name": stock_names.get(symbol),  # None 兜底
-                    "industries": industry_map.get(symbol, []),
+                    "stock_name": agg.get("name"),  # None 兜底
+                    "industries": industry_map_all.get(symbol, []),
                     "fund_count": agg["fund_count"],
                     "fund_count_change": ch.get("fund_count_change"),
                     "is_new": ch.get("is_new"),
                 }
             )
 
-        # 7. 排序：fund_count DESC, stock_symbol ASC（tiebreaker）
+        # 8. 排序：fund_count DESC, stock_symbol ASC（tiebreaker）
         items.sort(key=lambda x: (-x["fund_count"], x["stock_symbol"]))
 
-        # 8. 分页（search 已在 SQL WHERE 层过滤 → total = len(current_agg)）
+        # 9. 分页（search 已在内存过滤 → total = len(current_agg)）
         total = len(items)
         offset = (page - 1) * page_size
         page_items = items[offset : offset + page_size]
@@ -167,6 +168,27 @@ class FundCrowdAnalysisService:
             "total": total,
             "page": page,
             "page_size": page_size,
+        }
+
+    async def _compute_agg_with_names(
+        self, report_period: date, scope: str
+    ) -> dict[str, dict]:
+        """
+        缓存 compute 回调：取核心聚合 + 批量 stock_name，合并为
+        {symbol: {"fund_count": int, "name": str|None}}。
+
+        name 合并进 agg value（单 key 缓存，减少往返）；name 只依赖 stocks 表，
+        与 scope 无关但随 agg 一同取更高效。
+        """
+        agg = await self.repo.get_crowd_aggregation(
+            report_period, scope, PASSIVE_INVEST_TYPES
+        )
+        if not agg:
+            return {}
+        names = await self.repo.get_stock_names(list(agg.keys()))
+        return {
+            sym: {"fund_count": a["fund_count"], "name": names.get(sym)}
+            for sym, a in agg.items()
         }
 
     def _compute_changes(
@@ -222,16 +244,18 @@ class FundCrowdAnalysisService:
             sector_type,
         )
 
-        periods = await self.repo.get_report_periods(limit=2)
+        periods = await self._cache.get_or_compute_periods(
+            lambda: self.repo.get_report_periods(limit=4)
+        )
         if not periods:
             return {"has_data": False, "current_period": None, "distribution": []}
 
         current_period: date = periods[0]
 
-        current_agg = await self.repo.get_crowd_aggregation(
+        current_agg = await self._cache.get_or_compute_agg(
             current_period,
             scope,
-            PASSIVE_INVEST_TYPES,
+            lambda: self._compute_agg_with_names(current_period, scope),
         )
         all_symbols = list(current_agg.keys())
         if not all_symbols:
@@ -241,8 +265,13 @@ class FundCrowdAnalysisService:
                 "distribution": [],
             }
 
-        industry_map = await self.repo.get_industry_for_stocks(
-            all_symbols, sector_type=sector_type
+        industry_map = await self._cache.get_or_compute_industry(
+            current_period,
+            scope,
+            sector_type,
+            lambda: self.repo.get_industry_for_stocks(
+                all_symbols, sector_type=sector_type
+            ),
         )
         total_stock_count = len(all_symbols)
 

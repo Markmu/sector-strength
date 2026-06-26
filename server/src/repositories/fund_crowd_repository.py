@@ -49,18 +49,14 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
         report_period: date,
         scope: str,
         passive_invest_types: tuple[str, ...],
-        search: Optional[str] = None,
-        escaped_search: Optional[str] = None,
     ) -> dict[str, dict]:
         """
-        核心聚合方法（ADR-2 + ADR-1）。
+        核心聚合方法（ADR-2 + ADR-1），纯聚合（无 search 过滤）。
 
         Args:
             report_period: 报告期
             scope: 基金口径（"active" / "all"）
             passive_invest_types: 被动型 invest_type 枚举（由 Service 层常量传入）
-            search: 原始 search 关键词（仅用于判定是否触发过滤）
-            escaped_search: 已转义 LIKE 通配符的 search 关键词
 
         Returns:
             { stock_symbol: { "fund_count": int } }
@@ -73,7 +69,9 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
         - 主动型 = invest_type NOT IN (...) OR invest_type IS NULL（必须 .is_(None)）
         - 份额去重：fund_count = COUNT(DISTINCT regexp_replace(Fund.name, '[ACDEHIR]$', ''))
           （A/C/D/E/H/I/R 等份额后缀合并为同一基金）
-        - search 在 SQL WHERE 层过滤（路径 A），保证分页 total 正确
+
+        注：search 过滤已移至 Service 内存层（基于全量缓存 agg 子集，ADR-6 修订），
+        本方法只做纯聚合，结果可被 FundCrowdCache 缓存。
         """
         stmt = (
             select(
@@ -106,16 +104,6 @@ class FundCrowdRepository(BaseRepository[FundPortfolio]):
                 )
             )
         # scope == "all"：无 invest_type 过滤
-
-        if search and escaped_search is not None:
-            # 路径 A：LEFT JOIN stocks 提前到聚合 SQL 中以支持 stock_name ILIKE
-            stmt = stmt.outerjoin(Stock, Stock.symbol == FundPortfolio.stock_symbol)
-            stmt = stmt.where(
-                or_(
-                    FundPortfolio.stock_symbol.like(f"{escaped_search}%", escape="\\"),
-                    Stock.name.ilike(f"%{escaped_search}%", escape="\\"),
-                )
-            )
 
         stmt = stmt.group_by(FundPortfolio.stock_symbol)
 

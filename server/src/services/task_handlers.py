@@ -1135,6 +1135,13 @@ async def sync_fund_portfolio_task(
     try:
         result = await service.sync_fund_portfolio(period)
 
+        # 持仓同步成功后清除基金扎堆分析缓存（ADR-6 修订）：
+        # 同 report_period 补数据为 DELETE+重写（见 data_init_fund.py），
+        # 旧聚合缓存会脏读，必须主动失效整个 fund_crowd 命名空间。
+        from src.services.cache.fund_crowd_cache import get_fund_crowd_cache
+
+        await get_fund_crowd_cache().invalidate_all()
+
         msg = (
             f"Fund portfolio sync completed (period={period}): "
             f"added={result.get('added')}, "
