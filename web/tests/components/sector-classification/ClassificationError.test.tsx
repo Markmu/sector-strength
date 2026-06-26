@@ -29,7 +29,7 @@ jest.mock('@/components/ui/Button', () => ({
       {children}
     </button>
   ),
-})
+}))
 
 describe('ClassificationError', () => {
   const mockRetry = jest.fn()
@@ -49,7 +49,7 @@ describe('ClassificationError', () => {
     it('应显示重试按钮', () => {
       render(<ClassificationError error="网络错误" onRetry={mockRetry} />)
 
-      expect(screen.getByRole('button', { name: '重新加载' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '重新获取分类数据' })).toBeInTheDocument()
     })
 
     it('应使用默认错误消息当 error 为 null', () => {
@@ -90,7 +90,7 @@ describe('ClassificationError', () => {
     it('点击重试按钮应调用 onRetry', () => {
       render(<ClassificationError error="网络错误" onRetry={mockRetry} />)
 
-      const retryButton = screen.getByRole('button', { name: '重新加载' })
+      const retryButton = screen.getByRole('button', { name: '重新获取分类数据' })
       fireEvent.click(retryButton)
 
       expect(mockRetry).toHaveBeenCalledTimes(1)
@@ -105,7 +105,7 @@ describe('ClassificationError', () => {
         />
       )
 
-      const retryButton = screen.getByRole('button', { name: '重新加载' })
+      const retryButton = screen.getByRole('button', { name: '重新获取分类数据' })
       expect(retryButton).toBeDisabled()
       expect(retryButton).toHaveAttribute('data-loading', 'true')
     })
@@ -119,7 +119,7 @@ describe('ClassificationError', () => {
         />
       )
 
-      const retryButton = screen.getByRole('button', { name: '重新加载' })
+      const retryButton = screen.getByRole('button', { name: '重新获取分类数据' })
       expect(retryButton).not.toBeDisabled()
       expect(retryButton).toHaveAttribute('data-loading', 'false')
     })
