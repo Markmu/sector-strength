@@ -3,8 +3,8 @@
 /**
  * 口径切换控件（plan-02，AC-02）
  *
- * 单选按钮组（非下拉），贴合 PRD §3.1 线框图 [● 仅主动基金   ○ 全部基金]。
- * 默认选中 'active'（仅主动基金，剔除被动指数型/增强指数型）。
+ * 单选按钮组（非下拉），贴合 PRD §3.1 线框图 [● 全部基金   ○ 仅主动基金]。
+ * 默认选中 'all'（全部基金）；页面态见 FundCrowdAnalysisPage。
  *
  * data-testid 约定（spec 选择器依赖）：
  * - 容器：crowd-scope-selector
@@ -21,8 +21,8 @@ export interface CrowdScopeSelectorProps {
 }
 
 const OPTIONS: Array<{ value: CrowdScope; label: string; hint: string }> = [
-  { value: 'active', label: '仅主动基金', hint: '剔除被动指数型/增强指数型' },
   { value: 'all', label: '全部基金', hint: '含场内 ETF 与被动指数' },
+  { value: 'active', label: '仅主动基金', hint: '剔除被动指数型/增强指数型' },
 ]
 
 export default function CrowdScopeSelector({

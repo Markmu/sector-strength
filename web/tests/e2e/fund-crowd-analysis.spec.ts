@@ -72,48 +72,48 @@ const SEARCH_DEBOUNCE_BUFFER = 500
 
 test.describe('AC-01/02/03/04/06/07/08：基金扎堆分析页（plan-02）', () => {
   test.describe('排行榜展示（AC-01）', () => {
-    test('TC-2.1 进入页面默认展示仅主动基金扎堆度排行榜', async ({ page }) => {
+    test('TC-2.1 进入页面默认展示全部基金扎堆度排行榜', async ({ page }) => {
       await installFullMocks(page, { hasPrevPeriod: true })
       await page.goto(FUND_CROWD_ANALYSIS_PAGE)
 
-      // 默认「仅主动基金」选中（规则 7：用 aria-pressed 而非文案做等待/断言）
-      await expect(page.getByTestId('crowd-scope-active')).toHaveAttribute('aria-pressed', 'true')
+      // 默认「全部基金」选中（规则 7：用 aria-pressed 而非文案做等待/断言）
+      await expect(page.getByTestId('crowd-scope-all')).toHaveAttribute('aria-pressed', 'true')
 
-      // 排行榜表格可见，按基金数降序（286 > 198 > 45）
+      // 排行榜表格可见，按基金数降序（scope=all 时 mock fundCount 翻倍：572 > 396 > 90）
       const rows = page.locator('[data-testid="crowd-ranking-table"] tbody tr')
       await expect(rows).toHaveCount(3)
       await expect(rows.first()).toContainText('600519')
-      await expect(rows.first()).toContainText('286')
+      await expect(rows.first()).toContainText('572')
       await expect(rows.nth(1)).toContainText('300750')
-      await expect(rows.nth(1)).toContainText('198')
+      await expect(rows.nth(1)).toContainText('396')
       await expect(rows.nth(2)).toContainText('688981')
     })
   })
 
   test.describe('口径切换（AC-02）', () => {
-    test('TC-2.2 切换口径为全部基金后排行榜重新计算', async ({ page }) => {
+    test('TC-2.2 切换口径为仅主动基金后排行榜重新计算', async ({ page }) => {
       await installFullMocks(page, { hasPrevPeriod: true })
       await page.goto(FUND_CROWD_ANALYSIS_PAGE)
 
-      // 初始：600519 基金数 286
-      await expect(
-        page.locator('[data-testid="crowd-ranking-table"] tbody tr').first()
-      ).toContainText('286')
-
-      // 切换为全部基金（mock 内 scope=all 时 fundCount 翻倍）
-      await page.getByTestId('crowd-scope-all').click()
-      await expect(page.getByTestId('crowd-scope-all')).toHaveAttribute('aria-pressed', 'true')
-      await expect(page.getByTestId('crowd-scope-active')).toHaveAttribute('aria-pressed', 'false')
+      // 初始：默认全部基金，600519 基金数 572（mock 内 scope=all 翻倍）
       await expect(
         page.locator('[data-testid="crowd-ranking-table"] tbody tr').first()
       ).toContainText('572')
 
-      // 切回仅主动
+      // 切换为仅主动基金（mock 内 scope=active 时回到基础值，不翻倍）
       await page.getByTestId('crowd-scope-active').click()
       await expect(page.getByTestId('crowd-scope-active')).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByTestId('crowd-scope-all')).toHaveAttribute('aria-pressed', 'false')
       await expect(
         page.locator('[data-testid="crowd-ranking-table"] tbody tr').first()
       ).toContainText('286')
+
+      // 切回全部基金
+      await page.getByTestId('crowd-scope-all').click()
+      await expect(page.getByTestId('crowd-scope-all')).toHaveAttribute('aria-pressed', 'true')
+      await expect(
+        page.locator('[data-testid="crowd-ranking-table"] tbody tr').first()
+      ).toContainText('572')
     })
   })
 

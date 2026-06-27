@@ -4,7 +4,7 @@
  * 基金扎堆分析主页面（plan-02，AC-01/02/03/04/06/07/08）
  *
  * 页面状态：
- * - scope: 口径（默认 'active' 仅主动，AC-02）
+ * - scope: 口径（默认 'all' 全部基金，AC-02）
  * - search / debouncedSearch: 搜索词（AC-08 debounce 300ms）
  * - page: 当前页码
  *
@@ -42,7 +42,7 @@ const RETURN_STATE_STORAGE_KEY = 'fund-crowd-return-state'
 
 export default function FundCrowdAnalysisPage() {
   const router = useRouter()
-  const [scope, setScope] = useState<CrowdScope>('active') // AC-02 默认仅主动
+  const [scope, setScope] = useState<CrowdScope>('all') // AC-02 默认全部基金
   const [sectorType, setSectorType] = useState<FundCrowdSectorType>('industry') // 板块维度（分布图 + 排行榜分类列联动，仅行业/概念/地域）
   const [sectorName, setSectorName] = useState<string | undefined>(undefined) // 板块筛选（随 sectorType 变化，切换维度时清空）
   const [search, setSearch] = useState('') // AC-08 搜索词（即时）
