@@ -603,6 +603,9 @@ export const adminApi = {
     adminApiClient.post<{task_id: string}>('/admin/init/fund-portfolio', { period }),
   initStockTop10Holders: (period: string) =>
     adminApiClient.post<{task_id: string}>('/admin/init/top10-holders', { period }),
+  // 券商月度金股同步（09 期 plan-01/03，month 为 YYYYMM）
+  initBrokerRecommend: (month: string) =>
+    adminApiClient.post<{task_id: string}>('/admin/init/broker-recommend', { month }),
 
   // 股东监控组管理（plan-03 / plan-01 后端契约）
   // 后端 ApiResponse 包 { success, data, message }，AdminApiClient.request 已提取 data 字段
@@ -1061,4 +1064,135 @@ export const fundCrowdAnalysisApi = {
       scope: params.scope,
       sector_type: params.sectorType,
     }),
+}
+
+// ============== 券商月度金股分析 API（09 期 plan-03）==============
+//
+// apiClient.baseURL 已含 /api/v1（见上方 API_BASE_WITH_PREFIX），
+// endpoint 不再带 /v1，避免双前缀（与 fundCrowdAnalysisApi 一致）。
+// query 参数 snake_case（page_size），响应输出 camelCase（后端 to_camel）。
+
+export type BrokerView = 'stock' | 'broker'
+
+export interface BrokerBrief {
+  broker: string
+  /** 同券商多条理由聚合，去空去重不丢弃（ADR-3） */
+  reasons: string[]
+}
+
+export interface BrokerStockRankingItem {
+  symbol: string
+  name: string | null
+  industries: string[]
+  /** 推荐券商家数（COUNT DISTINCT broker，按券商名称去重） */
+  brokerCount: number
+  /** 全部推荐券商及理由（预加载，展开用） */
+  brokers: BrokerBrief[]
+}
+
+export interface BrokerGroupItem {
+  broker: string
+  /** 本月推荐股票数 */
+  stockCount: number
+}
+
+export interface BrokerDetailItem {
+  symbol: string
+  name: string | null
+  /** 推荐理由数组（同 symbol 多记录合并去空去重，不丢弃） */
+  reasons: string[]
+}
+
+export interface BrokerRankingResponse {
+  hasData: boolean
+  /** 当前月份（ISO 字符串 YYYY-MM-01），null 表示无数据 */
+  month: string | null
+  total: number
+  page: number
+  pageSize: number
+  items: BrokerStockRankingItem[] | BrokerGroupItem[]
+}
+
+export interface BrokerMonthsResponse {
+  hasData: boolean
+  months: string[]
+}
+
+export interface BrokerDetailResponse {
+  items: BrokerDetailItem[]
+}
+
+// 板块排行榜（行业/概念/地域，各 Top5）
+export interface BrokerSectorRankingItem {
+  sectorName: string
+  stockCount: number
+  percentage: number
+}
+
+export interface BrokerSectorRankingsResponse {
+  hasData: boolean
+  month: string | null
+  industry: BrokerSectorRankingItem[]
+  concept: BrokerSectorRankingItem[]
+  region: BrokerSectorRankingItem[]
+}
+
+export const brokerRecommendApi = {
+  // 月份列表（AC-05/09）
+  getMonths: () =>
+    apiClient.get<{ success: boolean; data: BrokerMonthsResponse }>(
+      '/broker-recommend-analysis/months'
+    ),
+
+  // 股票维度排行（AC-02/03/06/07/10/11）
+  getStockRanking: (params: {
+    month?: string
+    search?: string
+    page?: number
+    pageSize?: number
+    sectorType?: string
+    sectorName?: string
+  }) =>
+    apiClient.get<{ success: boolean; data: BrokerRankingResponse }>(
+      '/broker-recommend-analysis/stock-ranking',
+      {
+        month: params.month || undefined,
+        search: params.search || undefined,
+        page: params.page || 1,
+        page_size: params.pageSize || 20,
+        sector_type: params.sectorType || undefined,
+        sector_name: params.sectorName || undefined,
+      }
+    ),
+
+  // 券商维度分组（AC-04/06/07/12）
+  getBrokerList: (params: {
+    month?: string
+    search?: string
+    page?: number
+    pageSize?: number
+  }) =>
+    apiClient.get<{ success: boolean; data: BrokerRankingResponse }>(
+      '/broker-recommend-analysis/broker-list',
+      {
+        month: params.month || undefined,
+        search: params.search || undefined,
+        page: params.page || 1,
+        page_size: params.pageSize || 20,
+      }
+    ),
+
+  // 券商明细懒加载（AC-13）
+  getBrokerDetail: (params: { month: string; broker: string }) =>
+    apiClient.get<{ success: boolean; data: BrokerDetailResponse }>(
+      '/broker-recommend-analysis/broker-detail',
+      { month: params.month, broker: params.broker }
+    ),
+
+  // 板块排行榜（行业/概念/地域，各 Top5）
+  getSectorRankings: (params: { month?: string }) =>
+    apiClient.get<{ success: boolean; data: BrokerSectorRankingsResponse }>(
+      '/broker-recommend-analysis/sector-rankings',
+      { month: params.month || undefined }
+    ),
 }
