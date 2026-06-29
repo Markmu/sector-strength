@@ -841,8 +841,8 @@ class ShareholderAnalysisService:
         if change_direction is not None:
             rows = [r for r in rows if r["change_direction"] == change_direction]
 
-        # 按 symbol 排序
-        rows.sort(key=lambda r: r["symbol"])
+        # 按「占流通比」降序为默认排序（占比相同再按 symbol 升序保证稳定）
+        rows.sort(key=lambda r: (-r["total_hold_float_ratio"], r["symbol"]))
 
         total = len(rows)
         # 分页

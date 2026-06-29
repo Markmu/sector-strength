@@ -27,7 +27,7 @@ const ReactECharts = dynamic(() => import('echarts-for-react').then((mod) => mod
 
 // 图表/标签仅渲染持仓股票数 Top N（后端 distribution 返回全量真实行业，前端截断展示；
 // 筛选栏下拉仍来自全量 distribution，长尾行业可选）。
-const TOP_N = 10
+const TOP_N = 20
 
 export interface IndustryDistributionProps {
   distribution: ShareholderIndustryItem[]
@@ -69,7 +69,7 @@ export default function IndustryDistribution({
           if (!item) return ''
           return `<div>${item.industry}</div>
             <div>持仓股票数：${item.stockCount}</div>
-            <div>占比：${item.percentage.toFixed(1)}%</div>`
+            <div>占比：${item.percentage.toFixed(4)}%</div>`
         },
       },
       grid: { left: '15%', right: '8%', top: 10, bottom: 20, containLabel: true },
@@ -92,7 +92,8 @@ export default function IndustryDistribution({
           label: {
             show: true,
             position: 'right',
-            formatter: '{c}%',
+            formatter: (params: { value?: number }) =>
+              `${(params.value ?? 0).toFixed(4)}%`,
           },
         },
       ],
@@ -143,7 +144,7 @@ export default function IndustryDistribution({
                   : 'border-border bg-card text-foreground hover:border-muted-foreground'
               )}
             >
-              {d.industry}（{d.stockCount}，{d.percentage.toFixed(1)}%）
+              {d.industry}（{d.stockCount}，{d.percentage.toFixed(4)}%）
             </button>
           )
         })}
