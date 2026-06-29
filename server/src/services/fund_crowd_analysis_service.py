@@ -24,14 +24,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.repositories.fund_crowd_repository import FundCrowdRepository
 from src.services.cache.fund_crowd_cache import get_fund_crowd_cache
+from src.services.concept_exclusion import is_excluded_concept
 
 logger = logging.getLogger(__name__)
 
 # ADR-1：被动型 invest_type 枚举（后端定义为常量便于调整，ADR-6 风险对策）
 PASSIVE_INVEST_TYPES: tuple[str, ...] = ("被动指数型", "增强指数型")
 
-# 概念分布默认排除项：融资融券/沪股通/深股通 覆盖面过广、信号弱，不计入概念分布
-EXCLUDED_CONCEPTS: tuple[str, ...] = ("融资融券", "沪股通", "深股通")
+# 概念分布排除规则统一收敛到共享模块（交易机制类 + 指数成分类，子串模糊匹配，
+# 覆盖"沪深300样本股"等命名变体）。详见 concept_exclusion.is_excluded_concept。
 
 # 扎堆度阈值：持有基金数大于该值才视为"扎堆"计入排行榜
 MIN_CROWD_FUND_COUNT = 20
@@ -312,8 +313,9 @@ class FundCrowdAnalysisService:
             if not industries:
                 industries = ["未分类"]
             for ind in industries:
-                # 概念分布排除默认忽略项（融资融券/沪股通/深股通）
-                if sector_type == "concept" and ind in EXCLUDED_CONCEPTS:
+                # 概念分布排除交易机制类 + 指数成分类干扰概念
+                # （子串模糊匹配，覆盖"沪深300样本股"等命名变体，见 concept_exclusion）
+                if sector_type == "concept" and is_excluded_concept(ind):
                     continue
                 if ind not in industry_stats:
                     industry_stats[ind] = set()
