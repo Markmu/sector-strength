@@ -16,6 +16,7 @@ from .async_task import AsyncTask, AsyncTaskParam, AsyncTaskLog
 from .fund import Fund
 from .fund_portfolio import FundPortfolio
 from .top10_float_holder import Top10FloatHolder
+from .broker_recommend import BrokerRecommend
 from .shareholder_group import ShareholderGroup, ShareholderGroupRule
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "Fund",
     "FundPortfolio",
     "Top10FloatHolder",
+    "BrokerRecommend",
     "ShareholderGroup",
     "ShareholderGroupRule",
 ]

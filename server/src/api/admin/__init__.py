@@ -14,6 +14,7 @@ from fastapi import APIRouter
 from .init import router as init_router
 from .init_funds import router as init_funds_router
 from .init_top10_holders import router as init_top10_holders_router
+from .init_broker_recommend import router as init_broker_recommend_router
 from .tasks import router as tasks_router
 from .rbac import router as rbac_router
 from .sector_classifications import router as sector_classifications_router
@@ -29,6 +30,7 @@ router = APIRouter(tags=["Admin"])
 router.include_router(init_router)    # /api/admin/init/*
 router.include_router(init_funds_router)  # /api/admin/init/funds, /api/admin/init/fund-portfolio
 router.include_router(init_top10_holders_router)  # /api/admin/init/top10-holders
+router.include_router(init_broker_recommend_router)  # /api/admin/init/broker-recommend
 router.include_router(tasks_router)   # /api/admin/tasks/*
 router.include_router(rbac_router)    # /api/admin/*
 router.include_router(sector_classifications_router)  # /api/admin/sector-classification/*

@@ -64,6 +64,9 @@ class TaskType(str, Enum):
     # 股票十大流通股东同步任务
     SYNC_TOP10_HOLDERS = "sync_top10_holders"
 
+    # 券商月度金股同步任务
+    SYNC_BROKER_RECOMMEND = "sync_broker_recommend"
+
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
     """
@@ -1232,5 +1235,70 @@ async def sync_top10_holders_task(
         original_error = getattr(e, "original_error", None)
         detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
         error_msg = f"Stock top10 holders sync failed (period={period}): {detail}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+# ============== 券商月度金股同步任务 ==============
+
+@TaskRegistry.register(TaskType.SYNC_BROKER_RECOMMEND)
+async def sync_broker_recommend_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    券商月度金股同步任务
+
+    从 Tushare 按月拉取券商金股数据并写入数据库。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数 {"month": "YYYYMM"}
+        manager: 任务管理器
+    """
+    from src.services.data_init_broker_recommend import BrokerRecommendDataInitService
+
+    month = params.get("month")
+    if not month:
+        error_msg = "Missing required parameter: month"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise ValueError(error_msg)
+
+    service = BrokerRecommendDataInitService(manager.db)
+
+    # 设置进度回调（await 异步工厂函数）
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    # 设置取消检查：直接查 status 标量列。
+    # 注意：不能用 manager.get_task() —— 它返回的 ORM 对象会留在执行器 session 的
+    # identity map 里（且 expire_on_commit=False），任务期间外部取消 API 用独立
+    # session 写入的 cancelled 状态永远读不到，导致"取消后任务一直跑"。
+    async def _check_cancelled():
+        result = await manager.db.execute(
+            select(AsyncTask.status).where(AsyncTask.task_id == task_id)
+        )
+        return result.scalar_one_or_none() == "cancelled"
+
+    service.set_cancel_check(_check_cancelled)
+
+    await manager.log_message(
+        task_id, "INFO", f"Starting broker recommend sync (month={month})"
+    )
+
+    try:
+        result = await service.sync_broker_recommend(month)
+
+        msg = (
+            f"Broker recommend sync completed (month={month}): "
+            f"added={result.get('added')}, "
+            f"failed={result.get('failed')}"
+        )
+        await manager.log_message(task_id, "INFO", msg)
+    except Exception as e:
+        original_error = getattr(e, "original_error", None)
+        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        error_msg = f"Broker recommend sync failed (month={month}): {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise

@@ -743,3 +743,47 @@ class TushareDataSource(BaseDataSource):
             f"(ts_code={ts_code}, period={period})"
         )
         return records
+
+    async def get_broker_recommend(self, month: str) -> List[dict]:
+        """
+        获取某月份券商金股推荐数据
+
+        接口原生支持 month 入参（Tushare doc 267），直接拉取该月数据，
+        无需 trade_cal 映射。
+
+        Args:
+            month: 月份，YYYYMM 格式，如 "202606"
+
+        Returns:
+            dict 列表，每条包含: ts_code, trade_date, name, broker, reason
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(f"[Tushare] 正在获取券商金股数据 (month={month})...")
+            return pro.broker_recommend(month=month)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(
+                f"[Tushare] broker_recommend 返回空数据 (month={month})"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条券商金股数据 (month={month})"
+        )
+        return records
