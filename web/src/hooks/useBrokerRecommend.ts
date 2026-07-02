@@ -15,6 +15,8 @@ import {
   type BrokerSectorRankingsResponse,
   type BrokerStockRankingItem,
   type BrokerGroupItem,
+  type TrendRankingItem,
+  type TrendRankingResponse,
 } from '@/lib/api'
 
 const SWR_OPTIONS = {
@@ -196,6 +198,45 @@ export function useBrokerDetail(month: string | null, broker: string | null) {
 
   return {
     detail: data?.data ?? null,
+    isLoading,
+    isError: error,
+    mutate,
+  }
+}
+
+// ========== 推荐趋势排行榜（10 期 plan-02）==========
+
+export interface UseBrokerTrendRankingParams {
+  search?: string
+  page?: number
+  pageSize?: number
+  /** false 时不发起请求（避免非激活视图无效请求触发 401） */
+  enabled?: boolean
+}
+
+export function useBrokerTrendRanking(params: UseBrokerTrendRankingParams) {
+  const { enabled = true, ...query } = params
+  const key = enabled ? ['brokerTrendRanking', query] : null
+  const { data, error, isLoading, mutate } = useSWR<{
+    success: boolean
+    data: TrendRankingResponse
+  }>(
+    key,
+    () =>
+      brokerRecommendApi
+        .getTrendRanking(query)
+        .then((res) => res.data as unknown as {
+          success: boolean
+          data: TrendRankingResponse
+        }),
+    SWR_OPTIONS
+  )
+
+  const body = data?.data ?? null
+  return {
+    ranking: body
+      ? { ...body, items: body.items as TrendRankingItem[] }
+      : null,
     isLoading,
     isError: error,
     mutate,

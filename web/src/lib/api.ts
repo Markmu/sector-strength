@@ -1072,7 +1072,7 @@ export const fundCrowdAnalysisApi = {
 // endpoint 不再带 /v1，避免双前缀（与 fundCrowdAnalysisApi 一致）。
 // query 参数 snake_case（page_size），响应输出 camelCase（后端 to_camel）。
 
-export type BrokerView = 'stock' | 'broker'
+export type BrokerView = 'stock' | 'broker' | 'trend'
 
 export interface BrokerBrief {
   broker: string
@@ -1137,6 +1137,45 @@ export interface BrokerSectorRankingsResponse {
   region: BrokerSectorRankingItem[]
 }
 
+// ===================== 推荐趋势（10 期 plan-02）=====================
+//
+// 跨月聚合"持续推荐"趋势榜契约（架构 §7.2，camelCase）。
+// 字段全部 camelCase（后端 to_camel + _dict_to_camel 转换）；query 参数保持 snake_case。
+export interface TrendMonthPoint {
+  month: string
+  brokerCount: number
+}
+
+export interface TrendMonthBroker {
+  month: string
+  brokerCount: number
+  topBrokers: string[]
+}
+
+export interface TrendRankingItem {
+  symbol: string
+  name: string | null
+  industries: string[]
+  /** 连续被推荐月数（从全局最新已同步月份向前沿 months 序列不间断计数，遇断档即停） */
+  consecutiveMonths: number
+  /** 累计券商家数（窗口内所有月份去重券商总数） */
+  cumulativeBrokerCount: number
+  /** 最新月家数（= 09 同月股票维度 brokerCount，口径一致） */
+  latestMonthBrokerCount: number
+  /** 月度家数走势序列（旧→新升序，含 0 断档点） */
+  monthlySeries: TrendMonthPoint[]
+  /** 各月推荐券商明细（预加载，展开用，新→旧降序） */
+  monthlyBrokers: TrendMonthBroker[]
+}
+
+export interface TrendRankingResponse {
+  hasData: boolean
+  total: number
+  page: number
+  pageSize: number
+  items: TrendRankingItem[]
+}
+
 export const brokerRecommendApi = {
   // 月份列表（AC-05/09）
   getMonths: () =>
@@ -1194,5 +1233,21 @@ export const brokerRecommendApi = {
     apiClient.get<{ success: boolean; data: BrokerSectorRankingsResponse }>(
       '/broker-recommend-analysis/sector-rankings',
       { month: params.month || undefined }
+    ),
+
+  // 推荐趋势排行榜（10 期 plan-02，AC-02/03/05/06/07/08/09/11）
+  // 跨全部已同步月份聚合，无 month 参数；query 传 snake_case（page_size）
+  getTrendRanking: (params: {
+    search?: string
+    page?: number
+    pageSize?: number
+  }) =>
+    apiClient.get<{ success: boolean; data: TrendRankingResponse }>(
+      '/broker-recommend-analysis/trend-ranking',
+      {
+        ...(params.search ? { search: params.search } : {}),
+        page: params.page ?? 1,
+        page_size: params.pageSize ?? 20, // snake_case，FastAPI Query 不转 alias
+      }
     ),
 }

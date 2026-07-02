@@ -21,6 +21,7 @@ export interface ViewSwitcherProps {
 const OPTIONS: Array<{ value: BrokerView; label: string }> = [
   { value: 'stock', label: '股票维度' },
   { value: 'broker', label: '券商维度' },
+  { value: 'trend', label: '推荐趋势' }, // 10 期 plan-02 新增第三视图
 ]
 
 export default function ViewSwitcher({

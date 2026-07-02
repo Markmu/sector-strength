@@ -23,6 +23,7 @@ import {
   useBrokerStockRanking,
   useBrokerList,
   useBrokerSectorRankings,
+  useBrokerTrendRanking,
 } from '@/hooks/useBrokerRecommend'
 import type { BrokerView } from '@/lib/api'
 import {
@@ -38,6 +39,7 @@ import BrokerStockRanking from './BrokerStockRanking'
 import BrokerGroupList from './BrokerGroupList'
 import BrokerSectorRankings from './BrokerSectorRankings'
 import BrokerSectorTypeSelector from './BrokerSectorTypeSelector'
+import BrokerTrendRanking from './BrokerTrendRanking'
 
 const DEFAULT_PAGE_SIZE = 20
 const SEARCH_DEBOUNCE_MS = 300
@@ -133,9 +135,17 @@ export default function BrokerRecommendPage() {
   // 板块排行榜：跟随月份联动，空状态时禁用（独立于 view 切换，始终展示）
   const sectorRankings = useBrokerSectorRankings(month ?? undefined, !hasNoData)
 
+  // 推荐趋势榜（10 期 plan-02）：仅 trend 视图激活时发起请求，无 month 参数（全窗口）
+  const trendRanking = useBrokerTrendRanking({
+    search: debouncedSearch || undefined,
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+    enabled: !hasNoData && view === 'trend',
+  })
+
   const months = monthsData?.months ?? []
   const searchPlaceholder =
-    view === 'stock' ? '搜索股票代码或名称' : '搜索券商名称'
+    view === 'broker' ? '搜索券商名称' : '搜索股票代码或名称'
 
   // 板块名下拉选项：从 sectorRankings[sectorType] 派生（复用板块分布数据，Top5）
   // 范式参照 fund-crowd FundCrowdAnalysisPage 的 sectorOptions useMemo
@@ -188,27 +198,36 @@ export default function BrokerRecommendPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <MonthSelector
-            months={months}
-            value={month ?? months[0]}
-            onChange={handleMonthChange}
-          />
+          {/* 趋势视图固定全窗口，隐藏月份选择器（AC-01） */}
+          {view !== 'trend' && (
+            <MonthSelector
+              months={months}
+              value={month ?? months[0]}
+              onChange={handleMonthChange}
+            />
+          )}
           <ViewSwitcher value={view} onChange={handleViewChange} />
         </div>
       </header>
 
-      {/* 板块分布排行榜（行业/概念/地域，各 Top5） */}
-      <BrokerSectorRankings
-        rankings={sectorRankings.rankings}
-        isLoading={sectorRankings.isLoading}
-        isError={!!sectorRankings.isError}
-      />
+      {/* 板块分布排行榜（行业/概念/地域，各 Top5）—— 趋势视图不展示（跨月聚合不依赖单月板块分布） */}
+      {view !== 'trend' && (
+        <BrokerSectorRankings
+          rankings={sectorRankings.rankings}
+          isLoading={sectorRankings.isLoading}
+          isError={!!sectorRankings.isError}
+        />
+      )}
 
       {/* 排行榜（AC-02/03/06/07 等） */}
       <section className="bg-card rounded-xl border border-border shadow-sm p-4 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-foreground">
-            {view === 'stock' ? '卖方共识排行榜' : '券商推荐清单'}
+            {view === 'stock'
+              ? '卖方共识排行榜'
+              : view === 'broker'
+                ? '券商推荐清单'
+                : '持续推荐排行榜'}
             {view === 'stock' && stockRanking.ranking && stockRanking.ranking.total > 0 && (
               <span className="ml-2 text-sm text-muted-foreground">
                 共 {stockRanking.ranking.total} 只
@@ -217,6 +236,11 @@ export default function BrokerRecommendPage() {
             {view === 'broker' && brokerList.list && brokerList.list.total > 0 && (
               <span className="ml-2 text-sm text-muted-foreground">
                 共 {brokerList.list.total} 家
+              </span>
+            )}
+            {view === 'trend' && trendRanking.ranking && trendRanking.ranking.total > 0 && (
+              <span className="ml-2 text-sm text-muted-foreground">
+                共 {trendRanking.ranking.total} 只
               </span>
             )}
           </h2>
@@ -258,7 +282,7 @@ export default function BrokerRecommendPage() {
             isError={!!stockRanking.isError}
             onPageChange={handlePageChange}
           />
-        ) : (
+        ) : view === 'broker' ? (
           <BrokerGroupList
             items={brokerList.list?.items ?? []}
             month={month ?? months[0]}
@@ -267,6 +291,16 @@ export default function BrokerRecommendPage() {
             pageSize={DEFAULT_PAGE_SIZE}
             isLoading={brokerList.isLoading}
             isError={!!brokerList.isError}
+            onPageChange={handlePageChange}
+          />
+        ) : (
+          <BrokerTrendRanking
+            items={trendRanking.ranking?.items ?? []}
+            total={trendRanking.ranking?.total ?? 0}
+            page={page}
+            pageSize={DEFAULT_PAGE_SIZE}
+            isLoading={trendRanking.isLoading}
+            isError={!!trendRanking.isError}
             onPageChange={handlePageChange}
           />
         )}
@@ -286,6 +320,15 @@ export default function BrokerRecommendPage() {
           brokerList.list &&
           brokerList.list.items.length === 0 &&
           brokerList.list.total === 0 && (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              未找到匹配结果，请调整搜索词
+            </div>
+          )}
+        {debouncedSearch &&
+          view === 'trend' &&
+          trendRanking.ranking &&
+          trendRanking.ranking.items.length === 0 &&
+          trendRanking.ranking.total === 0 && (
             <div className="p-8 text-center text-sm text-muted-foreground">
               未找到匹配结果，请调整搜索词
             </div>
