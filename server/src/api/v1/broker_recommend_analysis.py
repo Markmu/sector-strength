@@ -135,6 +135,59 @@ class BrokerDetailData(BaseModel):
     items: list[BrokerDetailItem] = Field(default_factory=list)
 
 
+# ============== 推荐趋势榜响应 model（10 期 plan-01）==============
+
+
+class TrendMonthPoint(BaseModel):
+    """趋势走势序列单点（monthlySeries 元素）"""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    month: str
+    broker_count: int
+
+
+class TrendMonthBroker(BaseModel):
+    """展开券商月点（monthlyBrokers 元素，含前 3 券商）"""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    month: str
+    broker_count: int
+    top_brokers: list[str] = Field(default_factory=list)
+
+
+class TrendRankingItem(BaseModel):
+    """推荐趋势榜单项（API 输出视角 camelCase）"""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    symbol: str
+    name: Optional[str] = Field(None, description="股票名称（stocks 表缺失为 null）")
+    industries: list[str] = Field(default_factory=list, description="行业列表")
+    consecutive_months: int = Field(..., description="连续被推荐月数（从最新月向前）")
+    cumulative_broker_count: int = Field(..., description="窗口内累计去重券商家数")
+    latest_month_broker_count: int = Field(..., description="最新月被推荐券商家数")
+    monthly_series: list[TrendMonthPoint] = Field(
+        default_factory=list, description="走势序列（旧→新升序，折线图数据源）"
+    )
+    monthly_brokers: list[TrendMonthBroker] = Field(
+        default_factory=list, description="展开券商明细（新→旧降序，各月前 3 券商）"
+    )
+
+
+class TrendRankingData(BaseModel):
+    """推荐趋势榜响应数据"""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    has_data: bool
+    total: int
+    page: int
+    page_size: int
+    items: list[TrendRankingItem] = Field(default_factory=list)
+
+
 # ============== Helper（范式照搬 fund_crowd_analysis.py）==============
 
 
@@ -247,4 +300,23 @@ async def get_broker_detail(
     """券商明细懒加载（AC-13）"""
     service = BrokerRecommendAnalysisService(session)
     result = await service.get_broker_detail(month, broker)
+    return {"success": True, "data": _dict_to_camel(result)}
+
+
+@router.get("/trend-ranking")
+async def get_trend_ranking(
+    search: Optional[str] = Query(None, description="股票代码前缀或名称包含"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页条数"),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """推荐趋势榜（10 期 plan-01，AC-02/03/04/07/08/09/11/12）
+
+    跨全部已同步月份聚合，按"连续被推荐月数"降序（多级排序），固定全窗口（无 month 参数）。
+    items 含 symbol/name/industries/consecutiveMonths/cumulativeBrokerCount/
+    latestMonthBrokerCount/monthlySeries（旧→新升序）/monthlyBrokers（新→旧降序，前 3 券商）。
+    """
+    service = BrokerRecommendAnalysisService(session)
+    result = await service.get_trend_ranking(search, page, page_size)
     return {"success": True, "data": _dict_to_camel(result)}

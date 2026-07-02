@@ -286,3 +286,99 @@ class BrokerRecommendRepository(BaseRepository[BrokerRecommend]):
         # 过滤后再截断 limit（避免被排除项挤掉有效 Top N）
         return rows[:limit]
 
+    # ========== 推荐趋势聚合（10 期 plan-01）==========
+
+    @staticmethod
+    def _trend_search_condition(search: Optional[str]):
+        """趋势榜公共 search WHERE（架构链路 6.1 约束：主聚合与累计家数同口径）。
+
+        search 条件：symbol LIKE :search% OR name ILIKE %:search%（name 来自 LEFT JOIN stocks）。
+        抽公共条件构建，避免主聚合与累计家数两查询命中不同 symbol 集合。
+        返回 None 表示无 search 限制。
+        """
+        if not search:
+            return None
+        escaped = _escape_like_keyword(search)
+        return or_(
+            BrokerRecommend.symbol.like(escaped + "%"),
+            Stock.name.ilike("%" + escaped + "%"),
+        )
+
+    async def get_trend_aggregations(
+        self, all_months: list[date], search: Optional[str]
+    ) -> list:
+        """跨月聚合（plan-01 §3 #1）：GROUP BY symbol, month + COUNT(DISTINCT broker)。
+
+        返回窗口内所有 (symbol, month, broker_count) 三元组（Python 阶段连续性计算数据源）。
+        search 条件与 get_trend_cumulative_counts 同口径（公共 WHERE）。
+        """
+        stmt = (
+            select(
+                BrokerRecommend.symbol,
+                BrokerRecommend.month,
+                func.count(func.distinct(BrokerRecommend.broker)).label("broker_count"),
+            )
+            .select_from(BrokerRecommend)
+            .outerjoin(Stock, Stock.symbol == BrokerRecommend.symbol)
+            .where(BrokerRecommend.month.in_(all_months))
+            .group_by(BrokerRecommend.symbol, BrokerRecommend.month)
+        )
+        cond = self._trend_search_condition(search)
+        if cond is not None:
+            stmt = stmt.where(cond)
+        result = await self.session.execute(stmt)
+        return result.all()
+
+    async def get_trend_cumulative_counts(
+        self, all_months: list[date], search: Optional[str]
+    ) -> dict:
+        """跨月累计去重家数（plan-01 §3 #2）：GROUP BY symbol + COUNT(DISTINCT broker)。
+
+        返回 {symbol: cumulative_count}。search 条件与 get_trend_aggregations 同口径（公共 WHERE）。
+        """
+        stmt = (
+            select(
+                BrokerRecommend.symbol,
+                func.count(func.distinct(BrokerRecommend.broker)).label("cumulative_count"),
+            )
+            .select_from(BrokerRecommend)
+            .outerjoin(Stock, Stock.symbol == BrokerRecommend.symbol)
+            .where(BrokerRecommend.month.in_(all_months))
+            .group_by(BrokerRecommend.symbol)
+        )
+        cond = self._trend_search_condition(search)
+        if cond is not None:
+            stmt = stmt.where(cond)
+        result = await self.session.execute(stmt)
+        return {row.symbol: row.cumulative_count for row in result.all()}
+
+    async def get_trend_brokers(
+        self, all_months: list[date], symbols: list[str]
+    ) -> dict:
+        """当页股票窗口内全部 (symbol, month, broker)（plan-01 §3 #3）。
+
+        供 service 按 (symbol, month) 分组取前 3。symbols 为空返回 {}。
+        返回 {(symbol, month): [broker, ...]}（service 层按需取前 3 + 计数）。
+        """
+        if not symbols:
+            return {}
+        result = await self.session.execute(
+            select(
+                BrokerRecommend.symbol,
+                BrokerRecommend.month,
+                BrokerRecommend.broker,
+            ).where(
+                BrokerRecommend.month.in_(all_months),
+                BrokerRecommend.symbol.in_(symbols),
+            )
+        )
+        mapping: dict[tuple, list[str]] = {}
+        for row in result.all():
+            sym, month, broker = row.symbol, row.month, row.broker
+            key = (sym, month)
+            if key not in mapping:
+                mapping[key] = []
+            if broker not in mapping[key]:
+                mapping[key].append(broker)
+        return mapping
+

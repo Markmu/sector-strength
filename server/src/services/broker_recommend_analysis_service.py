@@ -333,3 +333,140 @@ class BrokerRecommendAnalysisService:
             "month": month_date.isoformat(),
             **result,
         }
+
+    # ========== 推荐趋势榜（10 期 plan-01，AC-02/03/04/07/08/09/11/12）==========
+
+    async def get_trend_ranking(
+        self,
+        search: Optional[str],
+        page: int,
+        page_size: int,
+    ) -> dict:
+        """推荐趋势榜：跨全部已同步月份聚合，按"连续被推荐月数"降序（多级排序）。
+
+        无 month 参数（趋势固定全窗口，架构 §7.3）。
+
+        算法（ADR-3 连续性计数 + AC-03 多级排序 + AC-08 分页 + 行业 JOIN + 展开券商预加载）：
+          1. months = repo.get_months()（降序，最新月在前）；空 → 空状态（AC-12）
+          2. aggregations（跨月 symbol,month,broker_count）+ cumulative_map（跨月 symbol 累计去重家数）
+          3. Python 阶段：stock_month_counts = {symbol: {month: broker_count}}
+          4. 连续性计数（AC-07）：从 months[0] 沿 months 序列向前，该月有记录 +1，遇断档即停
+          5. latest_month_broker_count = months[0] 的家数（与 09 股票维度同月同口径，AC-04）
+          6. monthly_series：months 升序（旧→新），无推荐月 broker_count=0
+          7. 多级排序：consecutive DESC, cumulative DESC, latest DESC, symbol ASC
+          8. 分页：offset/limit，total = 排序后列表长度
+          9. 当页补充：行业 JOIN + 展开券商（前 3）预加载
+        """
+        months = await self.repo.get_months()
+        if not months:
+            return {
+                "has_data": False,
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "items": [],
+            }
+
+        escaped_search = _escape_like_keyword(search.strip()) if search else None
+        aggregations = await self.repo.get_trend_aggregations(months, escaped_search)
+        cumulative_map = await self.repo.get_trend_cumulative_counts(months, escaped_search)
+
+        # Python 阶段：构建 symbol → {month: broker_count}
+        stock_month_counts: dict[str, dict[date, int]] = {}
+        for row in aggregations:
+            sym = row.symbol
+            month = row.month
+            if sym not in stock_month_counts:
+                stock_month_counts[sym] = {}
+            stock_month_counts[sym][month] = row.broker_count
+
+        latest_month = months[0]
+        # months 升序（旧→新），用于 monthly_series 构建
+        months_asc = list(reversed(months))
+
+        # 计算每只股票的指标
+        computed: list[dict] = []
+        for symbol, month_counts in stock_month_counts.items():
+            # 连续性计数（AC-07）：从 months[0]（最新月）沿 months 序列向前，遇断档即停
+            consecutive = 0
+            for m in months:  # months 已降序（最新月在前）
+                if m in month_counts:
+                    consecutive += 1
+                else:
+                    break
+
+            cumulative = cumulative_map.get(symbol, 0)
+            latest = month_counts.get(latest_month, 0)
+
+            # monthly_series：旧→新升序，无推荐月 broker_count=0
+            monthly_series = [
+                {"month": m.isoformat(), "broker_count": month_counts.get(m, 0)}
+                for m in months_asc
+            ]
+
+            computed.append(
+                {
+                    "symbol": symbol,
+                    "consecutive": consecutive,
+                    "cumulative": cumulative,
+                    "latest": latest,
+                    "month_counts": month_counts,
+                    "monthly_series": monthly_series,
+                }
+            )
+
+        # 多级排序（AC-03）：consecutive DESC, cumulative DESC, latest DESC, symbol ASC
+        computed.sort(
+            key=lambda x: (-x["consecutive"], -x["cumulative"], -x["latest"], x["symbol"])
+        )
+
+        # 分页（AC-08）：total = 排序后列表长度
+        total = len(computed)
+        offset = (page - 1) * page_size
+        page_items = computed[offset : offset + page_size]
+
+        # 当页补充数据
+        symbols = [item["symbol"] for item in page_items]
+        industries_map = await self._get_industry_for_stocks(symbols)
+        brokers_map = await self.repo.get_trend_brokers(months, symbols)
+
+        items = []
+        for item in page_items:
+            sym = item["symbol"]
+            month_counts = item["month_counts"]
+            stock_info = industries_map.get(sym, {})
+            name = stock_info.get("stock_name")
+            industries = stock_info.get("industries", [])
+
+            # monthly_brokers：新→旧降序，每点含 broker_count 与 top_brokers（前 3）
+            monthly_brokers = []
+            for m in months:  # months 降序（新→旧）
+                top_brokers = brokers_map.get((sym, m), [])[:3]
+                monthly_brokers.append(
+                    {
+                        "month": m.isoformat(),
+                        "broker_count": month_counts.get(m, 0),
+                        "top_brokers": top_brokers,
+                    }
+                )
+
+            items.append(
+                {
+                    "symbol": sym,
+                    "name": name,
+                    "industries": industries,
+                    "consecutive_months": item["consecutive"],
+                    "cumulative_broker_count": item["cumulative"],
+                    "latest_month_broker_count": item["latest"],
+                    "monthly_series": item["monthly_series"],
+                    "monthly_brokers": monthly_brokers,
+                }
+            )
+
+        return {
+            "has_data": True,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": items,
+        }
