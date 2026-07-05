@@ -23,6 +23,7 @@ import {
 import { useSectorStrengthHistory, useSectorMAHistory } from '@/hooks'
 import { useChartState } from '@/stores/useChartState'
 import { sectorsApi } from '@/lib/api'
+import SectorStocksTable from '@/components/sector-analysis/SectorStocksTable'
 import type { TimeRangeOption, MAPeriod, Sector } from '@/types'
 
 interface PageParams {
@@ -311,6 +312,9 @@ export default function SectorAnalysisPage({ params }: PageParams) {
             />
           </div>
         </div>
+
+        {/* 板块成分股列表（AC-01~AC-06，独立加载与图表互不阻塞） */}
+        <SectorStocksTable sectorId={sectorId} />
 
         {/* 数据说明 */}
         <div className="bg-primary-light rounded-lg border border-primary/30 p-4 text-sm text-muted-foreground">

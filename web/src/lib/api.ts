@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { handleUnauthorizedRedirect } from './authRedirect'
-import type { SectorType } from '@/types/sectorTypes'
+import type { SectorType, SectorStocksResponse } from '@/types/sectorTypes'
 
 // API 基础配置
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -188,8 +188,11 @@ export const sectorsApi = {
       }
     }>('/sectors', params),
   getSector: (sectorId: number) => apiClient.get<any>(`/sectors/${sectorId}`),
-  getSectorStocks: (sectorId: number, params?: { skip?: number; limit?: number }) =>
-    apiClient.get<any[]>(`/sectors/${sectorId}/stocks`, params),
+  getSectorStocks: (
+    sectorId: number,
+    params?: { page?: number; page_size?: number; sort_by?: string; sort_order?: string }
+  ) =>
+    apiClient.get<SectorStocksResponse>(`/sectors/${sectorId}/stocks`, params),
   searchSectors: (keyword: string, params?: { sector_type?: string; limit?: number }) =>
     apiClient.get<{
       success: boolean

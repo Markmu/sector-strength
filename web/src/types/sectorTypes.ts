@@ -63,3 +63,44 @@ export const FUND_CROWD_SECTOR_OPTIONS: {
   label: SECTOR_TYPE_LABELS[t],
   display: SECTOR_TYPE_DISPLAY[t],
 }))
+
+// ============== 板块成分股契约（对齐后端 GET /sectors/{id}/stocks） ==============
+
+/**
+ * 成分股列表项。
+ *
+ * 字段与后端 sectors.py 的 get_sector_stocks 返回 items 一致（snake_case）。
+ * 不复用 types/index.ts 的 SectorStock（其字段 sector_id/stock_id/weight 与后端不符）。
+ */
+export interface SectorStockItem {
+  id: string
+  symbol: string
+  name: string
+  current_price: number | null
+  market_cap: number | null
+  strength_score: number | null
+  trend_direction: number | null // 1=上升, 0=横盘, -1=下降
+}
+
+/** 分页响应 data（对齐后端 PaginatedData） */
+export interface SectorStocksData {
+  items: SectorStockItem[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+/** API 整体响应（对齐既有 { success, data } 包裹） */
+export interface SectorStocksResponse {
+  success: boolean
+  data: SectorStocksData
+}
+
+/** 成分股表格排序/分页 UI 状态 */
+export interface SectorStocksTableState {
+  sort_by: 'strength_score' | 'market_cap'
+  sort_order: 'asc' | 'desc'
+  page: number
+  page_size: 20 | 50 | 100
+}
