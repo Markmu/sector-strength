@@ -19,6 +19,7 @@ import React, { useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { BrokerGroupItem } from '@/lib/api'
 import { useBrokerDetail } from '@/hooks/useBrokerRecommend'
+import Pagination from '@/components/ui/Pagination'
 
 export interface BrokerGroupListProps {
   items: BrokerGroupItem[]
@@ -85,32 +86,14 @@ export default function BrokerGroupList({
       </div>
 
       {showPagination && (
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => onPageChange(page - 1)}
-            className={cn(
-              'px-3 py-1.5 text-sm rounded-md border border-border bg-card',
-              page <= 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-muted'
-            )}
-          >
-            上一页
-          </button>
-          <span className="text-sm text-muted-foreground">
-            第 {page} / {totalPages} 页
-          </span>
-          <button
-            type="button"
-            disabled={page >= totalPages}
-            onClick={() => onPageChange(page + 1)}
-            className={cn(
-              'px-3 py-1.5 text-sm rounded-md border border-border bg-card',
-              page >= totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-muted'
-            )}
-          >
-            下一页
-          </button>
+        <div data-testid="broker-group-pagination">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onPageChange={onPageChange}
+          />
         </div>
       )}
     </div>
