@@ -41,7 +41,7 @@ export default function SectorAnalysisListPage() {
   const [currentPage, setCurrentPage] = useState(1)
 
   // 筛选状态（实际用于API请求的值）
-  const [sectorTypeFilter, setSectorTypeFilter] = useState<SectorTypeFilter>('all')
+  const [sectorTypeFilter, setSectorTypeFilter] = useState<SectorTypeFilter>('industry')
   const [minScore, setMinScore] = useState<number>(0)
   const [maxScore, setMaxScore] = useState<number>(100)
 
@@ -283,7 +283,7 @@ export default function SectorAnalysisListPage() {
                 >
                   全部
                 </button>
-                {SECTOR_TYPES.map((t) => (
+                {SECTOR_TYPES.filter((t) => t !== 'region').map((t) => (
                   <button
                     key={t}
                     type="button"
