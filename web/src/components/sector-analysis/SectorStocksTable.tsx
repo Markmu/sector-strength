@@ -251,20 +251,20 @@ export default function SectorStocksTable({ sectorId }: SectorStocksTableProps) 
             </table>
           </div>
 
-          {/* 分页器：仅当总数超过每页条数时才显示（AC-04） */}
-          {total > pageSize && (
-            <Pagination
-              currentPage={page}
-              totalPages={totalPages}
-              total={total}
-              pageSize={pageSize}
-              onPageChange={handlePageChange}
-              onPageSizeChange={handlePageSizeChange}
-              pageSizeOptions={PAGE_SIZE_OPTIONS}
-              showPageSizeSelector
-              showJumpToPage
-            />
-          )}
+          {/* 分页器：有数据时始终渲染，让用户看到"共 N 只 / 第 X/Y 页"及每页条数选择。
+              单页时 Pagination 内部自动隐藏页码按钮，但保留统计信息与每页条数选择器，
+              方便用户切换为更大的每页条数（如 100）一次看全成分股。 */}
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            showPageSizeSelector
+            showJumpToPage
+          />
         </>
       )}
     </div>
