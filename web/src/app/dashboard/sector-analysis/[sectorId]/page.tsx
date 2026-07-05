@@ -291,23 +291,23 @@ export default function SectorAnalysisPage({ params }: PageParams) {
 
         {/* 图表区域 - 左右分栏布局 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 左侧: 强度历史曲线 */}
+          {/* 左侧: 均线曲线 */}
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">均线</h3>
+            <SectorMAChart
+              data={maData?.data ?? []}
+              sectorName={sectorName}
+              visibleMAs={visibleMAs}
+              height="450px"
+            />
+          </div>
+
+          {/* 右侧: 强度历史曲线 */}
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">强度历史</h3>
             <SectorStrengthChart
               data={strengthData?.data ?? []}
               sectorName={sectorName}
-              height="450px"
-            />
-          </div>
-
-          {/* 右侧: 均线曲线 */}
-          <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-foreground">均线分析</h3>
-            <SectorMAChart
-              data={maData?.data ?? []}
-              sectorName={sectorName}
-              visibleMAs={visibleMAs}
               height="450px"
             />
           </div>
