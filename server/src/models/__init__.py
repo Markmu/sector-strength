@@ -8,6 +8,9 @@ from .period_config import PeriodConfig
 from .daily_market_data import DailyMarketData
 from .moving_average_data import MovingAverageData
 from .strength_score import StrengthScore
+from .stock_daily_market_data import StockDailyMarketData
+from .stock_moving_average_data import StockMovingAverageData
+from .stock_strength_scores import StockStrengthScore
 from .user import User, EmailVerificationToken, Watchlist
 from .cache import CacheEntry
 from .update_log import DataUpdateLog
@@ -28,6 +31,9 @@ __all__ = [
     "DailyMarketData",
     "MovingAverageData",
     "StrengthScore",
+    "StockDailyMarketData",
+    "StockMovingAverageData",
+    "StockStrengthScore",
     "User",
     "EmailVerificationToken",
     "Watchlist",

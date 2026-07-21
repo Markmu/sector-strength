@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.stock import Stock
 from src.models.sector import Sector
 from src.models.strength_score import StrengthScore
+from src.models.stock_strength_scores import StockStrengthScore
 from src.services.strength_service_v2 import StrengthServiceV2
 
 logger = logging.getLogger(__name__)
@@ -329,13 +330,11 @@ class StrengthSnapshotService:
             calc_date: 计算日期
         """
         try:
-            # 更新股票排名
-            stock_stmt = select(StrengthScore).where(
-                StrengthScore.entity_type == "stock",
-                StrengthScore.date == calc_date,
-                StrengthScore.period == "all",
-                StrengthScore.score.isnot(None)
-            ).order_by(StrengthScore.score.desc())
+            # 更新股票排名（切换到股票独立表 StockStrengthScore：无 entity_type、无 period）
+            stock_stmt = select(StockStrengthScore).where(
+                StockStrengthScore.date == calc_date,
+                StockStrengthScore.score.isnot(None)
+            ).order_by(StockStrengthScore.score.desc())
 
             stock_result = await self.session.execute(stock_stmt)
             stock_scores = stock_result.scalars().all()
@@ -347,7 +346,7 @@ class StrengthSnapshotService:
                     ((total_stocks - idx) / total_stocks) * 100, 2
                 ) if total_stocks > 0 else 0
 
-            # 更新板块排名
+            # 更新板块排名（旧表 strength_scores，分支零改动）
             sector_stmt = select(StrengthScore).where(
                 StrengthScore.entity_type == "sector",
                 StrengthScore.date == calc_date,
@@ -387,17 +386,15 @@ class StrengthSnapshotService:
             快照状态信息
         """
         try:
-            # 统计股票快照数量
-            stock_stmt = select(func.count()).where(
-                StrengthScore.entity_type == "stock",
-                StrengthScore.date == snapshot_date,
-                StrengthScore.period == "all"
+            # 统计股票快照数量（切换到股票独立表 StockStrengthScore）
+            stock_stmt = select(func.count()).select_from(StockStrengthScore).where(
+                StockStrengthScore.date == snapshot_date
             )
             stock_result = await self.session.execute(stock_stmt)
             stock_count = stock_result.scalar() or 0
 
-            # 统计板块快照数量
-            sector_stmt = select(func.count()).where(
+            # 统计板块快照数量（旧表 strength_scores，分支零改动）
+            sector_stmt = select(func.count()).select_from(StrengthScore).where(
                 StrengthScore.entity_type == "sector",
                 StrengthScore.date == snapshot_date,
                 StrengthScore.period == "all"

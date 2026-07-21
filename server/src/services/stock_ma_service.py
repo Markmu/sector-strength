@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
 
 from src.models.stock import Stock
-from src.models.daily_market_data import DailyMarketData
-from src.models.moving_average_data import MovingAverageData
+from src.models.stock_daily_market_data import StockDailyMarketData
+from src.models.stock_moving_average_data import StockMovingAverageData
 from src.services.calculation.moving_average_calculator import MovingAverageCalculator
 from src.models.period_config import PeriodConfig
 
@@ -171,22 +171,21 @@ class StockMAService:
             logger.info(f"[股票均线] 开始计算股票 {stock.name}({stock.symbol}) 的均线数据")
 
             # ========================================
-            # 步骤1: 获取股票历史数据
+            # 步骤1: 获取股票历史数据（从股票独立表 stock_daily_market_data 读取）
             # ========================================
-            stmt = select(DailyMarketData).where(
+            stmt = select(StockDailyMarketData).where(
                 and_(
-                    DailyMarketData.entity_type == "stock",
-                    DailyMarketData.entity_id == stock.id,
-                    DailyMarketData.close.isnot(None)
+                    StockDailyMarketData.stock_id == stock.id,
+                    StockDailyMarketData.close.isnot(None)
                 )
             )
 
             if start_date:
-                stmt = stmt.where(DailyMarketData.date >= start_date)
+                stmt = stmt.where(StockDailyMarketData.date >= start_date)
             if end_date:
-                stmt = stmt.where(DailyMarketData.date <= end_date)
+                stmt = stmt.where(StockDailyMarketData.date <= end_date)
 
-            stmt = stmt.order_by(DailyMarketData.date)
+            stmt = stmt.order_by(StockDailyMarketData.date)
 
             result = await self.session.execute(stmt)
             market_data_list = result.scalars().all()
@@ -209,12 +208,11 @@ class StockMAService:
             # 步骤2: 检查断点（已有数据的最大日期）
             # ========================================
             if not overwrite:
-                # 查询已有数据的最大日期
-                latest_stmt = select(func.max(MovingAverageData.date)).where(
+                # 查询已有数据的最大日期（查股票独立表 stock_moving_average_data）
+                latest_stmt = select(func.max(StockMovingAverageData.date)).where(
                     and_(
-                        MovingAverageData.entity_type == "stock",
-                        MovingAverageData.entity_id == stock.id,
-                        MovingAverageData.symbol == stock.symbol
+                        StockMovingAverageData.stock_id == stock.id,
+                        StockMovingAverageData.symbol == stock.symbol
                     )
                 )
                 latest_result = await self.session.execute(latest_stmt)
@@ -291,14 +289,13 @@ class StockMAService:
                     price_ratio = self.ma_calculator.calculate_price_ratio(current_price, ma_value)
                     trend = 1 if price_ratio > 0 else (-1 if price_ratio < 0 else 0)
 
-                    # 检查是否已存在
-                    existing_stmt = select(MovingAverageData).where(
+                    # 检查是否已存在（查股票独立表 stock_moving_average_data）
+                    existing_stmt = select(StockMovingAverageData).where(
                         and_(
-                            MovingAverageData.entity_type == "stock",
-                            MovingAverageData.entity_id == stock.id,
-                            MovingAverageData.symbol == stock.symbol,
-                            MovingAverageData.date == idx,
-                            MovingAverageData.period == period_str
+                            StockMovingAverageData.stock_id == stock.id,
+                            StockMovingAverageData.symbol == stock.symbol,
+                            StockMovingAverageData.date == idx,
+                            StockMovingAverageData.period == period_str
                         )
                     )
                     existing_result = await self.session.execute(existing_stmt)
@@ -315,10 +312,9 @@ class StockMAService:
                         else:
                             period_skipped += 1
                     else:
-                        # 创建新记录对象
-                        ma_record = MovingAverageData(
-                            entity_type="stock",
-                            entity_id=stock.id,
+                        # 创建新记录（写入股票独立表，无 entity_type）
+                        ma_record = StockMovingAverageData(
+                            stock_id=stock.id,
                             symbol=stock.symbol,
                             date=idx,
                             period=period_str,
@@ -396,14 +392,13 @@ class StockMAService:
         for period in periods:
             period_str = f"{period}d"
 
-            # 获取该周期最新的均线数据
-            stmt = select(MovingAverageData).where(
+            # 获取该周期最新的均线数据（查股票独立表 stock_moving_average_data）
+            stmt = select(StockMovingAverageData).where(
                 and_(
-                    MovingAverageData.entity_type == "stock",
-                    MovingAverageData.entity_id == stock_id,
-                    MovingAverageData.period == period_str
+                    StockMovingAverageData.stock_id == stock_id,
+                    StockMovingAverageData.period == period_str
                 )
-            ).order_by(MovingAverageData.date.desc()).limit(1)
+            ).order_by(StockMovingAverageData.date.desc()).limit(1)
 
             ma_result = await self.session.execute(stmt)
             ma_data = ma_result.scalar_one_or_none()
@@ -457,13 +452,10 @@ class StockMAService:
                 "error": "股票不存在"
             }
 
-        # 获取最新收盘价
-        price_stmt = select(DailyMarketData).where(
-            and_(
-                DailyMarketData.entity_type == "stock",
-                DailyMarketData.entity_id == stock_id
-            )
-        ).order_by(DailyMarketData.date.desc()).limit(1)
+        # 获取最新收盘价（查股票独立表 stock_daily_market_data）
+        price_stmt = select(StockDailyMarketData).where(
+            StockDailyMarketData.stock_id == stock_id
+        ).order_by(StockDailyMarketData.date.desc()).limit(1)
 
         price_result = await self.session.execute(price_stmt)
         latest_price_data = price_result.scalar_one_or_none()
@@ -506,29 +498,25 @@ class StockMAService:
             日期范围信息
         """
         if stock_id:
-            # 获取单个股票的日期范围
+            # 获取单个股票的日期范围（查股票独立表 stock_daily_market_data）
             stmt = select(
-                func.min(DailyMarketData.date).label('min_date'),
-                func.max(DailyMarketData.date).label('max_date'),
-                func.count(DailyMarketData.id).label('data_count')
+                func.min(StockDailyMarketData.date).label('min_date'),
+                func.max(StockDailyMarketData.date).label('max_date'),
+                func.count(StockDailyMarketData.id).label('data_count')
             ).where(
                 and_(
-                    DailyMarketData.entity_type == "stock",
-                    DailyMarketData.entity_id == stock_id,
-                    DailyMarketData.close.isnot(None)
+                    StockDailyMarketData.stock_id == stock_id,
+                    StockDailyMarketData.close.isnot(None)
                 )
             )
         else:
-            # 获取所有股票的日期范围
+            # 获取所有股票的日期范围（查股票独立表 stock_daily_market_data）
             stmt = select(
-                func.min(DailyMarketData.date).label('min_date'),
-                func.max(DailyMarketData.date).label('max_date'),
-                func.count(DailyMarketData.id).label('data_count')
+                func.min(StockDailyMarketData.date).label('min_date'),
+                func.max(StockDailyMarketData.date).label('max_date'),
+                func.count(StockDailyMarketData.id).label('data_count')
             ).where(
-                and_(
-                    DailyMarketData.entity_type == "stock",
-                    DailyMarketData.close.isnot(None)
-                )
+                StockDailyMarketData.close.isnot(None)
             )
 
         result = await self.session.execute(stmt)

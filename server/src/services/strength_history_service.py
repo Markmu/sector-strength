@@ -12,6 +12,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.strength_score import StrengthScore
+from src.models.stock_strength_scores import StockStrengthScore
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +56,14 @@ class StrengthHistoryService:
         start_date = end_date - timedelta(days=days - 1)
 
         try:
-            stmt = select(StrengthScore).where(
+            # 切换到股票独立表 StockStrengthScore（无 entity_type、无 period，stock_id 替代 entity_id）
+            stmt = select(StockStrengthScore).where(
                 and_(
-                    StrengthScore.entity_type == 'stock',
-                    StrengthScore.entity_id == stock_id,
-                    StrengthScore.period == 'all',
-                    StrengthScore.date >= start_date,
-                    StrengthScore.date <= end_date
+                    StockStrengthScore.stock_id == stock_id,
+                    StockStrengthScore.date >= start_date,
+                    StockStrengthScore.date <= end_date
                 )
-            ).order_by(StrengthScore.date.asc())
+            ).order_by(StockStrengthScore.date.asc())
 
             result = await self.session.execute(stmt)
             scores = result.scalars().all()
@@ -169,14 +169,22 @@ class StrengthHistoryService:
         start_date = end_date - timedelta(days=days - 1)
 
         try:
-            stmt = select(StrengthScore).where(
+            # ADR-4 内部分发：按 entity_type 选模型类
+            is_stock = entity_type == "stock"
+            Model = StockStrengthScore if is_stock else StrengthScore
+            id_field = Model.stock_id if is_stock else Model.entity_id
+
+            base_conds = [id_field == entity_id]
+            if not is_stock:
+                base_conds.append(Model.entity_type == entity_type)
+                base_conds.append(Model.period == 'all')
+
+            stmt = select(Model).where(
                 and_(
-                    StrengthScore.entity_type == entity_type,
-                    StrengthScore.entity_id == entity_id,
-                    StrengthScore.period == 'all',
-                    StrengthScore.date >= start_date,
-                    StrengthScore.date <= end_date,
-                    StrengthScore.score.isnot(None)
+                    *base_conds,
+                    Model.date >= start_date,
+                    Model.date <= end_date,
+                    Model.score.isnot(None)
                 )
             )
 
@@ -265,14 +273,19 @@ class StrengthHistoryService:
             before_date = date.today()
 
         try:
-            stmt = select(StrengthScore).where(
-                and_(
-                    StrengthScore.entity_type == entity_type,
-                    StrengthScore.entity_id == entity_id,
-                    StrengthScore.period == 'all',
-                    StrengthScore.date <= before_date
-                )
-            ).order_by(StrengthScore.date.desc()).limit(1)
+            # ADR-4 内部分发：按 entity_type 选模型类
+            is_stock = entity_type == "stock"
+            Model = StockStrengthScore if is_stock else StrengthScore
+            id_field = Model.stock_id if is_stock else Model.entity_id
+
+            base_conds = [id_field == entity_id]
+            if not is_stock:
+                base_conds.append(Model.entity_type == entity_type)
+                base_conds.append(Model.period == 'all')
+
+            stmt = select(Model).where(
+                and_(*base_conds, Model.date <= before_date)
+            ).order_by(Model.date.desc()).limit(1)
 
             result = await self.session.execute(stmt)
             score = result.scalar_one_or_none()

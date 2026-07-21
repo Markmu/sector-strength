@@ -23,6 +23,7 @@ from src.models.stock import Stock as StockModel
 from src.services.data_acquisition.models import A_STOCK_EXCHANGES
 from src.models.sector import Sector as SectorModel
 from src.models.moving_average_data import MovingAverageData as MovingAverageDataModel
+from src.models.stock_moving_average_data import StockMovingAverageData as StockMovingAverageDataModel
 from src.models.period_config import PeriodConfig as PeriodConfigModel
 
 router = APIRouter(prefix="/strength", tags=["strength"])
@@ -72,13 +73,25 @@ async def _build_strength_data(
     period_configs = config_result.scalars().all()
 
     # 查询各周期均线数据
+    # ADR-4 内部分发：entity_type='stock' 查股票独立表，'sector' 查旧表
+    is_stock = entity_type == "stock"
+    MAData = StockMovingAverageDataModel if is_stock else MovingAverageDataModel
+
     period_strengths = {}
     for config in period_configs:
-        ma_stmt = select(MovingAverageDataModel).where(
-            MovingAverageDataModel.entity_id == lookup_id,
-            MovingAverageDataModel.entity_type == entity_type,
-            MovingAverageDataModel.period == config.period,
-        ).order_by(desc(MovingAverageDataModel.date)).limit(1)
+        if is_stock:
+            # 股票独立表：无 entity_type，stock_id 替代 entity_id
+            ma_stmt = select(MAData).where(
+                MAData.stock_id == lookup_id,
+                MAData.period == config.period,
+            ).order_by(desc(MAData.date)).limit(1)
+        else:
+            # 旧表（板块分支零改动）
+            ma_stmt = select(MAData).where(
+                MAData.entity_id == lookup_id,
+                MAData.entity_type == entity_type,
+                MAData.period == config.period,
+            ).order_by(desc(MAData.date)).limit(1)
 
         ma_result = await session.execute(ma_stmt)
         ma_data = ma_result.scalar_one_or_none()

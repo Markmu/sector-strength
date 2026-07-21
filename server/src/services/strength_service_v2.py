@@ -12,6 +12,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.strength_score import StrengthScore
+from src.models.stock_strength_scores import StockStrengthScore
 from src.models.stock import Stock
 from src.models.sector import Sector
 from src.services.calculation.ma_system.ma_data_loader import MADataLoader
@@ -294,7 +295,12 @@ class StrengthServiceV2:
         result: Dict
     ):
         """
-        保存强度得分到数据库
+        保存强度得分到数据库（ADR-4：按 entity_type 内部分发模型类）
+
+        - entity_type='stock' → StockStrengthScore（无 entity_type、无 period，stock_id 替代 entity_id）
+        - entity_type='sector' → StrengthScore（旧表，分支零改动）
+
+        外部签名（含 entity_type 参数）保持不变，调用方零改动。
 
         Args:
             entity_type: 实体类型
@@ -306,15 +312,20 @@ class StrengthServiceV2:
             # 获取 symbol
             symbol = await self._get_symbol(entity_type, entity_id)
 
-            # 检查是否已存在记录
-            stmt = select(StrengthScore).where(
-                and_(
-                    StrengthScore.entity_type == entity_type,
-                    StrengthScore.entity_id == entity_id,
-                    StrengthScore.date == calc_date,
-                    StrengthScore.period == "all"
-                )
-            )
+            # ADR-4 内部分发：按 entity_type 选模型类
+            is_stock = entity_type == "stock"
+            Model = StockStrengthScore if is_stock else StrengthScore
+            id_field = Model.stock_id if is_stock else Model.entity_id
+
+            # 构建查重条件：stock 表无 period 列，sector 表保留 period=='all'
+            conditions = [
+                id_field == entity_id,
+                Model.date == calc_date,
+            ]
+            if not is_stock:
+                conditions.append(Model.period == "all")
+
+            stmt = select(Model).where(and_(*conditions))
 
             existing_result = await self.session.execute(stmt)
             existing_score = existing_result.scalar_one_or_none()
@@ -355,12 +366,11 @@ class StrengthServiceV2:
 
             else:
                 # 创建新记录
-                new_score = StrengthScore(
-                    entity_type=entity_type,
-                    entity_id=entity_id,
+                # stock 分支：stock_id 替代 entity_id，无 entity_type、无 period
+                # sector 分支：保留 entity_type/entity_id/period（旧表字段）
+                new_score = Model(
                     symbol=symbol,
                     date=calc_date,
-                    period="all",
                     score=result.get('composite_score', 0),
                     price_position_score=result.get('price_position_score'),
                     ma_alignment_score=result.get('ma_alignment_score'),
@@ -371,6 +381,14 @@ class StrengthServiceV2:
                     strength_grade=result.get('strength_grade'),
                     current_price=result.get('current_price'),
                 )
+
+                # 设置实体标识字段（stock 用 stock_id，sector 用 entity_type + entity_id）
+                if is_stock:
+                    new_score.stock_id = entity_id
+                else:
+                    new_score.entity_type = entity_type
+                    new_score.entity_id = entity_id
+                    new_score.period = "all"
 
                 # 设置均线值
                 ma_values = result.get('ma_values', {})
@@ -493,7 +511,13 @@ class StrengthServiceV2:
         calc_date: Optional[date] = None
     ) -> Optional[Dict]:
         """
-        计算并更新变化率
+        计算并更新变化率（ADR-4：按 entity_type 内部分发模型类）
+
+        - entity_type='stock' → StockStrengthScore（stock_id，无 period）
+        - entity_type='sector' → StrengthScore（旧表，entity_type/entity_id/period=='all'）
+
+        注意：StockStrengthScore 表无 change_rate_5d 列（字段裁剪 ADR-3），
+        仅 sector 分支更新 change_rate_5d。
 
         Args:
             entity_type: 实体类型
@@ -507,13 +531,23 @@ class StrengthServiceV2:
             calc_date = date.today()
 
         try:
+            # ADR-4 内部分发
+            is_stock = entity_type == "stock"
+            Model = StockStrengthScore if is_stock else StrengthScore
+            id_field = Model.stock_id if is_stock else Model.entity_id
+
+            def _base_conditions(model_cls):
+                """构建基础查询条件：stock 表无 period，sector 表保留 period=='all'"""
+                conds = [id_field == entity_id]
+                if not is_stock:
+                    conds.append(model_cls.period == 'all')
+                return conds
+
             # 获取当前得分
-            current_stmt = select(StrengthScore).where(
+            current_stmt = select(Model).where(
                 and_(
-                    StrengthScore.entity_type == entity_type,
-                    StrengthScore.entity_id == entity_id,
-                    StrengthScore.date == calc_date,
-                    StrengthScore.period == 'all'
+                    *(_base_conditions(Model)),
+                    Model.date == calc_date,
                 )
             )
             current_result = await self.session.execute(current_stmt)
@@ -524,12 +558,10 @@ class StrengthServiceV2:
 
             # 获取前一日得分
             prev_date = calc_date - timedelta(days=1)
-            prev_stmt = select(StrengthScore).where(
+            prev_stmt = select(Model).where(
                 and_(
-                    StrengthScore.entity_type == entity_type,
-                    StrengthScore.entity_id == entity_id,
-                    StrengthScore.date == prev_date,
-                    StrengthScore.period == 'all'
+                    *(_base_conditions(Model)),
+                    Model.date == prev_date,
                 )
             )
             prev_result = await self.session.execute(prev_stmt)
@@ -545,15 +577,13 @@ class StrengthServiceV2:
             start_date_5d = calc_date - timedelta(days=5)
             end_date_5d = calc_date - timedelta(days=1)
 
-            stmt_5d = select(StrengthScore.score).where(
+            stmt_5d = select(Model.score).where(
                 and_(
-                    StrengthScore.entity_type == entity_type,
-                    StrengthScore.entity_id == entity_id,
-                    StrengthScore.date >= start_date_5d,
-                    StrengthScore.date <= end_date_5d,
-                    StrengthScore.period == 'all'
+                    *(_base_conditions(Model)),
+                    Model.date >= start_date_5d,
+                    Model.date <= end_date_5d,
                 )
-            ).order_by(StrengthScore.date.asc())
+            ).order_by(Model.date.asc())
 
             result_5d = await self.session.execute(stmt_5d)
             scores_5d = [s for s in result_5d.scalars().all() if s is not None]
@@ -565,8 +595,10 @@ class StrengthServiceV2:
             )
 
             # 更新数据库
+            # StockStrengthScore 无 change_rate_5d 列，仅 sector 分支更新该字段
             current_score.change_rate_1d = change_rate_1d
-            current_score.change_rate_5d = change_rate_5d
+            if not is_stock:
+                current_score.change_rate_5d = change_rate_5d
 
             await self.session.commit()
 

@@ -19,6 +19,7 @@ from src.models.stock import Stock
 from src.models.sector import Sector
 from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
+from src.models.stock_daily_market_data import StockDailyMarketData
 from src.models.update_history import UpdateHistory
 from src.services.data_acquisition import DataSourceFactory
 from src.services.data_acquisition.models import A_STOCK_EXCHANGES, DailyQuote
@@ -207,13 +208,12 @@ class DataUpdateService:
                             skipped += 1
                             continue
 
-                        # 检查数据是否已存在
+                        # 检查数据是否已存在（查股票独立表）
                         if not overwrite:
                             existing = await self.session.execute(
-                                select(DailyMarketData).where(
-                                    DailyMarketData.entity_type == "stock",
-                                    DailyMarketData.entity_id == stock.id,
-                                    DailyMarketData.date == target_date
+                                select(StockDailyMarketData).where(
+                                    StockDailyMarketData.stock_id == stock.id,
+                                    StockDailyMarketData.date == target_date
                                 )
                             )
                             existing_record = existing.scalar_one_or_none()
@@ -244,10 +244,9 @@ class DataUpdateService:
                             existing_record = None
                             if overwrite:
                                 existing = await self.session.execute(
-                                    select(DailyMarketData).where(
-                                        DailyMarketData.entity_type == "stock",
-                                        DailyMarketData.entity_id == stock.id,
-                                        DailyMarketData.date == quote.trade_date
+                                    select(StockDailyMarketData).where(
+                                        StockDailyMarketData.stock_id == stock.id,
+                                        StockDailyMarketData.date == quote.trade_date
                                     )
                                 )
                                 existing_record = existing.scalar_one_or_none()
@@ -265,10 +264,9 @@ class DataUpdateService:
                                 else:
                                     skipped += 1
                             else:
-                                # 创建新记录
-                                market_data = DailyMarketData(
-                                    entity_type="stock",
-                                    entity_id=stock.id,
+                                # 创建新记录（写入股票独立表，无 entity_type）
+                                market_data = StockDailyMarketData(
+                                    stock_id=stock.id,
                                     symbol=stock.symbol,
                                     date=quote.trade_date,
                                     open=quote.open,
@@ -415,12 +413,11 @@ class DataUpdateService:
                                 errors.append(f"{symbol} @ {quote.trade_date}: {error_msg}")
                                 continue
 
-                            # 检查是否需要更新或创建
+                            # 检查是否需要更新或创建（查股票独立表）
                             existing = await self.session.execute(
-                                select(DailyMarketData).where(
-                                    DailyMarketData.entity_type == "stock",
-                                    DailyMarketData.entity_id == stock.id,
-                                    DailyMarketData.date == quote.trade_date
+                                select(StockDailyMarketData).where(
+                                    StockDailyMarketData.stock_id == stock.id,
+                                    StockDailyMarketData.date == quote.trade_date
                                 )
                             )
                             existing_record = existing.scalar_one_or_none()
@@ -437,9 +434,9 @@ class DataUpdateService:
                                 else:
                                     skipped += 1
                             else:
-                                market_data = DailyMarketData(
-                                    entity_type="stock",
-                                    entity_id=stock.id,
+                                # 写入股票独立表，无 entity_type
+                                market_data = StockDailyMarketData(
+                                    stock_id=stock.id,
                                     symbol=stock.symbol,
                                     date=quote.trade_date,
                                     open=quote.open,
@@ -526,14 +523,13 @@ class DataUpdateService:
                 if not stock:
                     continue
 
-                # 获取已有数据日期
+                # 获取已有数据日期（查股票独立表）
                 result = await self.session.execute(
-                    select(DailyMarketData.date).where(
-                        DailyMarketData.entity_type == "stock",
-                        DailyMarketData.entity_id == stock.id,
-                        DailyMarketData.date >= start_date,
-                        DailyMarketData.date <= end_date
-                    ).order_by(DailyMarketData.date)
+                    select(StockDailyMarketData.date).where(
+                        StockDailyMarketData.stock_id == stock.id,
+                        StockDailyMarketData.date >= start_date,
+                        StockDailyMarketData.date <= end_date
+                    ).order_by(StockDailyMarketData.date)
                 )
                 existing_dates = {row[0] for row in result.all()}
 

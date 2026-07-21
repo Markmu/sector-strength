@@ -14,9 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.database import AsyncSessionLocal
 from src.models.daily_market_data import DailyMarketData
+from src.models.stock_daily_market_data import StockDailyMarketData
 from src.models.stock import Stock
 from src.models.sector import Sector
 from src.models.strength_score import StrengthScore
+from src.models.stock_strength_scores import StockStrengthScore
 from src.services.trading_calendar import TradingCalendar
 from src.services.data_acquisition import DataSourceFactory
 
@@ -190,7 +192,7 @@ class DataQualityChecker:
             stock_result = await session.execute(select(Stock))
             stock_map = {s.symbol: s.id for s in stock_result.scalars().all()}
 
-            # 补齐个股行情
+            # 补齐个股行情（写入股票独立表 stock_daily_market_data）
             batch_size = 50
             symbols = list(stock_map.items())
             for i in range(0, len(symbols), batch_size):
@@ -210,9 +212,8 @@ class DataQualityChecker:
                                 if q.open != 0:
                                     change_pct = change_val / q.open * 100
 
-                            stmt = pg_insert(DailyMarketData).values(
-                                entity_type='stock',
-                                entity_id=entity_id,
+                            stmt = pg_insert(StockDailyMarketData).values(
+                                stock_id=entity_id,
                                 symbol=symbol,
                                 date=q.trade_date,
                                 open=q.open,
@@ -225,7 +226,7 @@ class DataQualityChecker:
                                 change_percent=change_pct,
                             )
                             stmt = stmt.on_conflict_do_nothing(
-                                constraint='uq_daily_market_data_entity_date'
+                                constraint='uq_stock_daily_market_data_stock_date'
                             )
                             await session.execute(stmt)
                     except Exception as e:
@@ -291,13 +292,14 @@ class DataQualityChecker:
         count = 0
         session = AsyncSessionLocal()
         try:
-            stmt = select(StrengthScore).where(
-                StrengthScore.entity_type == 'stock',
-                (StrengthScore.score < 0) | (StrengthScore.score > 100)
+            # 股票分支：切换到股票独立表 StockStrengthScore（无 entity_type）
+            stmt = select(StockStrengthScore).where(
+                (StockStrengthScore.score < 0) | (StockStrengthScore.score > 100)
             )
             result = await session.execute(stmt)
             count += len(result.all())
 
+            # 板块分支：查 Sector 实体表冗余字段（不动）
             stmt = select(Sector).where(
                 (Sector.strength_score < 0) | (Sector.strength_score > 100)
             )

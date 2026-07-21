@@ -12,6 +12,7 @@ from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.strength_score import StrengthScore
+from src.models.stock_strength_scores import StockStrengthScore
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +60,21 @@ class RankingService:
             results = {}
 
             for entity_type in entity_types:
+                # ADR-4 内部分发：按 entity_type 选模型类
+                # stock → StockStrengthScore（无 entity_type、无 period，stock_id 替代 entity_id）
+                # sector → StrengthScore（旧表，分支零改动）
+                is_stock = entity_type == "stock"
+                Model = StockStrengthScore if is_stock else StrengthScore
+                id_field = Model.stock_id if is_stock else Model.entity_id
+
+                # 构建基础 where 条件：stock 表无 entity_type、无 period；sector 表保留两者
+                base_conds = [Model.date == calc_date, Model.score.isnot(None)]
+                if not is_stock:
+                    base_conds.append(Model.entity_type == entity_type)
+                    base_conds.append(Model.period == 'all')
+
                 # 获取该实体类型的所有强度数据
-                stmt = select(StrengthScore).where(
-                    and_(
-                        StrengthScore.entity_type == entity_type,
-                        StrengthScore.date == calc_date,
-                        StrengthScore.period == 'all',
-                        StrengthScore.score.isnot(None)
-                    )
-                )
+                stmt = select(Model).where(and_(*base_conds))
 
                 result = await self.session.execute(stmt)
                 scores = result.scalars().all()

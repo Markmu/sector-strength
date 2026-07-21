@@ -19,6 +19,7 @@ from src.models.update_log import DataUpdateLog
 from src.models.sector import Sector
 from src.models.stock import Stock
 from src.models.daily_market_data import DailyMarketData
+from src.models.stock_daily_market_data import StockDailyMarketData
 from src.services.data_acquisition import DataSourceFactory
 from src.services.trading_calendar import TradingCalendar
 from src.services.cache.cache_manager import get_cache_manager
@@ -264,10 +265,11 @@ class DataCollector:
 
             await session.commit()
 
-            # 写入股票行情
+            # 写入股票行情（写入股票独立表 stock_daily_market_data）
             symbols = list(stock_map.items())
             failed_count = 0
             batch_size = 50
+            stock_inserted_count = 0
 
             for i in range(0, len(symbols), batch_size):
                 batch = symbols[i:i + batch_size]
@@ -287,9 +289,8 @@ class DataCollector:
                                     if q.open != 0:
                                         change_pct = change_val / q.open * 100
 
-                                stmt = pg_insert(DailyMarketData).values(
-                                    entity_type='stock',
-                                    entity_id=entity_id,
+                                stmt = pg_insert(StockDailyMarketData).values(
+                                    stock_id=entity_id,
                                     symbol=symbol,
                                     date=q.trade_date,
                                     open=q.open,
@@ -302,15 +303,22 @@ class DataCollector:
                                     change_percent=change_pct,
                                 )
                                 stmt = stmt.on_conflict_do_nothing(
-                                    constraint='uq_daily_market_data_entity_date'
+                                    constraint='uq_stock_daily_market_data_stock_date'
                                 )
                                 await session.execute(stmt)
                             total_count += len(quotes)
+                            stock_inserted_count += len(quotes)
                     except Exception as e:
                         failed_count += 1
                         logger.warning(f"[数据更新] 获取 {symbol} 行情失败: {e}")
 
                 await session.commit()
+
+            # 可观测性日志（架构 §8.5）：确认股票行情写入新表，便于上线后核对 AC-01
+            logger.info(
+                "stock_market_data_inserted",
+                extra={"table": "stock_daily_market_data", "count": stock_inserted_count},
+            )
 
             if failed_count == len(symbols) and len(symbols) > 0:
                 raise RuntimeError(f"所有 {len(symbols)} 只股票行情拉取失败")

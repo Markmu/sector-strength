@@ -29,6 +29,7 @@ from src.models.stock import Stock as StockModel
 from src.models.sector_stock import SectorStock as SectorStockModel
 from src.models.sector import Sector as SectorModel
 from src.models.strength_score import StrengthScore as StrengthScoreModel
+from src.models.stock_strength_scores import StockStrengthScore as StockStrengthScoreModel
 from src.services.strength_service_v2 import StrengthServiceV2
 from src.services.strength_history_service import StrengthHistoryService
 
@@ -247,25 +248,23 @@ async def get_stock_strength(
     if not stock:
         raise NotFoundError(f"股票 {stock_id} 不存在")
 
-    # 查询强度数据
-    strength_stmt = select(StrengthScoreModel).where(
-        StrengthScoreModel.entity_type == "stock",
-        StrengthScoreModel.entity_id == stock.id,
-        StrengthScoreModel.period == "all"
+    # 查询强度数据（切换到股票独立表 StockStrengthScore：无 entity_type、无 period，stock_id 替代 entity_id）
+    strength_stmt = select(StockStrengthScoreModel).where(
+        StockStrengthScoreModel.stock_id == stock.id
     )
 
     if calc_date:
-        strength_stmt = strength_stmt.where(StrengthScoreModel.date == calc_date)
+        strength_stmt = strength_stmt.where(StockStrengthScoreModel.date == calc_date)
     else:
         # 获取最新日期的数据
         from sqlalchemy import desc as sql_desc
-        strength_stmt = strength_stmt.order_by(sql_desc(StrengthScoreModel.date)).limit(1)
+        strength_stmt = strength_stmt.order_by(sql_desc(StockStrengthScoreModel.date)).limit(1)
 
     strength_result = await session.execute(strength_stmt)
     strength_data = strength_result.scalar_one_or_none()
 
     if not strength_data:
-        # 如果没有强度数据，尝试计算
+        # 如果没有强度数据，尝试计算（fallback 调 calculate_stock_strength，已切写新表）
         service = StrengthServiceV2(session)
         calc_result = await service.calculate_stock_strength(stock.id, calc_date)
 
@@ -278,10 +277,10 @@ async def get_stock_strength(
 
     return StockStrengthResponse(
         entity_type="stock",
-        entity_id=strength_data.entity_id,
+        entity_id=strength_data.stock_id,
         symbol=strength_data.symbol,
         date=strength_data.date,
-        period=strength_data.period,
+        period="all",  # AC-06：响应 schema 字段保持，硬填（StockStrengthScore 无 period 列）
         score=strength_data.score,
         price_position_score=strength_data.price_position_score,
         ma_alignment_score=strength_data.ma_alignment_score,
@@ -309,7 +308,7 @@ async def get_stock_strength(
         rank=strength_data.rank,
         percentile=strength_data.percentile,
         change_rate_1d=strength_data.change_rate_1d,
-        change_rate_5d=strength_data.change_rate_5d,
+        change_rate_5d=None,  # AC-06：响应 schema 字段保持，硬填 None（StockStrengthScore 无 change_rate_5d 列）
         strength_grade=strength_data.strength_grade,
         stock_name=stock.name,
     )

@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.moving_average_data import MovingAverageData
 from src.models.daily_market_data import DailyMarketData
+from src.models.stock_moving_average_data import StockMovingAverageData
+from src.models.stock_daily_market_data import StockDailyMarketData
 from src.config.ma_system import MA_PERIODS, get_available_periods
 
 logger = logging.getLogger(__name__)
@@ -94,36 +96,48 @@ class MADataLoader:
             from sqlalchemy import distinct, literal_column
             from sqlalchemy.dialects.postgresql import aggregate_order_by
 
+            # ADR-4 内部分发：按 entity_type 选模型类
+            # stock → StockMovingAverageData（无 entity_type，stock_id 替代 entity_id；保留 period 业务字段）
+            # sector → MovingAverageData（旧表，分支零改动）
+            is_stock = entity_type == "stock"
+            MAData = StockMovingAverageData if is_stock else MovingAverageData
+            id_field = MAData.stock_id if is_stock else MAData.entity_id
+
+            # 构建基础 where 条件（stock 分支无 entity_type）
+            def _ma_base_conditions():
+                conds = [id_field == entity_id]
+                if not is_stock:
+                    conds.append(MAData.entity_type == entity_type)
+                return conds
+
             # 构建子查询：先找出每个周期的最新日期
             latest_dates_subq = select(
-                MovingAverageData.period,
-                func.max(MovingAverageData.date).label('max_date')
+                MAData.period,
+                func.max(MAData.date).label('max_date')
             ).where(
                 and_(
-                    MovingAverageData.entity_type == entity_type,
-                    MovingAverageData.entity_id == entity_id,
-                    MovingAverageData.period.in_(period_strs),
-                    MovingAverageData.date <= calc_date,
-                    MovingAverageData.ma_value.isnot(None)
+                    *(_ma_base_conditions()),
+                    MAData.period.in_(period_strs),
+                    MAData.date <= calc_date,
+                    MAData.ma_value.isnot(None)
                 )
-            ).group_by(MovingAverageData.period).subquery()
+            ).group_by(MAData.period).subquery()
 
             # 主查询：通过子查询连接获取每个周期的最新数据
             stmt = select(
-                MovingAverageData.period,
-                MovingAverageData.ma_value
+                MAData.period,
+                MAData.ma_value
             ).join(
                 latest_dates_subq,
                 and_(
-                    MovingAverageData.period == latest_dates_subq.c.period,
-                    MovingAverageData.date == latest_dates_subq.c.max_date
+                    MAData.period == latest_dates_subq.c.period,
+                    MAData.date == latest_dates_subq.c.max_date
                 )
             ).where(
                 and_(
-                    MovingAverageData.entity_type == entity_type,
-                    MovingAverageData.entity_id == entity_id,
-                    MovingAverageData.period.in_(period_strs),
-                    MovingAverageData.ma_value.isnot(None)
+                    *(_ma_base_conditions()),
+                    MAData.period.in_(period_strs),
+                    MAData.ma_value.isnot(None)
                 )
             )
 
@@ -179,15 +193,26 @@ class MADataLoader:
             当前价格，失败返回 None
         """
         try:
+            # ADR-4 内部分发：按 entity_type 选行情表模型
+            # stock → StockDailyMarketData（无 entity_type，stock_id 替代 entity_id）
+            # sector → DailyMarketData（旧表，分支零改动）
+            is_stock = entity_type == "stock"
+            MarketData = StockDailyMarketData if is_stock else DailyMarketData
+            id_field = MarketData.stock_id if is_stock else MarketData.entity_id
+
+            # 构建基础 where 条件（stock 分支无 entity_type）
+            base_conds = [id_field == entity_id]
+            if not is_stock:
+                base_conds.append(MarketData.entity_type == entity_type)
+
             # 查询该日期或最近日期的收盘价
-            stmt = select(DailyMarketData).where(
+            stmt = select(MarketData).where(
                 and_(
-                    DailyMarketData.entity_type == entity_type,
-                    DailyMarketData.entity_id == entity_id,
-                    DailyMarketData.date <= calc_date,
-                    DailyMarketData.close.isnot(None)
+                    *base_conds,
+                    MarketData.date <= calc_date,
+                    MarketData.close.isnot(None)
                 )
-            ).order_by(DailyMarketData.date.desc()).limit(1)
+            ).order_by(MarketData.date.desc()).limit(1)
 
             result = await self.session.execute(stmt)
             market_data = result.scalar_one_or_none()
@@ -254,13 +279,22 @@ class MADataLoader:
             可用天数
         """
         try:
+            # ADR-4 内部分发：按 entity_type 选行情表模型
+            is_stock = entity_type == "stock"
+            MarketData = StockDailyMarketData if is_stock else DailyMarketData
+            id_field = MarketData.stock_id if is_stock else MarketData.entity_id
+
+            # 构建基础 where 条件（stock 分支无 entity_type）
+            base_conds = [id_field == entity_id]
+            if not is_stock:
+                base_conds.append(MarketData.entity_type == entity_type)
+
             # 使用聚合函数计数，避免加载所有数据到内存
-            stmt = select(func.count(DailyMarketData.id)).where(
+            stmt = select(func.count(MarketData.id)).where(
                 and_(
-                    DailyMarketData.entity_type == entity_type,
-                    DailyMarketData.entity_id == entity_id,
-                    DailyMarketData.date <= calc_date,
-                    DailyMarketData.close.isnot(None)
+                    *base_conds,
+                    MarketData.date <= calc_date,
+                    MarketData.close.isnot(None)
                 )
             )
 

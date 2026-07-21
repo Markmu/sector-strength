@@ -190,7 +190,7 @@ class TestSetDiffCleanup:
 
     async def test_cleanup_deletes_disappeared_with_cascade(self, test_session, monkeypatch):
         """数据源消失的股票被删除，衍生数据级联清理"""
-        from src.models.daily_market_data import DailyMarketData
+        from src.models.stock_daily_market_data import StockDailyMarketData
         from src.models.sector_stock import SectorStock
 
         # 000001 保留、000638 数据源不再返回（退市）
@@ -200,8 +200,9 @@ class TestSetDiffCleanup:
         await test_session.flush()  # 拿 id
 
         # 衍生数据（应随 000638 级联删除）
-        test_session.add(DailyMarketData(
-            entity_type="stock", entity_id=s_del.id, symbol="000638", date=date(2026, 1, 1)
+        # 股票行情已迁入独立表 StockDailyMarketData（无 entity_type，按 stock_id 软关联）
+        test_session.add(StockDailyMarketData(
+            stock_id=s_del.id, symbol="000638", date=date(2026, 1, 1)
         ))
         test_session.add(SectorStock(sector_code="BK0001", stock_code="000638"))
         await test_session.commit()
@@ -223,9 +224,9 @@ class TestSetDiffCleanup:
         syms = {r[0] for r in (await test_session.execute(select(Stock.symbol))).all()}
         assert "000001" in syms
         assert "000638" not in syms
-        # 衍生数据级联删（按 entity_id / stock_code）
+        # 衍生数据级联删（_cascade_delete_stock_data 按 stock_id 清新三表 / 按 stock_code 清 sector_stocks）
         dmd = (await test_session.execute(
-            select(DailyMarketData).where(DailyMarketData.entity_id == s_del.id)
+            select(StockDailyMarketData).where(StockDailyMarketData.stock_id == s_del.id)
         )).scalars().all()
         assert len(dmd) == 0
         ss = (await test_session.execute(

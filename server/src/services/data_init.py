@@ -18,6 +18,7 @@ from src.models.sector import Sector
 from src.models.stock import Stock
 from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
+from src.models.stock_daily_market_data import StockDailyMarketData
 from src.services.data_acquisition import DataSourceFactory
 from src.services.data_acquisition.models import A_STOCK_EXCHANGES, StockInfo, SectorInfo, DailyQuote
 from src.repositories.symbol_repository import SectorStockRepository
@@ -706,23 +707,22 @@ class DataInitService:
         级联删除股票的衍生数据。
 
         stocks 表无外键约束（衍生表均为软关联），需手动清理避免孤儿：
-          - daily_market_data / moving_average_data / strength_scores：按 entity_type='stock' + entity_id
+          - stock_daily_market_data / stock_moving_average_data / stock_strength_scores：按 stock_id（股票独立表）
           - sector_stocks：按 stock_code（symbol）
           - top10_float_holders：按 symbol
           - stocks 本身
+
+        注意：旧表（daily_market_data 等）仅承接板块数据，此处不再清理；
+        遗留的旧股票数据保留但不读取（ADR-2）。
         """
-        from src.models.moving_average_data import MovingAverageData
-        from src.models.strength_score import StrengthScore
+        from src.models.stock_moving_average_data import StockMovingAverageData
+        from src.models.stock_strength_scores import StockStrengthScore
         from src.models.top10_float_holder import Top10FloatHolder
 
-        for model in (DailyMarketData, MovingAverageData, StrengthScore):
+        # 股票独立三表：按 stock_id 删除（无 entity_type）
+        for model in (StockDailyMarketData, StockMovingAverageData, StockStrengthScore):
             await self.session.execute(
-                delete(model).where(
-                    and_(
-                        model.entity_type == "stock",
-                        model.entity_id.in_(stock_ids),
-                    )
-                )
+                delete(model).where(model.stock_id.in_(stock_ids))
             )
         await self.session.execute(
             delete(SectorStock).where(SectorStock.stock_code.in_(symbols))
@@ -800,12 +800,11 @@ class DataInitService:
                         quotes = self.data_source.get_daily_data(symbol, start_date, end_date)
 
                         for quote in quotes:
-                            # 检查数据是否已存在
+                            # 检查数据是否已存在（写入股票独立表 stock_daily_market_data）
                             result = await self.session.execute(
-                                select(DailyMarketData).where(
-                                    DailyMarketData.entity_type == "stock",
-                                    DailyMarketData.entity_id == stock.id,
-                                    DailyMarketData.date == quote.trade_date
+                                select(StockDailyMarketData).where(
+                                    StockDailyMarketData.stock_id == stock.id,
+                                    StockDailyMarketData.date == quote.trade_date
                                 )
                             )
                             existing = result.scalar_one_or_none()
@@ -813,10 +812,9 @@ class DataInitService:
                             if existing:
                                 continue
 
-                            # 创建新记录
-                            market_data = DailyMarketData(
-                                entity_type="stock",
-                                entity_id=stock.id,
+                            # 创建新记录（写入股票独立表，无 entity_type）
+                            market_data = StockDailyMarketData(
+                                stock_id=stock.id,
                                 symbol=stock.symbol,
                                 date=quote.trade_date,
                                 open=quote.open,
@@ -930,12 +928,11 @@ class DataInitService:
                         skipped += 1
                         continue
 
-                    # 检查这只股票是否已有数据（断点续传支持）
+                    # 检查这只股票是否已有数据（断点续传支持，查股票独立表）
                     result = await self.session.execute(
-                        select(DailyMarketData).where(
-                            DailyMarketData.entity_type == "stock",
-                            DailyMarketData.entity_id == stock.id,
-                            DailyMarketData.date.between(start_date, end_date)
+                        select(StockDailyMarketData).where(
+                            StockDailyMarketData.stock_id == stock.id,
+                            StockDailyMarketData.date.between(start_date, end_date)
                         ).limit(1)
                     )
                     has_existing_data = result.scalar_one_or_none() is not None
@@ -951,12 +948,11 @@ class DataInitService:
 
                     symbol_created = 0
                     for quote in quotes:
-                        # 检查数据是否已存在
+                        # 检查数据是否已存在（查股票独立表）
                         result = await self.session.execute(
-                            select(DailyMarketData).where(
-                                DailyMarketData.entity_type == "stock",
-                                DailyMarketData.entity_id == stock.id,
-                                DailyMarketData.date == quote.trade_date
+                            select(StockDailyMarketData).where(
+                                StockDailyMarketData.stock_id == stock.id,
+                                StockDailyMarketData.date == quote.trade_date
                             )
                         )
                         existing = result.scalar_one_or_none()
@@ -964,10 +960,9 @@ class DataInitService:
                         if existing:
                             continue
 
-                        # 创建新记录
-                        market_data = DailyMarketData(
-                            entity_type="stock",
-                            entity_id=stock.id,
+                        # 创建新记录（写入股票独立表，无 entity_type）
+                        market_data = StockDailyMarketData(
+                            stock_id=stock.id,
                             symbol=stock.symbol,
                             date=quote.trade_date,
                             open=quote.open,

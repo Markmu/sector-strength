@@ -28,6 +28,7 @@ from src.services.data_acquisition.models import A_STOCK_EXCHANGES
 from src.models.sector import Sector as SectorModel
 from src.models.sector_stock import SectorStock as SectorStockModel
 from src.models.strength_score import StrengthScore as StrengthScoreModel
+from src.models.stock_strength_scores import StockStrengthScore as StockStrengthScoreModel
 from src.services.strength_service_v2 import StrengthServiceV2
 from src.services.ranking_service import RankingService
 
@@ -179,27 +180,24 @@ async def get_stock_rankings_v2(
     current_user: User = Depends(get_current_user),
 ) -> StrengthRankingResponse:
     """获取个股强度排名 (V2)"""
-    # 查询强度数据
-    stmt = select(StrengthScoreModel, StockModel).join(
-        StockModel, StrengthScoreModel.entity_id == StockModel.id
-    ).where(
-        StrengthScoreModel.entity_type == "stock",
-        StrengthScoreModel.period == "all"
+    # 切换到股票独立表 StockStrengthScore（无 entity_type、无 period，stock_id 替代 entity_id）
+    stmt = select(StockStrengthScoreModel, StockModel).join(
+        StockModel, StockStrengthScoreModel.stock_id == StockModel.id
     )
 
     if calc_date:
-        stmt = stmt.where(StrengthScoreModel.date == calc_date)
+        stmt = stmt.where(StockStrengthScoreModel.date == calc_date)
     else:
         from sqlalchemy import desc as sql_desc
-        latest_stmt = select(StrengthScoreModel.date).where(
-            StrengthScoreModel.period == "all"
-        ).order_by(sql_desc(StrengthScoreModel.date)).limit(1)
+        latest_stmt = select(StockStrengthScoreModel.date).order_by(
+            sql_desc(StockStrengthScoreModel.date)
+        ).limit(1)
         latest_result = await session.execute(latest_stmt)
         latest_date = latest_result.scalar_one_or_none()
         if latest_date:
-            stmt = stmt.where(StrengthScoreModel.date == latest_date)
+            stmt = stmt.where(StockStrengthScoreModel.date == latest_date)
 
-    stmt = stmt.order_by(desc(StrengthScoreModel.score))
+    stmt = stmt.order_by(desc(StockStrengthScoreModel.score))
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total_result = await session.execute(count_stmt)
     total = total_result.scalar() or 0
@@ -212,7 +210,7 @@ async def get_stock_rankings_v2(
         rankings.append(
             StrengthRankingItem(
                 rank=strength.rank or (offset + len(rankings) + 1),
-                entity_id=strength.entity_id,
+                entity_id=strength.stock_id,
                 symbol=strength.symbol,
                 name=stock.name,
                 score=strength.score,
@@ -315,22 +313,31 @@ async def get_strength_stats(
         from src.api.exceptions import NotFoundError
         raise NotFoundError(f"无效的实体类型: {entity_type}")
 
-    stmt = select(StrengthScoreModel).where(
-        StrengthScoreModel.entity_type == entity_type,
-        StrengthScoreModel.period == "all"
-    )
+    # ADR-4 内部分发：entity_type='stock' 查股票独立表，'sector' 查旧表
+    is_stock = entity_type == "stock"
+    Model = StockStrengthScoreModel if is_stock else StrengthScoreModel
+
+    base_conds = []
+    if not is_stock:
+        base_conds.append(Model.entity_type == entity_type)
+        base_conds.append(Model.period == "all")
+
+    stmt = select(Model)
+    if base_conds:
+        stmt = stmt.where(*base_conds)
 
     if calc_date:
-        stmt = stmt.where(StrengthScoreModel.date == calc_date)
+        stmt = stmt.where(Model.date == calc_date)
     else:
         from sqlalchemy import desc as sql_desc
-        latest_stmt = select(StrengthScoreModel.date).where(
-            StrengthScoreModel.period == "all"
-        ).order_by(sql_desc(StrengthScoreModel.date)).limit(1)
+        latest_stmt = select(Model.date)
+        if not is_stock:
+            latest_stmt = latest_stmt.where(Model.period == "all")
+        latest_stmt = latest_stmt.order_by(sql_desc(Model.date)).limit(1)
         latest_result = await session.execute(latest_stmt)
         latest_date = latest_result.scalar_one_or_none()
         if latest_date:
-            stmt = stmt.where(StrengthScoreModel.date == latest_date)
+            stmt = stmt.where(Model.date == latest_date)
 
     result = await session.execute(stmt)
     scores = result.scalars().all()
