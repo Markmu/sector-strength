@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 import time
 import logging
 import os
@@ -10,12 +9,14 @@ from contextlib import asynccontextmanager
 from typing import Callable
 
 from src.core.settings import settings
+from src.core.logging_config import setup_logging
 from src.core.exceptions import setup_exception_handlers
 from src.api.router import router as api_router
 from src.api.exceptions import APIError, api_error_handler, generic_error_handler
 from sqlalchemy import text
 from src.db.database import engine, AsyncSessionLocal
 from src.api.v1.error_handlers import register_classification_exception_handlers
+from src.core.middleware.response_logging import ResponseLoggingMiddleware
 
 # 导入任务执行器
 from src.services.task_executor import init_task_executor, start_task_executor, stop_task_executor
@@ -26,11 +27,8 @@ from src.services import task_handlers  # noqa: F401
 # 导入定时任务管理器
 from src.services.scheduler.job_manager import get_job_manager
 
-# 配置日志
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# 配置日志（统一初始化：注入 trace_id、补 FileHandler）
+setup_logging(level=settings.LOG_LEVEL, log_file=settings.LOG_FILE or None)
 logger = logging.getLogger(__name__)
 
 
@@ -190,4 +188,11 @@ class ProcessTimeMiddleware:
         await self.app(scope, receive, send_wrapper)
 
 # 将应用包装在自定义中间件中（必须在所有路由注册之后）
-app = ProcessTimeMiddleware(app)
+# 洋葱顺序：ResponseLoggingMiddleware（外） → ProcessTimeMiddleware → FastAPI
+# 日志中间件自算耗时，不依赖 x-process-time 头；放在最外层以拿到完整响应体。
+app = ResponseLoggingMiddleware(
+    ProcessTimeMiddleware(app),
+    max_body_bytes=settings.RESP_LOG_MAX_BYTES,
+    mask_pii=settings.RESP_LOG_MASK_PII,
+    skip_paths=settings.RESP_LOG_SKIP_PATHS,
+)

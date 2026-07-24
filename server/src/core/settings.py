@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # 日志配置
     LOG_LEVEL: str = "DEBUG"
     LOG_FILE: str = "logs/app.log"
+    # 出参日志（access log）配置
+    RESP_LOG_MAX_BYTES: int = 2048  # 出参日志单条最大字节，超出则截断/摘要
+    RESP_LOG_MASK_PII: bool = True  # 是否脱敏 email/phone 等 PII（token/密码始终脱敏）
+    RESP_LOG_SKIP_PATHS: list[str] = []  # 额外跳过 access log 的路径（健康检查/文档已内置）
 
     # 缓存配置
     CACHE_TTL: int = 300

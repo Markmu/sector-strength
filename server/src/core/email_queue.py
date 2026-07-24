@@ -11,10 +11,8 @@ from collections import deque
 import uuid
 
 from src.core.email import send_verification_email, send_password_reset_email
-from src.core.settings import settings
 
-# 配置日志
-logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))
+# 日志统一由 src.core.logging_config.setup_logging 初始化，这里仅取 logger
 logger = logging.getLogger(__name__)
 
 
