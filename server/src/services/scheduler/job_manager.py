@@ -78,6 +78,18 @@ class JobManager:
         #     misfire_grace_time=3600  # 错过执行时间后1小时内仍可执行
         # )
 
+        # 板块资金流即时快照：每分钟触发，任务内部按交易日 + 盘中时段过滤
+        # 仅在交易日连续竞价时段（9:30-11:30、13:00-15:00）真正采集；
+        # 非交易时段/节假日只做一次轻量时间判断即跳过，不调用同花顺接口。
+        self.scheduler.add_job(
+            self._sector_fund_flow_snapshot,
+            trigger=IntervalTrigger(minutes=1),
+            id='sector_fund_flow_snapshot',
+            name='板块资金流即时快照（仅交易日盘中）',
+            replace_existing=True,
+            max_instances=1,  # 防止并发执行，避免风控
+        )
+
     async def _daily_data_update(self):
         """每日数据更新任务"""
         from src.services.data_updater.collector import DataCollector
@@ -91,6 +103,49 @@ class JobManager:
         except Exception as e:
             logger.error(f"[定时任务] 数据更新失败: {e}")
             raise
+
+    async def _sector_fund_flow_snapshot(self):
+        """板块资金流即时快照任务
+
+        每分钟触发，但仅在交易日连续竞价时段真正采集：
+        - 交易日判断：周末/节假日跳过（复用 TradingCalendar）
+        - 盘中时段：9:30-11:30（上午）、13:00-15:00（下午）A 股连续竞价时段
+        非交易时段只做轻量判断即返回，不调用同花顺接口，避免无效请求与风控。
+        采集后 on_conflict_do_update 保证同分钟重采覆盖最新值。
+        """
+        now = datetime.now()
+
+        # 盘中时段判断（A 股连续竞价：9:30-11:30、13:00-15:00）
+        hm = now.hour * 60 + now.minute
+        in_morning = 9 * 60 + 30 <= hm <= 11 * 60 + 30
+        in_afternoon = 13 * 60 <= hm <= 15 * 60
+        if not (in_morning or in_afternoon):
+            return  # 非盘中时段，跳过（不打日志，避免每分钟刷屏）
+
+        # 交易日判断（节假日跳过）
+        from src.services.trading_calendar import TradingCalendar
+
+        calendar = TradingCalendar()
+        try:
+            is_trading, _ = await calendar.is_trading_day(now.date())
+        except Exception as e:
+            logger.warning(f"[定时任务] 交易日判断失败，保守跳过本次: {e}")
+            return
+        if not is_trading:
+            return  # 非交易日，跳过
+
+        logger.info(f"[定时任务] 开始采集板块资金流即时快照: {now}")
+
+        try:
+            from src.services.data_updater.collector import DataCollector
+
+            collector = DataCollector()
+            count = await collector._update_sector_fund_flow()
+            logger.info(f"[定时任务] 板块资金流采集完成: {count} 条记录")
+        except Exception as e:
+            logger.error(f"[定时任务] 板块资金流采集失败: {e}")
+            # 不 raise：采集失败不影响下一次调度（APScheduler 默认会移除抛异常的 job）
+
 
     async def _check_data_quality(self):
         """数据质量检查任务"""

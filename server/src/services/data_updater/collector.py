@@ -20,7 +20,9 @@ from src.models.sector import Sector
 from src.models.stock import Stock
 from src.models.daily_market_data import DailyMarketData
 from src.models.stock_daily_market_data import StockDailyMarketData
+from src.models.sector_fund_flow import SectorFundFlow
 from src.services.data_acquisition import DataSourceFactory
+from src.services.data_acquisition.akshare_fund_flow import AkshareFundFlowFetcher
 from src.services.trading_calendar import TradingCalendar
 from src.services.cache.cache_manager import get_cache_manager
 
@@ -100,6 +102,14 @@ class DataCollector:
 
             # 6. 清除缓存
             results['cache_cleared'] = await self._clear_cache()
+
+            # 7. 采集板块资金流即时快照（行业 + 概念）
+            try:
+                await self._update_sector_fund_flow()
+            except Exception as e:
+                # 资金流采集失败不影响主更新流程，仅记录
+                logger.error(f"[数据更新] 板块资金流采集失败: {e}")
+                results['errors'].append(f"sector_fund_flow: {e}")
 
             # 更新日志状态为完成
             log_entry.status = 'completed'
@@ -324,6 +334,73 @@ class DataCollector:
                 raise RuntimeError(f"所有 {len(symbols)} 只股票行情拉取失败")
 
         logger.info(f"[数据更新] 行情数据更新完成: {total_count} 条记录")
+        return total_count
+
+    async def _update_sector_fund_flow(self) -> int:
+        """采集同花顺即时板块资金流（行业 + 概念）并落库。
+
+        盘中每分钟全量采样；同一采样分钟重复触发通过
+        on_conflict_do_update 覆盖最新值（命中 uq_sector_fund_flow_sample）。
+
+        Returns:
+            写入/更新的记录条数
+        """
+        logger.info("[数据更新] 开始采集板块资金流即时快照")
+
+        fetcher = AkshareFundFlowFetcher()
+        now = datetime.now()
+        trade_date = now.date()
+        # 精度到分钟：秒/微秒置零，保证同分钟重采命中唯一约束而非新增
+        sample_time = now.replace(second=0, microsecond=0)
+
+        total_count = 0
+        async with get_session() as session:
+            for sector_type in ("industry", "concept"):
+                try:
+                    items = fetcher.fetch(sector_type)
+                except Exception as e:
+                    # 单类板块失败不影响另一类：记录日志并跳过
+                    logger.warning(
+                        f"[数据更新] 采集 {sector_type} 资金流失败: {e}"
+                    )
+                    continue
+
+                for item in items:
+                    try:
+                        stmt = pg_insert(SectorFundFlow).values(
+                            trade_date=trade_date,
+                            sample_time=sample_time,
+                            sector_type=sector_type,
+                            **item.model_dump(),
+                        )
+                        stmt = stmt.on_conflict_do_update(
+                            constraint='uq_sector_fund_flow_sample',
+                            set_={
+                                'sector_index': stmt.excluded.sector_index,
+                                'change_percent': stmt.excluded.change_percent,
+                                'inflow': stmt.excluded.inflow,
+                                'outflow': stmt.excluded.outflow,
+                                'net_inflow': stmt.excluded.net_inflow,
+                                'company_count': stmt.excluded.company_count,
+                                'leading_stock': stmt.excluded.leading_stock,
+                                'leading_stock_change': stmt.excluded.leading_stock_change,
+                                'current_price': stmt.excluded.current_price,
+                            },
+                        )
+                        await session.execute(stmt)
+                        total_count += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"[数据更新] 写入板块资金流失败 "
+                            f"({sector_type}/{item.sector_name}): {e}"
+                        )
+
+                await session.commit()
+
+        logger.info(
+            f"[数据更新] 板块资金流采集完成: {total_count} 条记录 "
+            f"(trade_date={trade_date}, sample_time={sample_time})"
+        )
         return total_count
 
     async def _run_calculations(self) -> int:

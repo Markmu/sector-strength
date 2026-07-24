@@ -67,6 +67,9 @@ class TaskType(str, Enum):
     # 券商月度金股同步任务
     SYNC_BROKER_RECOMMEND = "sync_broker_recommend"
 
+    # 板块资金流即时快照同步任务（同花顺即时接口，行业 + 概念）
+    SYNC_SECTOR_FUND_FLOW = "sync_sector_fund_flow"
+
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
     """
@@ -633,6 +636,7 @@ __all__ = [
     "sync_fund_basic_task",
     "sync_fund_portfolio_task",
     "sync_top10_holders_task",
+    "sync_sector_fund_flow_task",
 ]
 
 
@@ -1300,5 +1304,46 @@ async def sync_broker_recommend_task(
         original_error = getattr(e, "original_error", None)
         detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
         error_msg = f"Broker recommend sync failed (month={month}): {detail}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+# ============== 板块资金流即时快照同步任务 ==============
+
+@TaskRegistry.register(TaskType.SYNC_SECTOR_FUND_FLOW)
+async def sync_sector_fund_flow_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    板块资金流即时快照同步任务
+
+    通过 akshare 同花顺即时接口采集行业 + 概念板块资金流，
+    写入 sector_fund_flow 表（on_conflict 覆盖同分钟旧值）。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数（无必需参数）
+        manager: 任务管理器
+    """
+    from src.services.data_updater.collector import DataCollector
+
+    await manager.log_message(
+        task_id, "INFO", "Starting sector fund flow snapshot sync"
+    )
+
+    try:
+        collector = DataCollector()
+        count = await collector._update_sector_fund_flow()
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"Sector fund flow snapshot sync completed: {count} rows upserted"
+        )
+    except Exception as e:
+        original_error = getattr(e, "original_error", None)
+        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        error_msg = f"Sector fund flow sync failed: {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
