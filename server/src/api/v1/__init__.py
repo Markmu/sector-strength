@@ -21,6 +21,7 @@ from .funds import router as funds_router  # 基金业务 API
 from .fund_crowd_analysis import router as fund_crowd_analysis_router  # 基金扎堆股票分析 API
 from .shareholder_analysis import router as shareholder_analysis_router  # 股东分析聚合查询 API
 from .broker_recommend_analysis import router as broker_recommend_analysis_router  # 券商月度金股分析 API
+from .sector_fund_flow import router as sector_fund_flow_router  # 板块资金流查询 API
 from .admin import router as admin_legacy_router  # legacy /v1/admin/data/*
 
 # 创建 v1 主路由
@@ -39,6 +40,7 @@ router.include_router(funds_router)              # /api/v1/funds/*
 router.include_router(fund_crowd_analysis_router)  # /api/v1/fund-crowd-analysis/*
 router.include_router(shareholder_analysis_router)  # /api/v1/shareholder-analysis/*
 router.include_router(broker_recommend_analysis_router)  # /api/v1/broker-recommend-analysis/*
+router.include_router(sector_fund_flow_router)  # /api/v1/sector-fund-flow/*
 router.include_router(admin_legacy_router)   # /api/v1/admin/data/* (legacy)
 
 __all__ = ["router"]
