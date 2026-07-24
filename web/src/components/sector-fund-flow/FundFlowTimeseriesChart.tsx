@@ -50,8 +50,6 @@ const SERIES_COLORS: string[] = (() => {
   return [...primary, ...rest]
 })()
 
-const YI = 1e8
-
 export interface FundFlowTimeseriesChartProps {
   data: FundFlowTimeseriesData
   height?: string
@@ -84,11 +82,11 @@ export default function FundFlowTimeseriesChart({
       return {
         name: s.sectorName,
         type: 'line' as const,
-        // 净额单位元 → 亿；undefined（该时点无采样）与 null（采样值空）都断线
+        // 净额单位已是亿元（后端口径，见 server 模型列定义）；undefined（该时点无采样）与 null（采样值空）都断线
         data: times.map((t) => {
           const v = pointMap.get(t)
           if (v === undefined || v === null) return null
-          return Number((v / YI).toFixed(4))
+          return Number(v.toFixed(2))
         }),
         smooth: false,
         symbol: 'circle',
@@ -126,7 +124,7 @@ export default function FundFlowTimeseriesChart({
             html += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
               <span style="display:inline-block;width:10px;height:10px;background:${p.color};border-radius:50%;"></span>
               <span>${p.seriesName}：</span>
-              <span style="font-weight:600;">${val === null || val === undefined ? '—' : formatSignedAmount(val * YI)}</span>
+              <span style="font-weight:600;">${val === null || val === undefined ? '—' : formatSignedAmount(val)}</span>
             </div>`
           })
           html += '</div>'
