@@ -107,35 +107,10 @@ class JobManager:
     async def _sector_fund_flow_snapshot(self):
         """板块资金流即时快照任务
 
-        每分钟触发，但仅在交易日连续竞价时段真正采集：
-        - 交易日判断：周末/节假日跳过（复用 TradingCalendar）
-        - 盘中时段：9:30-11:30（上午）、13:00-15:00（下午）A 股连续竞价时段
-        非交易时段只做轻量判断即返回，不调用同花顺接口，避免无效请求与风控。
-        采集后 on_conflict_do_update 保证同分钟重采覆盖最新值。
+        每分钟触发，直接调用 collector。盘中时段 + 交易日守卫已下沉到
+        collector._update_sector_fund_flow（北京时区，同时覆盖手动触发路径），
+        非盘中/非交易日时 collector 内部直接返回 0，不调用同花顺接口。
         """
-        now = datetime.now()
-
-        # 盘中时段判断（A 股连续竞价：9:30-11:30、13:00-15:00）
-        hm = now.hour * 60 + now.minute
-        in_morning = 9 * 60 + 30 <= hm <= 11 * 60 + 30
-        in_afternoon = 13 * 60 <= hm <= 15 * 60
-        if not (in_morning or in_afternoon):
-            return  # 非盘中时段，跳过（不打日志，避免每分钟刷屏）
-
-        # 交易日判断（节假日跳过）
-        from src.services.trading_calendar import TradingCalendar
-
-        calendar = TradingCalendar()
-        try:
-            is_trading, _ = await calendar.is_trading_day(now.date())
-        except Exception as e:
-            logger.warning(f"[定时任务] 交易日判断失败，保守跳过本次: {e}")
-            return
-        if not is_trading:
-            return  # 非交易日，跳过
-
-        logger.info(f"[定时任务] 开始采集板块资金流即时快照: {now}")
-
         try:
             from src.services.data_updater.collector import DataCollector
 

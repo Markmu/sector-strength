@@ -7,6 +7,7 @@
 import logging
 import uuid
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
@@ -34,6 +35,22 @@ except Exception:  # pragma: no cover - compatibility fallback
             return 0
 
 logger = logging.getLogger(__name__)
+
+# A 股交易时区（同花顺即时资金流口径即北京交易日）。collector 用此时区确定
+# trade_date/sample_time，避免容器 UTC 环境下凌晨采集把"上一交易日"数据标成当天。
+BJ_TZ = ZoneInfo("Asia/Shanghai")
+
+# A 股连续竞价时段（分钟数，含两端）：上午 09:30-11:30、下午 13:00-15:00
+_MORNING_START = 9 * 60 + 30
+_MORNING_END = 11 * 60 + 30
+_AFTERNOON_START = 13 * 60
+_AFTERNOON_END = 15 * 60
+
+
+def _is_intraday_minutes(hour: int, minute: int) -> bool:
+    """当前北京时间是否落在 A 股连续竞价时段内。"""
+    hm = hour * 60 + minute
+    return _MORNING_START <= hm <= _MORNING_END or _AFTERNOON_START <= hm <= _AFTERNOON_END
 
 
 @asynccontextmanager
@@ -342,14 +359,47 @@ class DataCollector:
         盘中每分钟全量采样；同一采样分钟重复触发通过
         on_conflict_do_update 覆盖最新值（命中 uq_sector_fund_flow_sample）。
 
+        守卫（北京时区，覆盖调度器与手动触发两条路径）：
+        - 非盘中时段（9:30-11:30 / 13:00-15:00 之外）：akshare"即时"接口返回的是
+          上一交易日收盘快照，写库会造成 trade_date/sample_time 错位污染曲线 → 跳过。
+        - 非交易日（节假日）：同上，跳过；交易日历判断失败时保守跳过。
+
         Returns:
-            写入/更新的记录条数
+            写入/更新的记录条数（守卫命中时为 0）
         """
-        logger.info("[数据更新] 开始采集板块资金流即时快照")
+        # 用北京时区确定交易日与采样时刻，避免容器 UTC 下凌晨采集错位
+        now = datetime.now(BJ_TZ)
+
+        # 守卫1：盘中时段（非盘中直接返回，不调 akshare，避免无效请求/风控）
+        if not _is_intraday_minutes(now.hour, now.minute):
+            logger.info(
+                "[数据更新] 板块资金流采样跳过：非盘中时段（北京 %02d:%02d）",
+                now.hour,
+                now.minute,
+            )
+            return 0
+
+        trade_date = now.date()
+
+        # 守卫2：交易日（节假日 akshare 即时返回上一交易日快照，写库会错位）
+        calendar = TradingCalendar()
+        try:
+            is_trading, reason = await calendar.is_trading_day(trade_date)
+        except Exception as e:
+            # 判断失败保守跳过（与 job_manager 一致），宁可漏采不错采
+            logger.warning("[数据更新] 板块资金流采样跳过：交易日判断失败 %s", e)
+            return 0
+        if not is_trading:
+            logger.info(
+                "[数据更新] 板块资金流采样跳过：非交易日（%s，%s）",
+                trade_date,
+                reason or "节假日",
+            )
+            return 0
+
+        logger.info("[数据更新] 开始采集板块资金流即时快照（北京 %s）", now)
 
         fetcher = AkshareFundFlowFetcher()
-        now = datetime.now()
-        trade_date = now.date()
         # 精度到分钟：秒/微秒置零，保证同分钟重采命中唯一约束而非新增
         sample_time = now.replace(second=0, microsecond=0)
 
