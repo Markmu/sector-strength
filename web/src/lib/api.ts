@@ -1069,6 +1069,79 @@ export const fundCrowdAnalysisApi = {
     }),
 }
 
+// ===================== 板块资金流（13 期 plan-03）=====================
+//
+// apiClient.baseURL 已含 /api/v1（见上方 API_BASE_WITH_PREFIX，line 9），
+// endpoint 不再带 /api/v1，避免双前缀（与 fundCrowdAnalysisApi 一致）。
+//
+// 契约（plan-02 §3 / 架构 §7.3，dev-plan-check 已验证）：
+// - query 参数 snake_case：sector_type / trade_date / sort_by / order / page / page_size / sector_names
+// - 响应外层 { success, data }，data 内字段经后端 _dict_to_camel 转 camelCase
+// - apiClient.get 泛型 T 必须写 `{ success: boolean; data: 业务对象 }`（与 fundCrowdAnalysisApi
+//   line 1049 一致），否则 hook 层 res.data 取值类型撒谎 + 运行时 undefined。
+import type {
+  FundFlowRankingsData,
+  FundFlowTimeseriesData,
+  FundFlowLatestDateData,
+  FundFlowSortBy,
+  FundFlowOrder,
+} from '@/types/fundFlowTypes'
+
+export type { FundFlowSortBy, FundFlowOrder }
+
+/**
+ * 板块资金流查询 API（排行 / 盘中变化曲线 / 最新交易日）。
+ * 类型定义见 types/fundFlowTypes.ts（camelCase 业务对象）。
+ */
+export const sectorFundFlowApi = {
+  // 资金流排行榜（最新采样点）（AC-01/02/03/04/10/12）
+  getRankings: (params: {
+    sectorType?: SectorType
+    tradeDate?: string | null
+    sortBy?: FundFlowSortBy
+    order?: FundFlowOrder
+    page?: number
+    pageSize?: number
+  }) =>
+    apiClient.get<{ success: boolean; data: FundFlowRankingsData }>(
+      '/sector-fund-flow/rankings',
+      {
+        sector_type: params.sectorType,
+        trade_date: params.tradeDate || undefined,
+        sort_by: params.sortBy,
+        order: params.order,
+        page: params.page || 1,
+        page_size: params.pageSize || 20,
+      }
+    ),
+
+  // 盘中变化曲线（按板块名分组）（AC-06/07/08）
+  getTimeseries: (params: {
+    sectorNames: string[]
+    sectorType?: SectorType
+    tradeDate?: string | null
+  }) =>
+    apiClient.get<{ success: boolean; data: FundFlowTimeseriesData }>(
+      '/sector-fund-flow/timeseries',
+      {
+        // 后端 sector_names 为逗号分隔字符串；空数组走 undefined 避免 ?sector_names=
+        sector_names:
+          params.sectorNames.length > 0 ? params.sectorNames.join(',') : undefined,
+        sector_type: params.sectorType,
+        trade_date: params.tradeDate || undefined,
+      }
+    ),
+
+  // 最新交易日（AC 隐含：日期选择器默认值 + 历史回看）
+  getLatestDate: (params: { sectorType?: SectorType }) =>
+    apiClient.get<{ success: boolean; data: FundFlowLatestDateData }>(
+      '/sector-fund-flow/latest-date',
+      {
+        sector_type: params.sectorType,
+      }
+    ),
+}
+
 // ============== 券商月度金股分析 API（09 期 plan-03）==============
 //
 // apiClient.baseURL 已含 /api/v1（见上方 API_BASE_WITH_PREFIX），

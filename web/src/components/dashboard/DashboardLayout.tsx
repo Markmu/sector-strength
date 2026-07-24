@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Settings, ScatterChart, LineChart, BarChart3, LandmarkIcon, Users, UsersRound, Star } from 'lucide-react';
+import { Settings, ScatterChart, LineChart, BarChart3, LandmarkIcon, Users, UsersRound, Star, ArrowDownUp } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import Sidebar, { SidebarItem } from '@/components/layout/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,6 +23,11 @@ const baseSidebarItems: SidebarItem[] = [
     title: '板块分析',
     href: '/dashboard/sector-analysis',
     icon: <LineChart className="w-5 h-5" />,
+  },
+  {
+    title: '板块资金流',
+    href: '/dashboard/sector-fund-flow',
+    icon: <ArrowDownUp className="w-5 h-5" />,
   },
   {
     title: '板块强弱分类',
