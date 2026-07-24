@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 .pnpm-debug.log*
+# 项目使用 npm（见 CLAUDE.md + package-lock.json）；
+# pnpm 产物不纳入版本控制，避免与 package-lock.json 共存导致依赖解析歧义
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # Environment variables
 .env
