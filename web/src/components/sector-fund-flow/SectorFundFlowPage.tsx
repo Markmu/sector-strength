@@ -8,11 +8,11 @@
  *
  * 状态：
  * - currentView: 'ranking' | 'chart'
- * - sectorType: 'industry' | 'concept' | 'region'（AC-02）
+ * - sectorType: 'industry' | 'concept'（AC-02；数据源同花顺即时资金流仅支持行业/概念）
  * - tradeDate: string | null（默认从 latestDate API 取，AC-04 历史回看）
  * - sortBy / order（AC-03 排序）
  * - page / pageSize（AC-12 分页）
- * - selectedSectors: string[]（AC-06 变化视图自选板块）
+ * - selectedSectors: string[] | null（null=用户未选→渲染期派生默认净流入/流出前十；选中后固定）
  *
  * 状态分支：
  * - AC-09：两视图各自独立加载/失败/空态降级
@@ -25,8 +25,8 @@
  * - 日期：fund-flow-date-input
  * - 刷新：fund-flow-refresh
  */
-import React, { useState, useCallback } from 'react'
-import { LineChartIcon, TableIcon, RefreshCwIcon, XIcon } from 'lucide-react'
+import React, { useState, useCallback, useMemo } from 'react'
+import { LineChartIcon, TableIcon, RefreshCwIcon, XIcon, SearchIcon } from 'lucide-react'
 import {
   useFundFlowRankings,
   useFundFlowTimeseries,
@@ -47,8 +47,9 @@ type CurrentView = 'ranking' | 'chart'
 type PageSize = 20 | 50 | 100
 const PAGE_SIZE_OPTIONS: PageSize[] = [20, 50, 100]
 
-// 曲线视图最多叠加板块数（性能 + 可读性权衡）
-const MAX_SELECTED_SECTORS = 50
+// 默认自动选中：净流入（netInflow>0）前十 + 净流出（netInflow<0）前十，最多 20 个
+const DEFAULT_TOP_INFLOW = 10
+const DEFAULT_TOP_OUTFLOW = 10
 
 export default function SectorFundFlowPage() {
   const [currentView, setCurrentView] = useState<CurrentView>('ranking')
@@ -60,8 +61,12 @@ export default function SectorFundFlowPage() {
   const [order, setOrder] = useState<FundFlowOrder>('desc')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSize>(20)
-  // AC-06：变化视图自选板块（板块名数组）
-  const [selectedSectors, setSelectedSectors] = useState<string[]>([])
+  // AC-06：变化视图自选板块（板块名数组）。
+  // null = 用户尚未做出选择 → 渲染期派生默认选中（流入/流出前十）；
+  // 一旦用户 toggle/remove/clear 即变为具体数组并固定，不再被默认值覆盖。
+  const [selectedSectors, setSelectedSectors] = useState<string[] | null>(null)
+  // 搜索框受控输入值（选中后清空，便于继续搜索下一个板块）
+  const [searchKeyword, setSearchKeyword] = useState('')
 
   // 最新交易日（AC-04：日期 input 默认值 + 判断全局是否有数据）
   const {
@@ -87,9 +92,44 @@ export default function SectorFundFlowPage() {
     mutate: mutateRankings,
   } = useFundFlowRankings(rankingsParams)
 
+  // 变化视图的板块选择候选：独立全量拉取，不受排行分页影响（支持最多叠加 50 个）
+  // 返回完整 item（含 netInflow），用于搜索过滤与默认选中计算
+  const {
+    candidates: candidateItems,
+  } = useFundFlowSectorCandidates(sectorType, tradeDateInput || undefined)
+
+  // 默认选中：净流入前十（netInflow>0）+ 净流出前十（netInflow<0），去重。
+  // 渲染期派生（非 effect），用户做出选择后 selectedSectors 变为具体数组即固定。
+  const defaultSectors = useMemo(() => {
+    if (candidateItems.length === 0) return [] as string[]
+    const inflowTop = candidateItems
+      .filter((i) => (i.netInflow ?? 0) > 0)
+      .sort((a, b) => (b.netInflow ?? 0) - (a.netInflow ?? 0))
+      .slice(0, DEFAULT_TOP_INFLOW)
+      .map((i) => i.sectorName)
+    const outflowTop = candidateItems
+      .filter((i) => (i.netInflow ?? 0) < 0)
+      .sort((a, b) => (a.netInflow ?? 0) - (b.netInflow ?? 0))
+      .slice(0, DEFAULT_TOP_OUTFLOW)
+      .map((i) => i.sectorName)
+    return [...new Set([...inflowTop, ...outflowTop])]
+  }, [candidateItems])
+
+  // 实际生效的选中板块：用户未选择时回退到默认选中
+  const effectiveSectors = selectedSectors ?? defaultSectors
+
+  // 待选板块：按搜索词过滤（空串则全部）
+  const filteredCandidates = useMemo(() => {
+    const kw = searchKeyword.trim()
+    const matched = kw
+      ? candidateItems.filter((i) => i.sectorName.includes(kw))
+      : candidateItems
+    return matched.map((i) => i.sectorName)
+  }, [candidateItems, searchKeyword])
+
   // 盘中变化曲线数据（AC-06）
   const timeseriesParams = {
-    sectorNames: selectedSectors,
+    sectorNames: effectiveSectors,
     sectorType,
     tradeDate: tradeDateInput || undefined,
   }
@@ -101,17 +141,12 @@ export default function SectorFundFlowPage() {
     mutate: mutateTimeseries,
   } = useFundFlowTimeseries(timeseriesParams)
 
-  // 变化视图的板块选择候选：独立全量拉取，不受排行分页影响（支持最多叠加 50 个）
-  const {
-    candidates: sectorCandidates,
-    isLoading: isCandidatesLoading,
-  } = useFundFlowSectorCandidates(sectorType, tradeDateInput || undefined)
-
-  // 维度切换处理：重置分页 + 清空已选板块（不同维度板块名不通，AC-02）
+  // 维度切换处理：重置分页 + 重置已选板块为 null（重新派生默认选中）
   const handleSectorTypeChange = useCallback((next: SectorType) => {
     setSectorType(next)
     setPage(1)
-    setSelectedSectors([])
+    setSelectedSectors(null)
+    setSearchKeyword('')
     // 维度切换后清空日期 input，让后端按新维度取最新（各维度最新日期可能不同）
     setTradeDateInput('')
   }, [])
@@ -150,23 +185,28 @@ export default function SectorFundFlowPage() {
     setPage(1)
   }, [])
 
-  // AC-06：板块选择/移除
+  // AC-06：板块选择/移除（用户操作 → 固定为具体数组）
   const handleToggleSector = useCallback((name: string) => {
     setSelectedSectors((prev) => {
-      if (prev.includes(name)) {
-        return prev.filter((s) => s !== name)
+      const base = prev ?? defaultSectors
+      if (base.includes(name)) {
+        return base.filter((s) => s !== name)
       }
-      if (prev.length >= MAX_SELECTED_SECTORS) return prev
-      return [...prev, name]
+      return [...base, name]
     })
-  }, [])
+  }, [defaultSectors])
 
   const handleRemoveSector = useCallback((name: string) => {
-    setSelectedSectors((prev) => prev.filter((s) => s !== name))
-  }, [])
+    setSelectedSectors((prev) => {
+      const base = prev ?? defaultSectors
+      return base.filter((s) => s !== name)
+    })
+  }, [defaultSectors])
 
   const handleClearSectors = useCallback(() => {
+    // 用户主动清空视为已做出选择 → 固定为空数组，不再回退到默认选中
     setSelectedSectors([])
+    setSearchKeyword('')
   }, [])
 
   // AC-07：刷新（盘中延长）
@@ -241,7 +281,8 @@ export default function SectorFundFlowPage() {
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-muted-foreground">维度</span>
             <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
-              {SECTOR_TYPES.map((t) => (
+              {/* 资金流数据源（同花顺即时）仅支持行业/概念，地域无对应接口与数据 */}
+              {SECTOR_TYPES.filter((t) => t !== 'region').map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -353,30 +394,34 @@ export default function SectorFundFlowPage() {
         </section>
       ) : (
         <section className="bg-card rounded-xl border border-border shadow-sm p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-foreground">
-              {SECTOR_TYPE_LABELS[sectorType]}盘中资金流变化
-            </h2>
-            {selectedSectors.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearSectors}
-                className="text-sm text-muted-foreground hover:text-foreground"
-              >
-                清空选择
-              </button>
-            )}
-          </div>
-
-          {/* 板块选择区：已选 chip + 候选清单 */}
-          <div className="space-y-3">
-            {/* 已选板块 chips（AC-06：可移除） */}
-            {selectedSectors.length > 0 && (
+          {/* 顶部：已选板块（横跨整张卡片） */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                <LineChartIcon className="w-5 h-5 text-primary" />
+                {SECTOR_TYPE_LABELS[sectorType]}盘中资金流变化
+                {effectiveSectors.length > 0 && (
+                  <span className="text-sm font-normal text-muted-foreground">
+                    已选 {effectiveSectors.length}
+                  </span>
+                )}
+              </h2>
+              {effectiveSectors.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearSectors}
+                  className="shrink-0 text-sm text-muted-foreground hover:text-foreground whitespace-nowrap"
+                >
+                  清空选择
+                </button>
+              )}
+            </div>
+            {effectiveSectors.length > 0 ? (
               <div
                 className="flex flex-wrap gap-2"
                 data-testid="fund-flow-selected-sectors"
               >
-                {selectedSectors.map((name) => (
+                {effectiveSectors.map((name) => (
                   <span
                     key={name}
                     className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full bg-primary/10 text-primary border border-primary/30"
@@ -394,96 +439,117 @@ export default function SectorFundFlowPage() {
                   </span>
                 ))}
               </div>
-            )}
-
-            {/* 候选板块（来自当前维度排行榜） */}
-            <div className="space-y-2">
+            ) : (
               <div className="text-xs text-muted-foreground">
-                从当前{SECTOR_TYPE_LABELS[sectorType]}排行选择板块叠加（最多 {MAX_SELECTED_SECTORS} 个）
-                {selectedSectors.length > 0 &&
-                  `，已选 ${selectedSectors.length}/${MAX_SELECTED_SECTORS}`}
+                暂无选中板块，请在右侧搜索选择
               </div>
-              {isCandidatesLoading ? (
-                <div className="text-xs text-muted-foreground">板块清单加载中...</div>
-              ) : sectorCandidates.length === 0 ? (
-                <div className="text-xs text-muted-foreground">
-                  暂无可用板块，请切换维度或日期
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2" data-testid="fund-flow-sector-candidates">
-                  {sectorCandidates.map((name) => {
-                    const active = selectedSectors.includes(name)
-                    const disabled = !active && selectedSectors.length >= MAX_SELECTED_SECTORS
-                    return (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => handleToggleSector(name)}
-                        disabled={disabled}
-                        data-testid={`fund-flow-toggle-sector-${name}`}
-                        className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                          active
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : disabled
-                              ? 'bg-background text-muted-foreground/40 border-border cursor-not-allowed'
-                              : 'bg-background text-foreground border-border hover:border-muted-foreground'
-                        }`}
-                      >
-                        {name}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
-          {/* 曲线渲染（含三态） */}
-          {isTimeseriesError ? (
-            <div
-              className="p-8 text-center"
-              data-testid="fund-flow-timeseries-error"
-            >
-              <p className="text-sm text-muted-foreground mb-3">盘中变化数据加载失败</p>
-              <button
-                type="button"
-                onClick={() => mutateTimeseries()}
-                data-testid="fund-flow-timeseries-retry"
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+          {/* 双栏：左大栏图表 / 右窄栏搜索 + 待选板块 */}
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* 左：曲线渲染（含三态） */}
+            <div className="lg:flex-[3] min-w-0">
+              {isTimeseriesError ? (
+                <div
+                  className="p-8 text-center"
+                  data-testid="fund-flow-timeseries-error"
+                >
+                  <p className="text-sm text-muted-foreground mb-3">盘中变化数据加载失败</p>
+                  <button
+                    type="button"
+                    onClick={() => mutateTimeseries()}
+                    data-testid="fund-flow-timeseries-retry"
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    重试
+                  </button>
+                </div>
+              ) : effectiveSectors.length === 0 ? (
+                // AC-05：未选板块 → 引导态不画空坐标系
+                <div
+                  className="p-12 text-center border border-dashed border-border rounded-lg"
+                  data-testid="fund-flow-timeseries-guide"
+                >
+                  <LineChartIcon className="w-10 h-10 mx-auto mb-3 text-muted-foreground/50" />
+                  <p className="text-base font-medium text-foreground mb-1">请选择要对比的板块</p>
+                  <p className="text-sm text-muted-foreground">
+                    在右侧搜索框输入板块名并点选，即可叠加查看盘中净额变化曲线
+                  </p>
+                </div>
+              ) : isTimeseriesLoading ? (
+                <div className="h-80 flex items-center justify-center text-muted-foreground text-sm">
+                  加载盘中变化数据...
+                </div>
+              ) : !timeseries?.hasData || (timeseries?.series ?? []).length === 0 ? (
+                // AC-08：无采样数据 → 空态
+                <div
+                  className="p-12 text-center border border-dashed border-border rounded-lg"
+                  data-testid="fund-flow-timeseries-empty"
+                >
+                  <p className="text-base font-medium text-foreground mb-1">暂无盘中采样数据</p>
+                  <p className="text-sm text-muted-foreground">
+                    该日期非交易日或尚未产生盘中采样，请切换有数据的交易日回看
+                  </p>
+                </div>
+              ) : (
+                <FundFlowTimeseriesChart data={timeseries} />
+              )}
+            </div>
+
+            {/* 右：搜索框 + 待选板块清单 */}
+            <div className="lg:flex-[1] lg:w-72 flex flex-col gap-2 lg:border-l lg:border-border lg:pl-4">
+              {/* 搜索框（即时过滤下方待选清单） */}
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <SearchIcon className="w-4 h-4 text-faint" />
+                </div>
+                <input
+                  type="text"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  placeholder="搜索板块名…"
+                  className="block w-full text-sm border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-light border-border bg-card text-foreground placeholder-faint focus:border-primary pl-10 pr-4 py-2.5"
+                />
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                点击板块加入/移除
+              </div>
+
+              {/* 待选板块清单（按搜索词过滤，可滚动） */}
+              <div
+                className="flex flex-wrap gap-2 overflow-y-auto max-h-96 lg:max-h-[28rem] content-start"
+                data-testid="fund-flow-sector-candidates"
               >
-                重试
-              </button>
+                {filteredCandidates.map((name) => {
+                  const active = effectiveSectors.includes(name)
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => handleToggleSector(name)}
+                      data-testid={`fund-flow-toggle-sector-${name}`}
+                      className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                        active
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background text-foreground border-border hover:border-muted-foreground'
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  )
+                })}
+                {filteredCandidates.length === 0 && (
+                  <div className="text-xs text-muted-foreground py-2">
+                    {candidateItems.length === 0
+                      ? '暂无可用板块，请切换维度或日期'
+                      : '无匹配板块'}
+                  </div>
+                )}
+              </div>
             </div>
-          ) : selectedSectors.length === 0 ? (
-            // AC-05：未选板块 → 引导态不画空坐标系
-            <div
-              className="p-12 text-center border border-dashed border-border rounded-lg"
-              data-testid="fund-flow-timeseries-guide"
-            >
-              <LineChartIcon className="w-10 h-10 mx-auto mb-3 text-muted-foreground/50" />
-              <p className="text-base font-medium text-foreground mb-1">请选择要对比的板块</p>
-              <p className="text-sm text-muted-foreground">
-                从上方板块清单选择 2-3 个板块，即可叠加查看盘中净额变化曲线
-              </p>
-            </div>
-          ) : isTimeseriesLoading ? (
-            <div className="h-80 flex items-center justify-center text-muted-foreground text-sm">
-              加载盘中变化数据...
-            </div>
-          ) : !timeseries?.hasData || (timeseries?.series ?? []).length === 0 ? (
-            // AC-08：无采样数据 → 空态
-            <div
-              className="p-12 text-center border border-dashed border-border rounded-lg"
-              data-testid="fund-flow-timeseries-empty"
-            >
-              <p className="text-base font-medium text-foreground mb-1">暂无盘中采样数据</p>
-              <p className="text-sm text-muted-foreground">
-                该日期非交易日或尚未产生盘中采样，请切换有数据的交易日回看
-              </p>
-            </div>
-          ) : (
-            <FundFlowTimeseriesChart data={timeseries} />
-          )}
+          </div>
         </section>
       )}
 

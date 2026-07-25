@@ -13,6 +13,7 @@ import useSWR from 'swr'
 import { sectorFundFlowApi } from '@/lib/api'
 import type { SectorType } from '@/types/sectorTypes'
 import type {
+  FundFlowRankingItem,
   FundFlowRankingsData,
   FundFlowTimeseriesData,
   FundFlowLatestDateData,
@@ -69,8 +70,9 @@ export function useFundFlowRankings(params: UseFundFlowRankingsParams) {
 // ============== 板块候选清单（变化视图用，全量，不受排行分页影响）==============
 
 /**
- * 变化曲线视图的板块选择候选：拉取当前维度下全部板块名。
- * 与排行视图的分页解耦——用足够大的 page_size 一次取全，保证用户最多可叠加 50 个。
+ * 变化曲线视图的板块选择候选：拉取当前维度下全部板块排行项。
+ * 返回完整 FundFlowRankingItem[]（含 netInflow），供页面计算默认选中（流入/流出前十）
+ * 及搜索过滤。与排行视图的分页解耦——用足够大的 page_size 一次取全，保证用户最多可叠加 50 个。
  */
 export function useFundFlowSectorCandidates(
   sectorType: SectorType | undefined,
@@ -100,7 +102,7 @@ export function useFundFlowSectorCandidates(
   )
 
   return {
-    candidates: (data?.data?.items ?? []).map((i) => i.sectorName),
+    candidates: (data?.data?.items ?? []) as FundFlowRankingItem[],
     isLoading,
     isError: error,
   }
