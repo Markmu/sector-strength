@@ -16,8 +16,9 @@
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import desc, asc, func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -253,6 +254,11 @@ class SectorFundFlowService:
                 {"sample_time": sample_time, "net_inflow": net_inflow}
             )
 
+        # 收盘点补齐：盘中采集受调度漂移影响，常采不到 15:00 整点。
+        # 对「已收盘」的交易日，用最后一份盘中快照补一个 15:00 点，
+        # 让前端横轴稳定覆盖到收盘（值近似，标记 close_filled=True 供前端区分）。
+        self._fill_close_snapshot(grouped, trade_date)
+
         # series 顺序按请求 sector_names 中存在数据的顺序
         series = [
             {"sector_name": name, "data": grouped[name]}
@@ -285,3 +291,53 @@ class SectorFundFlowService:
             SectorFundFlow.sector_type == sector_type
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    # A 股交易时段（北京时间）：9:30-11:30 / 13:00-15:00，收盘 15:00
+    _BJ_TZ = ZoneInfo("Asia/Shanghai")
+    _CLOSE_TIME = (15, 0)  # 收盘时分
+
+    def _fill_close_snapshot(
+        self, grouped: dict[str, list[dict]], trade_date: date
+    ) -> None:
+        """对已收盘的交易日，给每个板块补一个 15:00 收盘点（值=最后一份盘中快照）。
+
+        补点条件：交易日已收盘（trade_date < 今天，或今天且北京现时 ≥ 15:00），
+        且该板块最后一点早于 15:00（避免重复）。值近似复用最后一份快照。
+
+        注意：sample_time 列为 naive DateTime，DB 实际存北京时间 wall-clock
+        （采集用 datetime.now(BJ_TZ) 写入）。故补点也用 naive，口径与现有数据一致，
+        避免前端混合时区解析。
+        """
+        # 仅当交易日已收盘时补点，盘中不补（否则会在未收盘时塞伪收盘点）
+        now_bj = datetime.now(self._BJ_TZ)
+        is_closed = trade_date < now_bj.date() or (
+            trade_date == now_bj.date()
+            and (now_bj.hour, now_bj.minute) >= self._CLOSE_TIME
+        )
+        if not is_closed:
+            return
+
+        # naive 收盘时间（北京 wall-clock，与 DB 存储口径一致）
+        close_naive = datetime(
+            trade_date.year,
+            trade_date.month,
+            trade_date.day,
+            self._CLOSE_TIME[0],
+            self._CLOSE_TIME[1],
+        )
+        for points in grouped.values():
+            if not points:
+                continue
+            last = points[-1]
+            # 统一为 naive 比较（DB 读出为 naive；防御 aware 情况）
+            last_time = last["sample_time"]
+            lt_naive = last_time.replace(tzinfo=None) if last_time.tzinfo else last_time
+            if lt_naive >= close_naive:
+                continue  # 已有 ≥15:00 的点，不重复补
+            points.append(
+                {
+                    "sample_time": close_naive,
+                    "net_inflow": last["net_inflow"],
+                    "close_filled": True,
+                }
+            )

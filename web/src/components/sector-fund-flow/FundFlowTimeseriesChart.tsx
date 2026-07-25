@@ -10,8 +10,9 @@
  * - 多线叠加，每个板块一种颜色
  * - 横轴 = 交易时段时间（HH:mm），纵轴 = 净额（亿），零轴基线（markLine）
  * - 鼠标悬停 tooltip 显示各板块该时点净额
- * - 每条曲线末端：markPoint 锚点小圆点 + markLine 水平连线（连线长度=间距），
- *   连线末端 label 为无边框气泡（板块名 + 最新净额，红正绿负）
+ * - 每条曲线末端：custom series（clip:false）在 grid 右侧轴外区画
+ *   圆点 + 水平连线 + 文字气泡（板块名 + 最新净额，红正绿负）；
+ *   连线长度由像素常量控制，不向横轴追加占位时间
  *
  * 空态由父组件处理（未选板块引导态 / 无采样数据空态）；本组件仅在 series 非空时渲染。
  *
@@ -75,17 +76,17 @@ export default function FundFlowTimeseriesChart({
     })
     const times = Array.from(timeSet).sort()
 
-    // 在最后一个采样时间之后追加一个「占位时间」，仅用于末端连线 markLine 的右端坐标，
-    // 让连线能从曲线末端水平延伸出去（连线长度 ≈ 该时间跨度对应的像素宽）。
-    // 所有 series 在该时间点为 null，不会画出多余线段。
-    const padTime = (() => {
-      if (times.length === 0) return null
-      const last = new Date(times[times.length - 1])
-      if (Number.isNaN(last.getTime())) return null
-      last.setMinutes(last.getMinutes() + 15)
-      return last.toISOString()
-    })()
-    const axisTimes = padTime ? [...times, padTime] : times
+    // 横轴只含真实采样时间；末端引导线由 custom series 画在 grid 右侧轴外区，
+    // 不再追加占位时间（避免污染横轴数据/刻度）。
+    const axisTimes = times
+    // 每条线末端元信息：供 custom series 的 renderItem 画 轴外圆点+连线+文字
+    const endLabelMeta: Array<{
+      name: string
+      color: string
+      valueColor: string
+      lastIdx: number
+      lastVal: number
+    }> = []
 
     // 每板块一条线：以并集时间为横轴，缺失时点插 null（断线，不连零）
     const echartsSeries = series.map((s, idx) => {
@@ -102,11 +103,11 @@ export default function FundFlowTimeseriesChart({
       })
       // 末端标签净额取该板块最后一个有效采样点
       let latestNetInflow: number | null = null
-      let lastValidTime: string | null = null
+      let lastValidIndex = -1
       for (let i = pointValues.length - 1; i >= 0; i--) {
         if (pointValues[i] !== null) {
           latestNetInflow = pointValues[i]
-          lastValidTime = times[i]
+          lastValidIndex = i
           break
         }
       }
@@ -117,6 +118,17 @@ export default function FundFlowTimeseriesChart({
           : latestNetInflow > 0
             ? '#EF4444'
             : '#10B981'
+
+      // 收集末端元信息，供 custom series 在轴外画 圆点+连线+文字
+      if (latestNetInflow !== null && lastValidIndex >= 0) {
+        endLabelMeta.push({
+          name: s.sectorName,
+          color: lineColor,
+          valueColor,
+          lastIdx: lastValidIndex,
+          lastVal: latestNetInflow,
+        })
+      }
 
       return {
         name: s.sectorName,
@@ -129,75 +141,102 @@ export default function FundFlowTimeseriesChart({
         lineStyle: { width: 2, color: lineColor },
         itemStyle: { color: lineColor },
         connectNulls: false,
-        // 末端气泡（endLabel）：无边框，板块名 + 最新净额（红正绿负）。
-        // endLabel 是折线图末端气泡唯一可靠渲染方式；小 distance 让气泡紧贴连线末端。
-        endLabel: {
-          show: true,
-          valueAnimation: false,
-          // 极小边距，气泡紧贴连线末端
-          distance: 2,
-          padding: [3, 6],
-          backgroundColor: 'rgba(255,255,255,0.95)',
-          borderRadius: 4,
-          fontSize: 11,
-          color: '#374151',
-          formatter: () => {
-            const valText =
-              latestNetInflow === null ? '—' : formatSignedAmount(latestNetInflow)
-            return `{name|${s.sectorName}}  {val|${valText}}`
-          },
-          rich: {
-            name: { color: '#374151', fontSize: 11, width: 70, overflow: 'truncate' as const, ellipsis: '…' },
-            val: { color: valueColor, fontSize: 11, fontWeight: 600 },
-          },
-        },
-        // 末端标签防重叠：重叠时下移
-        labelLayout: {
-          hideOverlap: false,
-          moveOverlap: 'shiftY' as const,
-        },
-        // markLine 合并：零轴基线（仅首条线）+ 末端连线（每条线，水平延伸到占位时间）
-        // 末端连线长度 = 曲线末端到气泡的间距（由占位时间跨度决定）
-        markLine: {
-          silent: true,
-          symbol: 'none',
-          lineStyle: { width: 1 },
-          data: [
-            // 零轴基线（仅首条线附加，避免重复）
-            ...(idx === 0
-              ? [{ yAxis: 0, lineStyle: { type: 'dashed' as const, color: '#9CA3AF' } }]
-              : []),
-            // 末端连线：从最后一个有效点水平延伸到占位时间点
-            // coord 用与 x 轴类别一致的「HH:mm」格式（formatSampleTime）
-            // 注意：markLine 的 data 每条线段必须是 [起点, 终点] 的二元数组
-            ...(lastValidTime !== null && latestNetInflow !== null && padTime
-              ? [
-                  [
-                    { coord: [formatSampleTime(lastValidTime), latestNetInflow] },
-                    {
-                      coord: [formatSampleTime(padTime), latestNetInflow],
-                      lineStyle: { color: lineColor },
-                    },
-                  ],
-                ]
-              : []),
-          ],
-        },
-        // 末端锚点小圆点（在最后一个有效点上），用 markPoint symbol 可靠渲染
-        ...(lastValidTime !== null && latestNetInflow !== null
-          ? {
-              markPoint: {
+        // 零轴基线（仅首条线附加，避免重复）；末端引导改由轴外 custom series 绘制
+        markLine:
+          idx === 0
+            ? {
                 silent: true,
-                symbol: 'circle',
-                symbolSize: 5,
-                itemStyle: { color: lineColor },
-                label: { show: false },
-                data: [{ coord: [formatSampleTime(lastValidTime), latestNetInflow] }],
-              },
-            }
-          : {}),
+                symbol: 'none',
+                data: [{ yAxis: 0, lineStyle: { type: 'dashed' as const, color: '#9CA3AF' } }],
+              }
+            : undefined,
       }
     })
+
+    // 末端引导：custom series 在 grid 右侧轴外区画 圆点+水平连线+文字。
+    // clip:false 使图形不被 grid 裁剪；连线长度由 LEADER_PX 像素级控制。
+    // data 为每条线末端点 [lastIdx, lastVal]，落在已有数据范围内，不影响轴范围。
+    const LEADER_PX = 28
+    const TEXT_GAP = 6
+    // 文字最小垂直间距：行高(11) + 余量，保证多线末端气泡互不重叠
+    const MIN_LABEL_GAP = 14
+    const endGuideSeries = {
+      type: 'custom' as const,
+      clip: false,
+      tooltip: { show: false },
+      renderItem: (
+        params: { dataIndex: number; coordSys: { x: number; width: number } },
+        api: { coord: (data: [number, number]) => [number, number] }
+      ) => {
+        const meta = endLabelMeta[params.dataIndex]
+        if (!meta) return undefined
+        const p0 = api.coord([meta.lastIdx, meta.lastVal])
+        if (!p0 || p0.some((n) => Number.isNaN(n))) return undefined
+        const lineEndX = params.coordSys.x + params.coordSys.width + LEADER_PX
+        // 防重叠：把所有板块终点像素 y 算出，按升序贪心下移，保证相邻文字 ≥ MIN_LABEL_GAP。
+        // 每次 renderItem 重算（确定性 O(n log n)，n=板块数，可忽略）；文字错开后，
+        // 连线终点 y 跟随文字 → 文字被挤下时连线自动变成指向文字的斜线。
+        const finalY = (() => {
+          const items = endLabelMeta.map((m, i) => ({
+            i,
+            origY: api.coord([m.lastIdx, m.lastVal])[1],
+          }))
+          items.sort((a, b) => a.origY - b.origY)
+          let cursor = -Infinity
+          let resolved = p0[1]
+          for (const it of items) {
+            const y = Math.max(it.origY, cursor)
+            if (it.i === params.dataIndex) resolved = y
+            cursor = y + MIN_LABEL_GAP
+          }
+          return resolved
+        })()
+        return {
+          type: 'group',
+          children: [
+            // 末端锚点（曲线真实终点）
+            {
+              type: 'circle',
+              shape: { cx: p0[0], cy: p0[1], r: 3 },
+              style: { fill: meta.color },
+            },
+            // 终点 → 文字：终点 y 用错开后的 finalY，需要时为斜线
+            {
+              type: 'line',
+              shape: { x1: p0[0], y1: p0[1], x2: lineEndX, y2: finalY },
+              style: { stroke: meta.color, lineWidth: 1 },
+            },
+            // 文字气泡：板块名 + 最新净额（红正绿负）
+            {
+              type: 'text',
+              style: {
+                x: lineEndX + TEXT_GAP,
+                y: finalY,
+                text: `{n|${meta.name}}  {v|${formatSignedAmount(meta.lastVal)}}`,
+                rich: {
+                  n: {
+                    fill: '#374151',
+                    fontSize: 11,
+                    width: 70,
+                    overflow: 'truncate' as const,
+                    ellipsis: '…',
+                    textVerticalAlign: 'middle' as const,
+                  },
+                  v: {
+                    fill: meta.valueColor,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    textVerticalAlign: 'middle' as const,
+                  },
+                },
+                textVerticalAlign: 'middle' as const,
+              },
+            },
+          ],
+        }
+      },
+      data: endLabelMeta.map((m) => [m.lastIdx, m.lastVal]),
+    }
 
     return {
       tooltip: {
@@ -210,6 +249,8 @@ export default function FundFlowTimeseriesChart({
           let html = `<div style="font-weight:600;margin-bottom:4px;">${formatSampleTime(t)}</div>`
           html += '<div style="max-height:240px;overflow-y:auto;">'
           params.forEach((p) => {
+            // 跳过末端引导 custom series（轴外装饰，不参与 tooltip）
+            if ((p as { seriesType?: string }).seriesType === 'custom') return
             const val = p.data
             html += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
               <span style="display:inline-block;width:10px;height:10px;background:${p.color};border-radius:50%;"></span>
@@ -224,23 +265,28 @@ export default function FundFlowTimeseriesChart({
       // 用末端气泡替代内置 legend
       legend: { show: false },
       grid: {
-        // 右侧留白给末端气泡，避免被裁切
+        // 右侧留白给末端连线+气泡，避免被裁切
         left: '3%',
-        right: '18%',
+        right: '22%',
         bottom: '8%',
         top: '8%',
         containLabel: true,
       },
       xAxis: {
         type: 'category' as const,
-        // 含末端占位时间（供连线右端坐标）；占位刻度不显示标签
+        // 仅真实采样时间，不再追加占位刻度
         data: axisTimes.map((t) => formatSampleTime(t)),
         boundaryGap: false,
         axisLabel: {
           fontSize: 11,
-          // 隐藏占位刻度标签（最后一个）
-          formatter: (value: string, index: number) =>
-            index === axisTimes.length - 1 && padTime ? '' : value,
+          // category 轴默认 interval:'auto' 会按像素稀疏化刻度，
+          // 盘中每分钟约 240 个刻度，15:00 常被跳过。这里显式控制：
+          // 半小时整点(:00/:30)显示，并强制最后一个刻度(15:00 收盘)显示。
+          interval: (index: number, value: string) => {
+            if (index === axisTimes.length - 1) return true
+            const mm = value.slice(-2)
+            return mm === '00' || mm === '30'
+          },
         },
       },
       yAxis: {
@@ -253,7 +299,7 @@ export default function FundFlowTimeseriesChart({
         },
         splitLine: { lineStyle: { type: 'dashed' as const } },
       },
-      series: echartsSeries,
+      series: [...echartsSeries, endGuideSeries],
     }
   }, [data])
 
