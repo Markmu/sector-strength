@@ -7,7 +7,6 @@ Admin API 路由模块
 - 股票十大流通股东同步 (init_top10_holders.py)
 - 异步任务管理 (tasks.py)
 - RBAC 权限管理 (rbac.py)
-- 板块分类管理 (sector_classifications.py)
 """
 
 from fastapi import APIRouter
@@ -18,7 +17,6 @@ from .init_broker_recommend import router as init_broker_recommend_router
 from .init_sector_fund_flow import router as init_sector_fund_flow_router
 from .tasks import router as tasks_router
 from .rbac import router as rbac_router
-from .sector_classifications import router as sector_classifications_router
 from .data_status import router as data_status_router
 from .users import router as users_router
 from .shareholder_groups import router as shareholder_groups_router
@@ -35,7 +33,6 @@ router.include_router(init_broker_recommend_router)  # /api/admin/init/broker-re
 router.include_router(init_sector_fund_flow_router)  # /api/admin/init/sector-fund-flow
 router.include_router(tasks_router)   # /api/admin/tasks/*
 router.include_router(rbac_router)    # /api/admin/*
-router.include_router(sector_classifications_router)  # /api/admin/sector-classification/*
 router.include_router(data_status_router)  # /api/admin/data/*
 router.include_router(users_router)  # /api/admin/users/*
 router.include_router(shareholder_groups_router)  # /api/admin/shareholder-groups/*

@@ -15,7 +15,7 @@ from src.api.router import router as api_router
 from src.api.exceptions import APIError, api_error_handler, generic_error_handler
 from sqlalchemy import text
 from src.db.database import engine, AsyncSessionLocal
-from src.api.v1.error_handlers import register_classification_exception_handlers
+from src.api.v1.error_handlers import register_exception_handlers
 from src.core.middleware.response_logging import ResponseLoggingMiddleware
 
 # 导入任务执行器
@@ -88,8 +88,8 @@ setup_exception_handlers(app)
 app.add_exception_handler(APIError, api_error_handler)
 app.add_exception_handler(Exception, generic_error_handler)
 
-# 注册分类异常处理器
-register_classification_exception_handlers(app)
+# 注册异常处理器
+register_exception_handlers(app)
 
 # CORS 中间件
 app.add_middleware(

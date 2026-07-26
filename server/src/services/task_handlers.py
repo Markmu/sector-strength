@@ -19,7 +19,6 @@ from src.services.data_init import DataInitService
 from src.services.data_update import DataUpdateService
 from src.services.sector_ma_service import SectorMAService
 from src.services.sector_strength_service import SectorStrengthService
-from src.services.sector_classification_service import SectorClassificationService
 
 # ============== 任务类型常量 ==============
 
@@ -52,10 +51,6 @@ class TaskType(str, Enum):
     BACKFILL_HISTORY = "backfill_history"
     BACKFILL_MA = "backfill_ma"
     BACKFILL_STRENGTH = "backfill_strength"
-
-    # 板块分类任务
-    INIT_SECTOR_CLASSIFICATIONS = "init_sector_classifications"
-    UPDATE_SECTOR_CLASSIFICATION_DAILY = "update_sector_classification_daily"
 
     # 基金数据同步任务
     SYNC_FUND_BASIC = "sync_fund_basic"
@@ -628,8 +623,6 @@ __all__ = [
     "calculate_sector_strength_by_date_task",
     "calculate_sector_strength_by_range_task",
     "calculate_sector_strength_full_history_task",
-    "init_sector_classifications_task",
-    "update_sector_classification_daily_task",
     "backfill_history_task",
     "backfill_ma_task",
     "backfill_strength_task",
@@ -831,117 +824,6 @@ async def calculate_sector_strength_full_history_task(
     else:
         error_msg = result.get("error", "Unknown error")
         await manager.log_message(task_id, "ERROR", f"Sector strength calculation failed: {error_msg}")
-        raise Exception(error_msg)
-
-
-# ============== 板块分类数据初始化任务 ==============
-
-@TaskRegistry.register(TaskType.INIT_SECTOR_CLASSIFICATIONS)
-async def init_sector_classifications_task(
-    task_id: str,
-    params: Dict[str, Any],
-    manager: TaskManager,
-) -> None:
-    """
-    板块分类历史初始化任务
-
-    Args:
-        task_id: 任务ID
-        params: 任务参数 {
-            "start_date": "YYYY-MM-DD" | None,  # 起始日期，None表示从最早日期开始
-            "overwrite": false  # 是否覆盖已有数据
-        }
-        manager: 任务管理器
-    """
-    service = SectorClassificationService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
-    service.set_progress_callback(callback)
-
-    start_date_str = params.get("start_date")
-    start_date = date.fromisoformat(start_date_str) if start_date_str else None
-    overwrite = params.get("overwrite", False)
-
-    await manager.log_message(
-        task_id,
-        "INFO",
-        f"Starting sector classification initialization (start_date: {start_date or 'earliest'}, overwrite: {overwrite})"
-    )
-
-    result = await service.initialize_classifications(
-        start_date=start_date,
-        overwrite=overwrite
-    )
-
-    if result.get("success"):
-        total = result.get("total_sectors", 0)
-        created = result.get("created", 0)
-        updated = result.get("updated", 0)
-        skipped = result.get("skipped", 0)
-        errors = result.get("errors", 0)
-
-        await manager.log_message(
-            task_id,
-            "INFO",
-            f"Sector classification initialization completed: {total} sectors processed, "
-            f"{created} created, {updated} updated, {skipped} skipped, {errors} errors"
-        )
-    else:
-        error_msg = result.get("error", "Unknown error")
-        await manager.log_message(task_id, "ERROR", f"Classification initialization failed: {error_msg}")
-        raise Exception(error_msg)
-
-
-@TaskRegistry.register(TaskType.UPDATE_SECTOR_CLASSIFICATION_DAILY)
-async def update_sector_classification_daily_task(
-    task_id: str,
-    params: Dict[str, Any],
-    manager: TaskManager,
-) -> None:
-    """
-    板块分类每日增量更新任务
-
-    Args:
-        task_id: 任务ID
-        params: 任务参数 {
-            "target_date": "YYYY-MM-DD" | None,  # 目标日期，None表示今天
-            "overwrite": false  # 是否覆盖已有数据
-        }
-        manager: 任务管理器
-    """
-    service = SectorClassificationService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
-    service.set_progress_callback(callback)
-
-    target_date_str = params.get("target_date")
-    target_date = date.fromisoformat(target_date_str) if target_date_str else None
-    overwrite = params.get("overwrite", False)
-
-    await manager.log_message(
-        task_id,
-        "INFO",
-        f"Starting daily classification update (target_date: {target_date or 'today'}, overwrite: {overwrite})"
-    )
-
-    result = await service.update_daily_classification(
-        target_date=target_date,
-        overwrite=overwrite
-    )
-
-    if result.get("success"):
-        total = result.get("total_sectors", 0)
-        created = result.get("created", 0)
-        updated = result.get("updated", 0)
-        skipped = result.get("skipped", 0)
-
-        await manager.log_message(
-            task_id,
-            "INFO",
-            f"Daily classification update completed: {total} sectors processed, "
-            f"{created} created, {updated} updated, {skipped} skipped, cache cleared"
-        )
-    else:
-        error_msg = result.get("error", "Unknown error")
-        await manager.log_message(task_id, "ERROR", f"Daily classification update failed: {error_msg}")
         raise Exception(error_msg)
 
 

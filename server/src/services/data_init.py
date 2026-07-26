@@ -111,23 +111,14 @@ class DataInitService:
         级联删除一个 sector 的所有衍生数据。
 
         删除顺序按依赖从子到父：
-          1. sector_classification（用 sector_id FK，与其他多态 entity 表不同）
-          2. strength_scores (entity_type='sector')
-          3. moving_average_data (entity_type='sector')
-          4. daily_market_data (entity_type='sector')
-          5. sectors 本身
+          1. strength_scores (entity_type='sector')
+          2. moving_average_data (entity_type='sector')
+          3. daily_market_data (entity_type='sector')
+          4. sectors 本身
         sector_stocks 关联在调用方按 sector_code 批量清理。
         """
-        from src.models.sector_classification import SectorClassification
         from src.models.strength_score import StrengthScore
         from src.models.moving_average_data import MovingAverageData
-
-        # sector_classification 用 sector_id 列，没有 entity_type
-        await self.session.execute(
-            delete(SectorClassification).where(
-                SectorClassification.sector_id == sector_id
-            )
-        )
 
         # 通用多态 entity 表
         for model in (StrengthScore, MovingAverageData, DailyMarketData):
