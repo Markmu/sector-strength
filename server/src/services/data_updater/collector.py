@@ -400,8 +400,11 @@ class DataCollector:
         logger.info("[数据更新] 开始采集板块资金流即时快照（北京 %s）", now)
 
         fetcher = AkshareFundFlowFetcher()
-        # 精度到分钟：秒/微秒置零，保证同分钟重采命中唯一约束而非新增
-        sample_time = now.replace(second=0, microsecond=0)
+        # 精度到分钟：秒/微秒置零，保证同分钟重采命中唯一约束而非新增。
+        # sample_time 列为 naive DateTime（TIMESTAMP WITHOUT TIME ZONE），DB 实际存
+        # 北京 wall-clock；aware datetime 写入会触发 asyncpg naive/aware 比较错误，
+        # 故剥离 tzinfo 转为 naive（值仍是北京 wall-clock，口径与补点逻辑一致）。
+        sample_time = now.replace(second=0, microsecond=0, tzinfo=None)
 
         total_count = 0
         async with get_session() as session:
