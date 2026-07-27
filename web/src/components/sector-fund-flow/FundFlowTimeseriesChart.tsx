@@ -209,9 +209,64 @@ export default function FundFlowTimeseriesChart({
       }))
 
       // 末端引导 custom series（圆点 + 短斜线 + 文字气泡）
-      const LEADER_PX = 16
-      const TEXT_GAP = 4
-      const MIN_LABEL_GAP = 14
+      // 几何常量：单位均为像素。中文 fontSize:11 实际渲染行高约 16-18px，
+      // 间距分两档自适应：充裕用 GOAL_GAP(18)，紧张收缩到 FLOOR_GAP(12)，
+      // 极拥挤（标签数超过可用高度）线性压缩保证全部可见、不顶出画布。
+      const LEADER_PX = 16            // 末端点 → 文字气泡的水平连线长度
+      const TEXT_GAP = 4              // 连线终点 → 文字左边缘的间隙
+      const GOAL_GAP = 18             // 目标间距（空间充裕，≥ 中文行高）
+      const FLOOR_GAP = 12            // 极限下限（空间紧张收缩到此，仍勉强可读）
+      const LABEL_PADDING_X = 5       // 文字背景圆角矩形左右内边距
+      const LABEL_PADDING_Y = 2       // 文字背景圆角矩形上下内边距
+      const LABEL_RADIUS = 3          // 文字背景圆角半径
+
+      // 防重叠放置：阶段1 贪心「仅下推」保证相邻 ≥ gap 且不重叠就不让位（自适应）；
+      // 阶段2 边界适配修正顶/底消失。返回每个标签的 [y, 生效间距]。
+      // - span <= availSpan（能放下）：求合法平移区间，必非空 → 平移后顶/底都在界内。
+      // - span >  availSpan（放不下）：线性映射到边界内，等比压缩，全部可见。
+      const placeLabels = (
+        items: Array<{ i: number; origY: number }>,
+        gap: number,
+        topLimit: number,
+        bottomLimit: number
+      ): Array<{ y: number; effGap: number }> => {
+        // 阶段1：贪心放置（仅下推，不重叠就不让位 → 自然贴近曲线末端原位）
+        const placedY: number[] = []
+        for (const it of items) {
+          let y = it.origY
+          if (placedY.length > 0) {
+            const last = placedY[placedY.length - 1]
+            if (last + gap > y) y = last + gap
+          }
+          placedY.push(y)
+        }
+        // 阶段2：边界适配
+        const minY = placedY[0]
+        const maxY = placedY[placedY.length - 1]
+        const span = maxY - minY
+        const availSpan = bottomLimit - topLimit
+        if (span <= availSpan) {
+          // 能放下：合法平移区间 [lo, hi] 非空（span<=availSpan 保证 lo<=hi），取最近 0 的值
+          const lo = topLimit - minY
+          const hi = bottomLimit - maxY
+          let shift = 0
+          if (lo <= 0 && hi >= 0) {
+            shift = 0 // 原位即合法
+          } else if (hi < 0) {
+            shift = hi // 整体上移（maxY 超 bottomLimit）
+          } else {
+            shift = lo // lo > 0，整体下移（minY 低于 topLimit）
+          }
+          const shifted = placedY.map((y) => y + shift)
+          return shifted.map((y) => ({ y, effGap: gap }))
+        }
+        // 放不下：线性映射到 [topLimit, bottomLimit]，等比压缩，全部可见
+        const scale = span > 0 ? availSpan / span : 1
+        const scaled = placedY.map((y) => topLimit + (y - minY) * scale)
+        // 压缩后相邻间距 ≈ availSpan/(n-1)（n=1 时无意义，给个兜底）
+        const compressedGap = items.length > 1 ? availSpan / (items.length - 1) : gap
+        return scaled.map((y) => ({ y, effGap: compressedGap }))
+      }
       const endGuideSeries = {
         id: 'end-guide',
         type: 'custom' as const,
@@ -233,31 +288,50 @@ export default function FundFlowTimeseriesChart({
           // 连线终点 x：相对 group 原点（在末端点 p0x）向右 LEADER_PX。
           // 不能用 coordSys.width（那是 grid 总宽度，加到 group 上会让文字水平溢出）。
           const lineEndX = LEADER_PX
-          // 防重叠「贴终点·最小让位」+ 边界 clamp（动画期间标签随当前末端高低微调）：
-          // 每个标签优先贴近自身末端 y，仅当重叠才向远离方向让位最小量；
-          // 最后 clamp 到 [grid顶+半行, grid底-半行]，绝不溢出容器顶/底。
-          const finalY = (() => {
-            const halfLine = MIN_LABEL_GAP / 2
+
+          // 防重叠 + 边界适配（自适应间距，保证所有标签可见）：
+          // 用 placeLabels 纯函数放置。gap 自适应选择：
+          // 1. 先用目标间距 GOAL_GAP 放置；
+          // 2. 若目标放不下（触发了线性压缩）但下限间距能放下，降级 FLOOR_GAP 重放——
+          //    避免不必要的压缩、尽量保持可读间距；
+          // 3. 仍放不下（极拥挤）则接受线性压缩，全部可见。
+          const { finalY, effGap } = (() => {
+            const halfLine = FLOOR_GAP / 2 // 边界半行用下限，给压缩留余量
             const topLimit = params.coordSys.y + halfLine
             const bottomLimit = params.coordSys.y + params.coordSys.height - halfLine
             const items = endLabelMeta
               .map((m, i) => ({ i, origY: api.coord([m.lastIdx, m.lastVal])[1] }))
               .sort((a, b) => a.origY - b.origY)
-            const placedY: number[] = []
-            let resolved = p0y
-            for (const it of items) {
-              let y = it.origY
-              let lowerBound = -Infinity
-              for (const py of placedY) {
-                if (py + MIN_LABEL_GAP > y) lowerBound = Math.max(lowerBound, py + MIN_LABEL_GAP)
-              }
-              y = Math.max(y, lowerBound)
-              y = Math.max(topLimit, Math.min(bottomLimit, y))
-              placedY.push(y)
-              if (it.i === params.dataIndex) resolved = y
-            }
-            return resolved
+
+            const availSpan = bottomLimit - topLimit
+            const needSpanAt = (gap: number) =>
+              items.length > 1 ? gap * (items.length - 1) : 0
+
+            // 目标间距能放下，直接用；否则尝试下限；仍不行则线性压缩
+            const useGap =
+              needSpanAt(GOAL_GAP) <= availSpan
+                ? GOAL_GAP
+                : needSpanAt(FLOOR_GAP) <= availSpan
+                  ? FLOOR_GAP
+                  : GOAL_GAP // 进入 placeLabels 的线性压缩分支
+
+            const placed = placeLabels(items, useGap, topLimit, bottomLimit)
+            const idx = items.findIndex((it) => it.i === params.dataIndex)
+            const target = placed[idx] ?? { y: p0y, effGap: useGap }
+            return { finalY: target.y, effGap: target.effGap }
           })()
+
+          // 文字内容（板块名 + 最新净额，红正绿负）
+          const labelText = `${meta.name} ${formatSignedAmount(meta.lastVal)}`
+          // canvas 文字宽度估算（fontSize:11 中文约 11px/字，数字/符号约 6px）。
+          // 用于画背景矩形，避免文字与曲线/其他标签糊在一起。
+          const charWidth = 11
+          const cjkRe = /[\u4e00-\u9fff]/
+          let textWidth = 0
+          for (const ch of labelText) {
+            textWidth += cjkRe.test(ch) ? charWidth : charWidth * 0.6
+          }
+
           return {
             type: 'group',
             x: p0x,
@@ -271,13 +345,30 @@ export default function FundFlowTimeseriesChart({
                 shape: { x1: 0, y1: 0, x2: lineEndX, y2: finalY - p0y },
                 style: { stroke: meta.color, lineWidth: 1 },
               },
+              // 文字背景：半透明圆角矩形，提升可读性并提供视觉缓冲。
+              // 高度跟随实际生效间距 effGap（压缩场景下同步缩小，避免背景框重叠）
+              {
+                type: 'rect',
+                shape: {
+                  x: lineEndX + TEXT_GAP - LABEL_PADDING_X,
+                  y: finalY - p0y - effGap / 2 + LABEL_PADDING_Y,
+                  width: textWidth + LABEL_PADDING_X * 2,
+                  height: effGap - LABEL_PADDING_Y * 2,
+                  r: LABEL_RADIUS,
+                },
+                style: {
+                  fill: 'rgba(255, 255, 255, 0.78)',
+                },
+                z: 1,
+              },
               // 文字气泡：板块名 + 最新净额（红正绿负），左对齐文字起点
               {
                 type: 'text',
+                z: 2,
                 style: {
                   x: lineEndX + TEXT_GAP,
                   y: finalY - p0y,
-                  text: `${meta.name} ${formatSignedAmount(meta.lastVal)}`,
+                  text: labelText,
                   fill: meta.valueColor,
                   fontSize: 11,
                   fontWeight: 600,
