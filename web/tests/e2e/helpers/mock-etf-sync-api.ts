@@ -31,6 +31,55 @@ function parseQuery(requestUrl: URL | string): URLSearchParams {
   return requestUrl.searchParams
 }
 
+// ---------- ETF 基础信息同步 Mocks ----------
+
+/**
+ * Mock POST /api/v1/admin/init/etf-basic — ETF 基础信息同步（成功）
+ */
+export async function mockEtfBasicSyncSuccess(
+  page: Page,
+  taskId = 'task-etf-basic-001'
+): Promise<void> {
+  await page.route(
+    (url) => matchApiPath(url, '/api/v1/admin/init/etf-basic'),
+    async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: { task_id: taskId },
+            message: 'ETF 基础信息同步任务已创建',
+          }),
+        })
+      } else {
+        await route.fallback()
+      }
+    }
+  )
+}
+
+/**
+ * Mock POST /api/v1/admin/init/etf-basic — ETF 基础信息同步（失败）
+ */
+export async function mockEtfBasicSyncError(page: Page): Promise<void> {
+  await page.route(
+    (url) => matchApiPath(url, '/api/v1/admin/init/etf-basic'),
+    async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Tushare 接口调用失败' }),
+        })
+      } else {
+        await route.fallback()
+      }
+    }
+  )
+}
+
 // ---------- ETF 当日份额采集 Mocks ----------
 
 /**
@@ -141,7 +190,7 @@ export async function mockEtfHistorySyncSuccess(
 export async function mockEtfTaskStatusCompleted(
   page: Page,
   taskId: string,
-  taskType: 'sync_etf_daily' | 'backfill_etf_history' = 'sync_etf_daily'
+  taskType: 'sync_etf_basic' | 'sync_etf_daily' | 'backfill_etf_history' = 'sync_etf_daily'
 ): Promise<void> {
   const expectedPath = `/api/v1/admin/tasks/${taskId}`
   await page.route((url) => matchApiPath(url, expectedPath), async (route) => {
@@ -180,7 +229,7 @@ export async function mockEtfTaskStatusCompleted(
 export async function mockEtfTaskStatusRunning(
   page: Page,
   taskId: string,
-  taskType: 'sync_etf_daily' | 'backfill_etf_history' = 'sync_etf_daily'
+  taskType: 'sync_etf_basic' | 'sync_etf_daily' | 'backfill_etf_history' = 'sync_etf_daily'
 ): Promise<void> {
   const expectedPath = `/api/v1/admin/tasks/${taskId}`
   await page.route((url) => matchApiPath(url, expectedPath), async (route) => {
@@ -220,7 +269,7 @@ export async function mockEtfTaskStatusFailed(
   page: Page,
   taskId: string,
   errorMessage: string,
-  taskType: 'sync_etf_daily' | 'backfill_etf_history' = 'sync_etf_daily'
+  taskType: 'sync_etf_basic' | 'sync_etf_daily' | 'backfill_etf_history' = 'sync_etf_daily'
 ): Promise<void> {
   const expectedPath = `/api/v1/admin/tasks/${taskId}`
   await page.route((url) => matchApiPath(url, expectedPath), async (route) => {
@@ -256,7 +305,7 @@ export async function mockEtfTaskStatusFailed(
 // ---------- 同步记录列表 Mock ----------
 
 /**
- * Mock GET /api/v1/admin/tasks?task_types=sync_etf_daily,backfill_etf_history — 同步记录列表
+ * Mock GET /api/v1/admin/tasks?task_types=sync_etf_basic,sync_etf_daily,backfill_etf_history — 同步记录列表
  *
  * EtfSyncPanel 用固定 SWR key 查询该端点。
  */
@@ -267,7 +316,10 @@ export async function mockEtfSyncRecords(
   await page.route(
     (url) => {
       if (!matchApiPath(url, '/api/v1/admin/tasks')) return false
-      return parseQuery(url).get('task_types') === 'sync_etf_daily,backfill_etf_history'
+      return (
+        parseQuery(url).get('task_types') ===
+        'sync_etf_basic,sync_etf_daily,backfill_etf_history'
+      )
     },
     async (route) => {
       if (route.request().method() !== 'GET') {

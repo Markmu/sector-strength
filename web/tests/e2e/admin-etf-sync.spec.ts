@@ -1,5 +1,7 @@
 import { test as base, expect } from '@playwright/test'
 import {
+  mockEtfBasicSyncSuccess,
+  mockEtfBasicSyncError,
   mockEtfDailySyncSuccess,
   mockEtfDailySyncConcurrent,
   mockEtfDailySyncError,
@@ -52,6 +54,10 @@ test.describe('ETF 数据同步面板（第 14 期 plan-03 admin UI）', () => {
       // 断言：页面标题
       await expect(main.getByRole('heading', { name: 'ETF 数据同步' })).toBeVisible()
 
+      // 断言：基础信息同步卡片
+      await expect(main.getByText('ETF 基础信息同步')).toBeVisible()
+      await expect(main.getByRole('button', { name: '手动同步' })).toBeVisible()
+
       // 断言：当日采集卡片
       await expect(main.getByText('ETF 当日份额采集')).toBeVisible()
       await expect(main.getByRole('button', { name: '手动采集' })).toBeVisible()
@@ -76,6 +82,37 @@ test.describe('ETF 数据同步面板（第 14 期 plan-03 admin UI）', () => {
       // 断言：侧边栏导航项存在并指向正确路由
       const navLink = page.getByRole('link', { name: /ETF 数据同步/ }).first()
       await expect(navLink).toBeVisible()
+    })
+  })
+
+  test.describe('基础信息同步', () => {
+    test('点击"手动同步"触发同步并完成', async ({ page }) => {
+      const taskId = 'task-etf-basic-001'
+      await mockEtfBasicSyncSuccess(page, taskId)
+      await mockEtfTaskStatusCompleted(page, taskId, 'sync_etf_basic')
+      await mockEtfSyncRecords(page)
+      await page.goto(ADMIN_ETF_PAGE)
+
+      const main = page.locator('main')
+      // 限定到基础信息卡片：main 内首个「手动同步」按钮
+      const syncButton = main.getByRole('button', { name: '手动同步' }).first()
+      await syncButton.click()
+
+      // 断言：成功 toast
+      await expect(main.getByText('ETF 基础信息同步完成')).toBeVisible()
+    })
+
+    test('同步失败展示错误 toast', async ({ page }) => {
+      await mockEtfBasicSyncError(page)
+      await mockEtfSyncRecords(page)
+      await page.goto(ADMIN_ETF_PAGE)
+
+      const main = page.locator('main')
+      const syncButton = main.getByRole('button', { name: '手动同步' }).first()
+      await syncButton.click()
+
+      // 断言：错误 toast
+      await expect(main.getByText(/创建同步任务失败/)).toBeVisible()
     })
   })
 
@@ -207,6 +244,16 @@ test.describe('ETF 数据同步面板（第 14 期 plan-03 admin UI）', () => {
     test('展示已有 ETF 同步历史', async ({ page }) => {
       const now = new Date().toISOString()
       await mockEtfSyncRecords(page, [
+        {
+          taskId: 'task-etf-basic-old',
+          taskType: 'sync_etf_basic',
+          status: 'completed',
+          progress: 1806,
+          total: 1806,
+          params: {},
+          errorMessage: null,
+          createdAt: now,
+        },
         {
           taskId: 'task-etf-daily-old',
           taskType: 'sync_etf_daily',

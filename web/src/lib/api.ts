@@ -604,6 +604,9 @@ export const adminApi = {
   // ETF 当日份额/净值采集（第 14 期 plan-03，无参数）
   initEtfDaily: () =>
     adminApiClient.post<{task_id: string}>('/admin/init/etf-daily'),
+  // ETF 基础信息同步（拉取全市场 ETF 清单并归类跟踪指数/分类，无参数）
+  initEtfBasic: () =>
+    adminApiClient.post<{task_id: string}>('/admin/init/etf-basic'),
   // ETF 历史数据回填（第 14 期 plan-02，start_date/end_date 为 YYYY-MM-DD）
   initEtfHistory: (start_date: string, end_date: string) =>
     adminApiClient.post<{task_id: string}>('/admin/init/etf-history', { start_date, end_date }),
@@ -701,6 +704,7 @@ export const tasksApi = {
     SYNC_TOP10_HOLDERS: 'sync_top10_holders',
     SYNC_ETF_DAILY: 'sync_etf_daily',
     BACKFILL_ETF_HISTORY: 'backfill_etf_history',
+    SYNC_ETF_BASIC: 'sync_etf_basic',
   } as const,
 
   // 任务状态定义

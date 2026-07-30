@@ -71,6 +71,9 @@ class TaskType(str, Enum):
     # ETF 历史数据回填任务（复用 sync_etf_daily 同口径，按日期升序逐日回填，第 14 期）
     BACKFILL_ETF_HISTORY = "backfill_etf_history"
 
+    # ETF 基础信息同步任务（Tushare fund_basic_etf，归类跟踪指数后 upsert etf_basic）
+    SYNC_ETF_BASIC = "sync_etf_basic"
+
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
     """
@@ -638,6 +641,7 @@ __all__ = [
     "sync_sector_fund_flow_task",
     "sync_etf_daily_task",
     "backfill_etf_history_task",
+    "sync_etf_basic_task",
 ]
 
 
@@ -1329,5 +1333,48 @@ async def backfill_etf_history_task(
         )
     except Exception as e:
         error_msg = f"ETF history backfill failed: {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+@TaskRegistry.register(TaskType.SYNC_ETF_BASIC)
+async def sync_etf_basic_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    ETF 基础信息同步任务。
+
+    调 EtfDataInitService.sync_etf_basic 拉取全市场 ETF 清单，经
+    EtfIndexClassifier 归类跟踪指数/分类后 upsert etf_basic。
+    与 sync_etf_daily 独立，便于单独刷新指数归类或补全新上市 ETF。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数（无必需参数）
+        manager: 任务管理器
+    """
+    from src.services.data_init_etf import EtfDataInitService
+
+    await manager.log_message(
+        task_id, "INFO", "Starting ETF basic info sync"
+    )
+
+    service = EtfDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    try:
+        result = await service.sync_etf_basic()
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"ETF basic info sync completed: "
+            f"total={result.get('added', 0)}, "
+            f"failed={result.get('failed', 0)}"
+        )
+    except Exception as e:
+        error_msg = f"ETF basic info sync failed: {e}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise

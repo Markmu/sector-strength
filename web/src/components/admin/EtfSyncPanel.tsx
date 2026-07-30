@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import useSWR from 'swr';
 import {
+  Database,
   BarChart3,
   History,
   Loader2,
@@ -21,7 +22,7 @@ import { fetcher } from '@/lib/fetcher';
 /** 同步记录行（与后端 AsyncTask.to_dict camelCase 契约一致） */
 interface SyncRecord {
   taskId: string;
-  taskType: 'sync_etf_daily' | 'backfill_etf_history';
+  taskType: 'sync_etf_basic' | 'sync_etf_daily' | 'backfill_etf_history';
   createdAt: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   progress: number;
@@ -33,27 +34,36 @@ interface SyncRecord {
 
 /** 同步任务类型 → 中文显示名 */
 const TASK_TYPE_LABELS: Record<string, string> = {
+  sync_etf_basic: 'ETF 基础信息同步',
   sync_etf_daily: 'ETF 当日份额采集',
   backfill_etf_history: 'ETF 历史数据回填',
 };
 
-/** 后端需要的过滤值：逗号分隔两种 ETF 任务 */
-const ETF_TASK_TYPES = 'sync_etf_daily,backfill_etf_history';
+/** 后端需要的过滤值：逗号分隔三类 ETF 任务 */
+const ETF_TASK_TYPES = 'sync_etf_basic,sync_etf_daily,backfill_etf_history';
 
 /** SWR key：fetcher 会拼上 NEXT_PUBLIC_API_URL 前缀，必须包含 /api/v1 */
 const RECORDS_SWR_KEY = `/api/v1/admin/tasks?task_types=${ETF_TASK_TYPES}&page=1&page_size=20`;
 
 /**
- * ETF 数据同步面板组件（第 14 期 plan-03 admin UI）
+ * ETF 数据同步面板组件
  *
- * 双卡片布局，复用 admin sync 范式（FundSyncPanel 双操作 + StockTop10SyncPanel 进度条）：
- * - 卡片一：ETF 当日份额/净值采集（无参数，进度按逐 ETF 推进）
- * - 卡片二：ETF 历史数据回填（start_date ~ end_date，进度按逐日推进）
- * - 底部：共享同步记录表，按 createdAt desc 展示两类任务历史
+ * 三卡片布局，复用 admin sync 范式（FundSyncPanel 双操作 + StockTop10SyncPanel 进度条）：
+ * - 卡片一：ETF 基础信息同步（无参数，拉取全市场 ETF 清单并归类跟踪指数/分类）
+ * - 卡片二：ETF 当日份额/净值采集（无参数，进度按逐 ETF 推进）
+ * - 卡片三：ETF 历史数据回填（start_date ~ end_date，进度按逐日推进）
+ * - 底部：共享同步记录表，按 createdAt desc 展示三类任务历史
  */
 export default function EtfSyncPanel() {
   useRequireAdmin();
   const { isAdmin } = useAuth();
+
+  // ---- 基础信息同步状态 ----
+  const [basicTaskId, setBasicTaskId] = useState<string | null>(null);
+  const [basicLoading, setBasicLoading] = useState(false);
+  const [basicError, setBasicError] = useState<string | null>(null);
+  const [basicProgress, setBasicProgress] = useState(0);
+  const [basicTotal, setBasicTotal] = useState(0);
 
   // ---- 当日采集状态 ----
   const [dailyTaskId, setDailyTaskId] = useState<string | null>(null);
@@ -99,6 +109,67 @@ export default function EtfSyncPanel() {
   const refreshOnTaskChange = useCallback(() => {
     refreshRecords();
   }, [refreshRecords]);
+
+  // ---- 基础信息同步回调 ----
+  const handleBasicComplete = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (_task: TaskData) => {
+      setBasicLoading(false);
+      setBasicTaskId(null);
+      refreshOnTaskChange();
+      showToast('success', 'ETF 基础信息同步完成');
+    },
+    [refreshOnTaskChange, showToast]
+  );
+
+  const handleBasicFailed = useCallback(
+    (task: TaskData) => {
+      setBasicLoading(false);
+      setBasicTaskId(null);
+      setBasicError(task.errorMessage || '未知错误');
+      refreshOnTaskChange();
+      showToast('error', `同步失败: ${task.errorMessage || '未知错误'}`);
+    },
+    [refreshOnTaskChange, showToast]
+  );
+
+  const handleBasicProgress = useCallback((task: TaskData) => {
+    setBasicProgress(task.progress);
+    setBasicTotal(task.total);
+  }, []);
+
+  // 轮询基础信息同步任务
+  useTaskStatus(basicTaskId, {
+    enabled: !!basicTaskId,
+    pollInterval: 2000,
+    onComplete: handleBasicComplete,
+    onFailed: handleBasicFailed,
+    onProgress: handleBasicProgress,
+  });
+
+  const startBasicSync = async () => {
+    try {
+      setBasicLoading(true);
+      setBasicError(null);
+      setBasicProgress(0);
+      setBasicTotal(0);
+
+      const response = await adminApi.initEtfBasic();
+      const newTaskId = response.data?.task_id;
+
+      if (!newTaskId) {
+        throw new Error('未返回任务 ID');
+      }
+
+      setBasicTaskId(newTaskId);
+      refreshOnTaskChange();
+    } catch (error) {
+      const msg = (error as Error).message;
+      setBasicError(msg);
+      setBasicLoading(false);
+      showToast('error', `创建同步任务失败: ${msg}`);
+    }
+  };
 
   // ---- 当日采集回调 ----
   const handleDailyComplete = useCallback(
@@ -244,7 +315,8 @@ export default function EtfSyncPanel() {
     );
   }
 
-  const isAnySyncRunning = dailyLoading || historyLoading;
+  const isAnySyncRunning = basicLoading || dailyLoading || historyLoading;
+  const basicPercent = basicTotal > 0 ? Math.round((basicProgress / basicTotal) * 100) : 0;
   const dailyPercent = dailyTotal > 0 ? Math.round((dailyProgress / dailyTotal) * 100) : 0;
   const historyPercent =
     historyTotal > 0 ? Math.round((historyProgress / historyTotal) * 100) : 0;
@@ -276,6 +348,62 @@ export default function EtfSyncPanel() {
           </div>
         </div>
       )}
+
+      {/* ETF 基础信息同步区 */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Database className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-semibold text-foreground">ETF 基础信息同步</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          从 Tushare 拉取全市场 ETF 基础信息，经指数归类（宽基/行业）后写入 etf_basic。建议在首次份额采集前先同步基础信息。
+        </p>
+
+        <div className="flex items-center gap-4">
+          <button
+            onClick={startBasicSync}
+            disabled={isAnySyncRunning}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {basicLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>同步…（{basicProgress} / {basicTotal}）</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                <span>手动同步</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* 进度展示 */}
+        {basicLoading && basicTotal > 0 && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm text-muted-foreground">
+                同步中…（{basicProgress} / {basicTotal}）
+              </span>
+              <span className="text-sm text-muted-foreground">{basicPercent}%</span>
+            </div>
+            <div className="w-full bg-secondary rounded-full h-2">
+              <div
+                className="bg-primary rounded-full h-2 transition-all duration-300"
+                style={{ width: `${basicPercent}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {basicError && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle className="w-4 h-4" />
+            {basicError}
+          </div>
+        )}
+      </div>
 
       {/* ETF 当日份额采集区 */}
       <div className="bg-card rounded-lg shadow-sm border border-border p-6">

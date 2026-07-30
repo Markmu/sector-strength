@@ -17,6 +17,7 @@ from .init_broker_recommend import router as init_broker_recommend_router
 from .init_sector_fund_flow import router as init_sector_fund_flow_router
 from .init_etf_history import router as init_etf_history_router
 from .init_etf_daily import router as init_etf_daily_router  # 第 14 期 plan-03
+from .init_etf_basic import router as init_etf_basic_router
 from .tasks import router as tasks_router
 from .rbac import router as rbac_router
 from .data_status import router as data_status_router
@@ -35,6 +36,7 @@ router.include_router(init_broker_recommend_router)  # /api/admin/init/broker-re
 router.include_router(init_sector_fund_flow_router)  # /api/admin/init/sector-fund-flow
 router.include_router(init_etf_history_router)  # /api/admin/init/etf-history
 router.include_router(init_etf_daily_router)  # /api/admin/init/etf-daily（第 14 期 plan-03）
+router.include_router(init_etf_basic_router)  # /api/admin/init/etf-basic
 router.include_router(tasks_router)   # /api/admin/tasks/*
 router.include_router(rbac_router)    # /api/admin/*
 router.include_router(data_status_router)  # /api/admin/data/*

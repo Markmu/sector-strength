@@ -290,6 +290,13 @@ class TestEtfMonitorImportable:
             "admin/init/etf-daily 路由未注册"
         )
 
+    def test_admin_init_etf_basic_router_registered(self):
+        """init_etf_basic_router 已在 api/admin/__init__.py 注册。"""
+        paths = {route.path for route in _fastapi_app.routes}
+        assert "/api/v1/admin/init/etf-basic" in paths, (
+            "admin/init/etf-basic 路由未注册"
+        )
+
 
 # ============== GET /index-rankings — 指数排行 ==============
 
@@ -602,6 +609,41 @@ async def test_admin_init_etf_daily_concurrency_protection(admin_client, etf_see
         await s.commit()
 
     resp = await admin_client.post("/api/v1/admin/init/etf-daily")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is False, "已有运行中任务时应被并发保护拒绝"
+
+
+# ============== POST /admin/init/etf-basic — ETF 基础信息同步 ==============
+
+
+@pytest.mark.asyncio
+async def test_admin_init_etf_basic_returns_task_id(admin_client, etf_seed):
+    """admin 基础信息同步：返回 task_id。
+
+    复用 SYNC_ETF_BASIC task handler。并发保护：无 pending/running 时创建成功。
+    """
+    resp = await admin_client.post("/api/v1/admin/init/etf-basic")
+    assert resp.status_code == 200, f"init etf-basic 状态码: {resp.status_code}"
+    body = resp.json()
+    assert body["success"] is True
+    task_id = body["data"]["task_id"]
+    assert task_id, "应返回非空 task_id"
+
+
+@pytest.mark.asyncio
+async def test_admin_init_etf_basic_concurrency_protection(admin_client, etf_seed):
+    """并发保护：已存在 pending/running SYNC_ETF_BASIC 时拒绝。"""
+    from src.models.async_task import AsyncTask
+    from src.db import database as db_module
+
+    session_factory = db_module.AsyncSessionLocal
+    async with session_factory() as s:
+        s.add(AsyncTask(task_id="red-concurrency-stub-basic",
+                        task_type="sync_etf_basic", status="pending"))
+        await s.commit()
+
+    resp = await admin_client.post("/api/v1/admin/init/etf-basic")
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is False, "已有运行中任务时应被并发保护拒绝"
