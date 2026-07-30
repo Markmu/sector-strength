@@ -65,6 +65,12 @@ class TaskType(str, Enum):
     # 板块资金流即时快照同步任务（同花顺即时接口，行业 + 概念）
     SYNC_SECTOR_FUND_FLOW = "sync_sector_fund_flow"
 
+    # ETF 当日份额/净值同步任务（Tushare fund_share/fund_nav，第 14 期）
+    SYNC_ETF_DAILY = "sync_etf_daily"
+
+    # ETF 历史数据回填任务（复用 sync_etf_daily 同口径，按日期升序逐日回填，第 14 期）
+    BACKFILL_ETF_HISTORY = "backfill_etf_history"
+
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
     """
@@ -630,6 +636,8 @@ __all__ = [
     "sync_fund_portfolio_task",
     "sync_top10_holders_task",
     "sync_sector_fund_flow_task",
+    "sync_etf_daily_task",
+    "backfill_etf_history_task",
 ]
 
 
@@ -1227,5 +1235,99 @@ async def sync_sector_fund_flow_task(
         original_error = getattr(e, "original_error", None)
         detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
         error_msg = f"Sector fund flow sync failed: {detail}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+# ============== ETF 当日份额/净值同步任务（第 14 期） ==============
+
+@TaskRegistry.register(TaskType.SYNC_ETF_DAILY)
+async def sync_etf_daily_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    ETF 当日份额/净值同步任务
+
+    通过 collector._update_etf_daily 编排 ETF 基础信息同步 + 当日份额/净值采集，
+    写入 etf_basic / etf_daily 表（on_conflict 覆盖）。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数（无必需参数；当日由 collector 取北京时区当日）
+        manager: 任务管理器
+    """
+    from src.services.data_updater.collector import DataCollector
+
+    await manager.log_message(
+        task_id, "INFO", "Starting ETF daily share/nav sync"
+    )
+
+    try:
+        collector = DataCollector()
+        count = await collector._update_etf_daily()
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"ETF daily share/nav sync completed: {count} rows upserted"
+        )
+    except Exception as e:
+        original_error = getattr(e, "original_error", None)
+        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        error_msg = f"ETF daily sync failed: {detail}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+# ============== ETF 历史数据回填任务（第 14 期） ==============
+
+@TaskRegistry.register(TaskType.BACKFILL_ETF_HISTORY)
+async def backfill_etf_history_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    ETF 历史数据回填任务（ADR-5：复用 sync_etf_daily 同口径）。
+
+    从 params 取 start_date/end_date，调 EtfDataInitService.backfill_etf_history
+    按日期升序逐日回填，写入 etf_daily 表（on_conflict 覆盖）。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数 {
+            "start_date": "YYYY-MM-DD",
+            "end_date": "YYYY-MM-DD",
+        }
+        manager: 任务管理器
+    """
+    from src.services.data_init_etf import EtfDataInitService
+
+    start_date = params.get("start_date")
+    end_date = params.get("end_date")
+
+    await manager.log_message(
+        task_id, "INFO",
+        f"Starting ETF history backfill: {start_date} ~ {end_date}"
+    )
+
+    # 设置进度回调（仿 sync_etf_daily_task / init_sectors_task 范式）
+    service = EtfDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    try:
+        result = await service.backfill_etf_history(start_date, end_date)
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"ETF history backfill completed: "
+            f"total={result.get('total_days')}, "
+            f"processed={result.get('processed_days')}, "
+            f"failed={result.get('failed_days')}"
+        )
+    except Exception as e:
+        error_msg = f"ETF history backfill failed: {e}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise

@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Settings, ScatterChart, LineChart, LandmarkIcon, Users, UsersRound, Star, ArrowDownUp } from 'lucide-react';
+import { Settings, ScatterChart, LineChart, LandmarkIcon, Users, UsersRound, Star, ArrowDownUp, TrendingUp } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import Sidebar, { SidebarItem } from '@/components/layout/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +28,11 @@ const baseSidebarItems: SidebarItem[] = [
     title: '板块资金流',
     href: '/dashboard/sector-fund-flow',
     icon: <ArrowDownUp className="w-5 h-5" />,
+  },
+  {
+    title: 'ETF 监控',
+    href: '/dashboard/etf-monitor',
+    icon: <TrendingUp className="w-5 h-5" />,
   },
   {
     title: '基金分析',

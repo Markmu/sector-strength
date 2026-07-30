@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.job import Job
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,22 @@ class JobManager:
             max_instances=1,  # 防止并发执行，避免风控
         )
 
+        # ETF 当日份额/净值快照（第 14 期）：按惯例注释注册——与除板块资金流外
+        # 的所有 job 保持一致的停用状态（开发期间避免后台任务自动执行）。
+        # 需要恢复时取消下方注释即可。采集频率日级，复用 Tushare 0.3s 限流避免风控。
+        # self.scheduler.add_job(
+        #     self._etf_daily_snapshot,
+        #     trigger=CronTrigger(
+        #         day_of_week='mon-fri',
+        #         hour=15,
+        #         minute=30,
+        #     ),
+        #     id='etf_daily_snapshot',
+        #     name='ETF 当日份额/净值快照（每个交易日 15:30）',
+        #     replace_existing=True,
+        #     max_instances=1,
+        # )
+
     async def _daily_data_update(self):
         """每日数据更新任务"""
         from src.services.data_updater.collector import DataCollector
@@ -108,6 +125,24 @@ class JobManager:
         except Exception as e:
             logger.error(f"[定时任务] 板块资金流采集失败: {e}")
             # 不 raise：采集失败不影响下一次调度（APScheduler 默认会移除抛异常的 job）
+
+    async def _etf_daily_snapshot(self):
+        """ETF 当日份额/净值快照任务（第 14 期）
+
+        每个交易日 15:30 触发，调用 collector._update_etf_daily 采集当日 ETF
+        份额/净值并计算 share_change / net_inflow 落库。
+        当前按项目惯例注释停用（见 _register_jobs），由 SYNC_ETF_DAILY task handler
+        手动触发（架构 §6.1 / AC-12）。
+        """
+        try:
+            from src.services.data_updater.collector import DataCollector
+
+            collector = DataCollector()
+            count = await collector._update_etf_daily()
+            logger.info(f"[定时任务] ETF 当日份额采集完成: {count} 条记录")
+        except Exception as e:
+            logger.error(f"[定时任务] ETF 当日份额采集失败: {e}")
+            # 不 raise：采集失败不影响下一次调度
 
 
     async def _check_data_quality(self):

@@ -22,6 +22,7 @@ from .top10_float_holder import Top10FloatHolder
 from .broker_recommend import BrokerRecommend
 from .shareholder_group import ShareholderGroup, ShareholderGroupRule
 from .sector_fund_flow import SectorFundFlow
+from .etf import EtfBasic, EtfDaily
 
 __all__ = [
     "Base",
@@ -51,4 +52,6 @@ __all__ = [
     "ShareholderGroup",
     "ShareholderGroupRule",
     "SectorFundFlow",
+    "EtfBasic",
+    "EtfDaily",
 ]

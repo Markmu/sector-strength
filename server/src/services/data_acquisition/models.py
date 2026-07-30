@@ -148,6 +148,30 @@ class FundInfo(BaseModel):
     status: Optional[str] = Field(None, description="状态: D 存续 I 发行 E 到期")
 
 
+class EtfShareInfo(BaseModel):
+    """ETF 日份额数据 — 与 Tushare fund_share 输出字段对齐（第 14 期）
+
+    fd_share 单位为万份，与 etf_daily.share 存储口径一致。
+    """
+
+    ts_code: Optional[str] = Field(None, description="TS代码")
+    trade_date: Optional[str] = Field(None, description="交易日 YYYYMMDD")
+    fd_share: float = Field(..., description="基金份额（万份）")
+    fund_type: Optional[str] = Field(None, description="基金类型（ETF）")
+    market: Optional[str] = Field(None, description="市场类型: E 场内")
+
+
+class EtfNavInfo(BaseModel):
+    """ETF 单位净值数据 — 与 Tushare fund_nav 输出字段对齐（第 14 期）
+
+    unit_nav 单位为元，与 etf_daily.unit_nav 存储口径一致。
+    """
+
+    ts_code: Optional[str] = Field(None, description="TS代码")
+    unit_nav: float = Field(..., description="单位净值（元）")
+    nav_date: Optional[str] = Field(None, description="净值日期 YYYYMMDD")
+
+
 class DataFetchResult(BaseModel):
     """
     数据获取结果封装

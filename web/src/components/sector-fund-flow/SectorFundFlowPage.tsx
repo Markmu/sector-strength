@@ -3,15 +3,13 @@
 /**
  * 板块资金流主页面（plan-03，AC-01~AC-12）
  *
- * 双视图：资金流排行（表格）+ 盘中变化（曲线）。
+ * 同屏双视图：上方盘中变化（曲线）+ 下方资金流排行（表格），共享维度/日期/刷新控制。
  * 页面状态全部用 useState/useMemo 管理，不引入新 Zustand store。
  *
  * 状态：
- * - currentView: 'ranking' | 'chart'
  * - sectorType: 'industry' | 'concept'（AC-02；数据源同花顺即时资金流仅支持行业/概念）
  * - tradeDate: string | null（默认从 latestDate API 取，AC-04 历史回看）
  * - sortBy / order（AC-03 排序）
- * - page / pageSize（AC-12 分页）
  * - selectedSectors: string[] | null（null=用户未选→渲染期派生默认净流入/流出前十；选中后固定）
  *
  * 状态分支：
@@ -20,13 +18,12 @@
  * - AC-08：无采样数据 → 空态
  *
  * data-testid 约定：
- * - 视图切换：fund-flow-view-ranking / fund-flow-view-chart
  * - 维度切换：fund-flow-sector-type-{value}
  * - 日期：fund-flow-date-input
  * - 刷新：fund-flow-refresh
  */
 import React, { useState, useCallback, useMemo } from 'react'
-import { LineChartIcon, TableIcon, RefreshCwIcon, XIcon, SearchIcon } from 'lucide-react'
+import { LineChartIcon, RefreshCwIcon, XIcon, SearchIcon } from 'lucide-react'
 import {
   useFundFlowRankings,
   useFundFlowTimeseries,
@@ -43,24 +40,20 @@ import { Disclaimer } from '@/components/ui/Disclaimer'
 import FundFlowRankingTable from './FundFlowRankingTable'
 import FundFlowTimeseriesChart from './FundFlowTimeseriesChart'
 
-type CurrentView = 'ranking' | 'chart'
-type PageSize = 20 | 50 | 100
-const PAGE_SIZE_OPTIONS: PageSize[] = [20, 50, 100]
+// 排行榜全量取：行业≈90、概念≈386，一次拉完不分页（沿用 candidates hook 的全量取法）
+const RANKINGS_PAGE_SIZE = 500
 
 // 默认自动选中：净流入（netInflow>0）前十 + 净流出（netInflow<0）前十，最多 20 个
 const DEFAULT_TOP_INFLOW = 10
 const DEFAULT_TOP_OUTFLOW = 10
 
 export default function SectorFundFlowPage() {
-  const [currentView, setCurrentView] = useState<CurrentView>('ranking')
   const [sectorType, setSectorType] = useState<SectorType>('industry')
   // AC-04：tradeDate 默认 null（让后端取最新），latestDate hook 拿到后填入 input
   const [tradeDateInput, setTradeDateInput] = useState<string>('')
   // 实际传给 API 的 tradeDate：空串 → undefined（后端取最新）
   const [sortBy, setSortBy] = useState<FundFlowSortBy>('net_inflow')
   const [order, setOrder] = useState<FundFlowOrder>('desc')
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState<PageSize>(20)
   // AC-06：变化视图自选板块（板块名数组）。
   // null = 用户尚未做出选择 → 渲染期派生默认选中（流入/流出前十）；
   // 一旦用户 toggle/remove/clear 即变为具体数组并固定，不再被默认值覆盖。
@@ -76,18 +69,18 @@ export default function SectorFundFlowPage() {
     mutate: mutateLatestDate,
   } = useFundFlowLatestDate({ sectorType })
 
-  // 排行榜数据（AC-01）
+  // 排行榜数据（AC-01）：不分页，一次全量取（行业≈90、概念≈386）
   const rankingsParams = {
     sectorType,
     tradeDate: tradeDateInput || undefined,
     sortBy,
     order,
-    page,
-    pageSize,
+    pageSize: RANKINGS_PAGE_SIZE,
   }
   const {
     rankings,
     isLoading: isRankingsLoading,
+    isValidating: isRankingsValidating,
     isError: isRankingsError,
     mutate: mutateRankings,
   } = useFundFlowRankings(rankingsParams)
@@ -141,10 +134,9 @@ export default function SectorFundFlowPage() {
     mutate: mutateTimeseries,
   } = useFundFlowTimeseries(timeseriesParams)
 
-  // 维度切换处理：重置分页 + 重置已选板块为 null（重新派生默认选中）
+  // 维度切换处理：重置已选板块为 null（重新派生默认选中）
   const handleSectorTypeChange = useCallback((next: SectorType) => {
     setSectorType(next)
-    setPage(1)
     setSelectedSectors(null)
     setSearchKeyword('')
     // 维度切换后清空日期 input，让后端按新维度取最新（各维度最新日期可能不同）
@@ -152,18 +144,13 @@ export default function SectorFundFlowPage() {
   }, [])
 
   // 日期切换（AC-04）
-  const handleDateChange = useCallback(
-    (value: string) => {
-      setTradeDateInput(value)
-      setPage(1)
-    },
-    []
-  )
+  const handleDateChange = useCallback((value: string) => {
+    setTradeDateInput(value)
+  }, [])
 
   // 回到最新（清空日期 input）
   const handleResetDate = useCallback(() => {
     setTradeDateInput('')
-    setPage(1)
   }, [])
 
   // 排序切换（AC-03）
@@ -171,19 +158,9 @@ export default function SectorFundFlowPage() {
     (nextSortBy: FundFlowSortBy, nextOrder: FundFlowOrder) => {
       setSortBy(nextSortBy)
       setOrder(nextOrder)
-      setPage(1)
     },
     []
   )
-
-  const handlePageChange = useCallback((next: number) => {
-    setPage(next)
-  }, [])
-
-  const handlePageSizeChange = useCallback((size: number) => {
-    setPageSize(size as PageSize)
-    setPage(1)
-  }, [])
 
   // AC-06：板块选择/移除（用户操作 → 固定为具体数组）
   const handleToggleSector = useCallback((name: string) => {
@@ -209,14 +186,11 @@ export default function SectorFundFlowPage() {
     setSearchKeyword('')
   }, [])
 
-  // AC-07：刷新（盘中延长）
+  // AC-07：刷新两视图（盘中延长 + 排行榜）
   const handleRefresh = useCallback(() => {
-    if (currentView === 'ranking') {
-      mutateRankings()
-    } else {
-      mutateTimeseries()
-    }
-  }, [currentView, mutateRankings, mutateTimeseries])
+    mutateRankings()
+    mutateTimeseries()
+  }, [mutateRankings, mutateTimeseries])
 
   // 维度切换后已选板块可能失效：过滤掉不在候选清单里的（防御，候选来自排行榜）
   // 注意：候选只覆盖排行榜第一页，可能不全；这里只在维度切换时由 handleSectorTypeChange 清空，
@@ -227,50 +201,13 @@ export default function SectorFundFlowPage() {
 
   return (
     <div className="space-y-6">
-      {/* 标题 + 视图切换 */}
+      {/* 标题 */}
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">板块资金流</h1>
           <p className="text-sm text-muted-foreground mt-1">
             实时追踪板块资金净流入/流出排行与盘中变化（数据来源：同花顺）
           </p>
-        </div>
-        {/* 视图切换（AC-01/AC-05） */}
-        <div
-          role="tablist"
-          aria-label="视图切换"
-          className="inline-flex rounded-lg border border-border bg-card p-1"
-        >
-          <button
-            role="tab"
-            aria-selected={currentView === 'ranking'}
-            type="button"
-            onClick={() => setCurrentView('ranking')}
-            data-testid="fund-flow-view-ranking"
-            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              currentView === 'ranking'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <TableIcon className="w-4 h-4" />
-            资金流排行
-          </button>
-          <button
-            role="tab"
-            aria-selected={currentView === 'chart'}
-            type="button"
-            onClick={() => setCurrentView('chart')}
-            data-testid="fund-flow-view-chart"
-            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              currentView === 'chart'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <LineChartIcon className="w-4 h-4" />
-            盘中变化
-          </button>
         </div>
       </header>
 
@@ -335,7 +272,7 @@ export default function SectorFundFlowPage() {
             >
               <RefreshCwIcon
                 className={`w-4 h-4 ${
-                  currentView === 'chart' && isTimeseriesValidating ? 'animate-spin' : ''
+                  isRankingsValidating || isTimeseriesValidating ? 'animate-spin' : ''
                 }`}
               />
               刷新
@@ -352,48 +289,8 @@ export default function SectorFundFlowPage() {
         )}
       </section>
 
-      {/* 视图内容 */}
-      {currentView === 'ranking' ? (
-        <section className="bg-card rounded-xl border border-border shadow-sm p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-foreground">
-              {SECTOR_TYPE_LABELS[sectorType]}资金流排行
-              {rankings && rankings.total > 0 && (
-                <span className="ml-2 text-sm text-muted-foreground">
-                  共 {rankings.total} 个板块
-                </span>
-              )}
-            </h2>
-            <div className="text-xs text-muted-foreground">
-              净额正值<span className="text-rise font-medium">红</span>、负值
-              <span className="text-fall font-medium">绿</span>
-            </div>
-          </div>
-
-          {isLatestError && !rankings ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              加载最新日期失败，请刷新重试
-            </div>
-          ) : (
-            <FundFlowRankingTable
-              items={rankings?.items ?? []}
-              total={rankings?.total ?? 0}
-              page={rankings?.page ?? page}
-              pageSize={rankings?.pageSize ?? pageSize}
-              isLoading={isRankingsLoading}
-              isError={!!isRankingsError}
-              hasData={rankings?.hasData ?? !isRankingsLoading}
-              sortBy={sortBy}
-              order={order}
-              onSortChange={handleSortChange}
-              onPageChange={handlePageChange}
-              onPageSizeChange={handlePageSizeChange}
-              onRetry={() => mutateRankings()}
-            />
-          )}
-        </section>
-      ) : (
-        <section className="bg-card rounded-xl border border-border shadow-sm p-4 space-y-4">
+      {/* 盘中变化（上） */}
+      <section className="bg-card rounded-xl border border-border shadow-sm p-4 space-y-4">
           {/* 顶部：已选板块（横跨整张卡片） */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
@@ -551,7 +448,41 @@ export default function SectorFundFlowPage() {
             </div>
           </div>
         </section>
-      )}
+
+      {/* 资金流排行（下） */}
+      <section className="bg-card rounded-xl border border-border shadow-sm p-4 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-foreground">
+            {SECTOR_TYPE_LABELS[sectorType]}资金流排行
+            {rankings && rankings.total > 0 && (
+              <span className="ml-2 text-sm text-muted-foreground">
+                共 {rankings.total} 个板块
+              </span>
+            )}
+          </h2>
+          <div className="text-xs text-muted-foreground">
+            净额正值<span className="text-rise font-medium">红</span>、负值
+            <span className="text-fall font-medium">绿</span>
+          </div>
+        </div>
+
+        {isLatestError && !rankings ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            加载最新日期失败，请刷新重试
+          </div>
+        ) : (
+          <FundFlowRankingTable
+            items={rankings?.items ?? []}
+            isLoading={isRankingsLoading}
+            isError={!!isRankingsError}
+            hasData={rankings?.hasData ?? !isRankingsLoading}
+            sortBy={sortBy}
+            order={order}
+            onSortChange={handleSortChange}
+            onRetry={() => mutateRankings()}
+          />
+        )}
+      </section>
 
       {/* 说明 */}
       <div className="bg-primary-light rounded-lg border border-primary/30 p-4 text-sm text-muted-foreground">

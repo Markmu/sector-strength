@@ -90,6 +90,7 @@ class DataCollector:
             'market_data_updated': 0,
             'calculations_performed': 0,
             'cache_cleared': 0,
+            'etf_daily_updated': 0,
             'errors': []
         }
 
@@ -127,6 +128,14 @@ class DataCollector:
                 # 资金流采集失败不影响主更新流程，仅记录
                 logger.error(f"[数据更新] 板块资金流采集失败: {e}")
                 results['errors'].append(f"sector_fund_flow: {e}")
+
+            # 8. ETF 当日份额/净值快照（第 14 期）：先同步基础信息归类，再采集当日份额
+            try:
+                results['etf_daily_updated'] = await self._update_etf_daily()
+            except Exception as e:
+                # ETF 采集失败不影响主更新流程，仅记录
+                logger.error(f"[数据更新] ETF 当日采集失败: {e}")
+                results['errors'].append(f"etf_daily: {e}")
 
             # 更新日志状态为完成
             log_entry.status = 'completed'
@@ -455,6 +464,51 @@ class DataCollector:
             f"(trade_date={trade_date}, sample_time={sample_time})"
         )
         return total_count
+
+    async def _update_etf_daily(self) -> int:
+        """ETF 当日份额/净值快照采集（第 14 期，架构 §6.1 当日采集链路）。
+
+        先同步 ETF 基础信息（归类），再采集当日份额/净值并计算
+        share_change / net_inflow 落库。当日由 BJ_TZ 取。
+
+        复用 EtfDataInitService 的采集能力，collector 仅负责编排与 session 注入
+        （仿 _update_sector_fund_flow 的 session 使用范式）。
+
+        Returns:
+            当日处理的 ETF 份额记录条数
+        """
+        from src.services.data_init_etf import EtfDataInitService
+        # 调用时从 db 模块取会话工厂，确保测试期 conftest 对
+        # ``db_module.AsyncSessionLocal`` 的替换能生效（与 get_session() 不同，
+        # 后者持有了模块加载时的 import 绑定，不会被运行时替换覆盖）。
+        from src.db import database as db_module
+
+        today = datetime.now(BJ_TZ).date()
+        trade_date = today.strftime("%Y%m%d")
+
+        logger.info(f"[数据更新] 开始采集 ETF 当日份额 (trade_date={trade_date})")
+
+        async with db_module.AsyncSessionLocal() as session:
+            svc = EtfDataInitService(session)
+            try:
+                # 先同步基础信息（归类），失败不阻断当日份额采集
+                try:
+                    await svc.sync_etf_basic()
+                except Exception as e:
+                    logger.warning(f"[数据更新] ETF 基础信息同步失败，继续当日份额采集: {e}")
+
+                result = await svc.sync_etf_daily(trade_date)
+            except Exception as e:
+                logger.error(f"[数据更新] ETF 当日份额采集失败: {e}")
+                raise
+
+        processed = result.get("processed", 0)
+        skipped = result.get("skipped", 0)
+        logger.info(
+            f"[数据更新] ETF 当日份额采集完成 (trade_date={trade_date}): "
+            f"处理 {processed}, 跳过 {skipped}"
+        )
+        return processed
 
     async def _run_calculations(self) -> int:
         """执行强度计算"""

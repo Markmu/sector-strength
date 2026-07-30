@@ -63,6 +63,32 @@ const SERIES_COLORS: string[] = (() => {
 // 生长动画时长（毫秒）。进度 p 从 0→1 线性推进，标签跟随曲线当前末端点。
 const ANIM_MS = 1800
 
+/**
+ * A 股完整交易日连续竞价时段的分钟刻度（含两端），用于固定盘中曲线横轴。
+ * 9:30-11:30 / 13:00-15:00，跳过午休。共 242 个点。
+ * 横轴始终覆盖完整交易日，与采样进度无关：盘中只采到 10:00 时横轴也延伸到 15:00，
+ * 曲线只画到当前采样点，后续为断线空白。格式与 formatSampleTime 输出一致（"HH:MM"）。
+ */
+const TRADING_DAY_AXIS_TIMES: string[] = (() => {
+  const times: string[] = []
+  const pushRange = (startH: number, startM: number, endH: number, endM: number) => {
+    let h = startH
+    let m = startM
+    // 含两端：走到 endH:endM（含）
+    while (h < endH || (h === endH && m <= endM)) {
+      times.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+      m += 1
+      if (m === 60) {
+        m = 0
+        h += 1
+      }
+    }
+  }
+  pushRange(9, 30, 11, 30) // 上午：121 点
+  pushRange(13, 0, 15, 0) // 下午：121 点
+  return times
+})()
+
 export interface FundFlowTimeseriesChartProps {
   data: FundFlowTimeseriesData
   height?: string
@@ -77,25 +103,21 @@ export default function FundFlowTimeseriesChart({
   // 实例就绪标记：onChartReady 后置 true，触发动画 useEffect 启动（解决执行顺序）
   const [ready, setReady] = useState(false)
 
-  // 横轴时间并集：随 data 变化重算（独立于动画进度，保证动画期间横轴稳定）
-  const axisTimes = useMemo(() => {
-    const series = data.series ?? []
-    const timeSet = new Set<string>()
-    series.forEach((s) => {
-      s.data.forEach((p) => timeSet.add(p.sampleTime))
-    })
-    return Array.from(timeSet).sort()
-  }, [data])
+  // 横轴时间：固定为完整交易日连续竞价时段（9:30-11:30 / 13:00-15:00，跳过午休）。
+  // 与采样进度无关——盘中只采到 10:00 时横轴也延伸到 15:00，保证横轴始终是完整交易日。
+  const axisTimes = useMemo(() => TRADING_DAY_AXIS_TIMES, [])
 
   // 每条线的预处理：按 axisTimes 对齐的真实值序列 + 颜色 + 末端真实净额。
   // 这些与进度无关，提前算好；进度只驱动截断与插值。
+  // 注意：采样点 sampleTime 是 ISO 字符串，固定轴 key 是 "HH:MM"，
+  // 这里用 formatSampleTime 归一化后再查表对齐。
   const linePrep = useMemo(() => {
     const series = data.series ?? []
     return series.map((s, idx) => {
       const lineColor = SERIES_COLORS[idx % SERIES_COLORS.length]
       const pointMap = new Map<string, number | null>()
       s.data.forEach((p) => {
-        pointMap.set(p.sampleTime, p.netInflow)
+        pointMap.set(formatSampleTime(p.sampleTime), p.netInflow)
       })
       // 各时点净额（亿元）：undefined（无采样）与 null（采样值空）都断线
       const pointValues: Array<number | null> = axisTimes.map((t) => {
@@ -399,8 +421,8 @@ export default function FundFlowTimeseriesChart({
               seriesType?: string
             }>
             if (!arr || arr.length === 0) return ''
-            const t = arr[0].axisValue
-            let html = `<div style="font-weight:600;margin-bottom:4px;">${formatSampleTime(t)}</div>`
+            const t = arr[0].axisValue // axisValue 已是 "HH:MM"（xAxis.data 即轴时间）
+            let html = `<div style="font-weight:600;margin-bottom:4px;">${t}</div>`
             html += '<div style="max-height:240px;overflow-y:auto;">'
             arr.forEach((p) => {
               // 跳过末端引导 custom series（右侧标签列装饰，不参与 tooltip）
@@ -429,15 +451,18 @@ export default function FundFlowTimeseriesChart({
         },
         xAxis: {
           type: 'category' as const,
-          data: axisTimes.map((t) => formatSampleTime(t)),
+          data: axisTimes,
           boundaryGap: false,
           axisLabel: {
             fontSize: 11,
             // category 轴默认 interval:'auto' 会按像素稀疏化刻度，
             // 盘中每分钟约 240 个刻度，15:00 常被跳过。这里显式控制：
             // 半小时整点(:00/:30)显示，并强制最后一个刻度(15:00 收盘)显示。
+            // 特例：固定轴跳过午休后 11:30 与 13:00 是相邻刻度（像素紧贴），
+            // 两者都命中 :00/:30 会重叠 → 隐藏 11:30，保留 13:00（下午开盘整点）。
             interval: (index: number, value: string) => {
               if (index === axisTimes.length - 1) return true
+              if (value === '11:30') return false
               const mm = value.slice(-2)
               return mm === '00' || mm === '30'
             },

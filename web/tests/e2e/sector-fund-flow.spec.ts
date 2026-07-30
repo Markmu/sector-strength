@@ -63,15 +63,14 @@ async function installFullMocks(page: Page): Promise<void> {
 
 test.describe('板块资金流页（plan-03，AC-01~AC-09）', () => {
   test.describe('资金流排行默认视图（AC-01/AC-02）', () => {
-    test('TC1 进入页面默认显示排行视图（行业维度），表格可见', async ({ page }) => {
+    test('TC1 进入页面同时显示排行与盘中变化（行业维度），表格可见', async ({ page }) => {
       await installFullMocks(page)
       await page.goto(SECTOR_FUND_FLOW_PAGE)
 
-      // 默认排行视图选中（规则 7：用 aria-selected 做等待/断言）
-      await expect(page.getByTestId('fund-flow-view-ranking')).toHaveAttribute(
-        'aria-selected',
-        'true'
-      )
+      // 等待排行表格渲染（同屏显示，无需切换）
+      await expect(
+        page.locator('[data-testid="fund-flow-ranking-table"] tbody tr').first()
+      ).toContainText('半导体')
 
       // 默认维度为「行业」：sector-type 按钮无 aria 属性（仅 class 区分激活态），
       // 用表格首行为行业维度数据「半导体」佐证默认维度
@@ -148,19 +147,16 @@ test.describe('板块资金流页（plan-03，AC-01~AC-09）', () => {
   })
 
   test.describe('盘中变化视图（AC-05/AC-06）', () => {
-    test('TC4 切换到变化视图，未选板块显示引导态', async ({ page }) => {
+    test('TC4 盘中变化区默认选中板块并渲染曲线', async ({ page }) => {
       await installFullMocks(page)
       await page.goto(SECTOR_FUND_FLOW_PAGE)
 
-      // 切换到盘中变化视图
-      await page.getByTestId('fund-flow-view-chart').click()
-      await expect(page.getByTestId('fund-flow-view-chart')).toHaveAttribute(
-        'aria-selected',
-        'true'
-      )
-
-      // AC-05：未选板块 → 引导态，不画空坐标系
-      await expect(page.getByTestId('fund-flow-timeseries-guide')).toBeVisible()
+      // 同屏显示：candidates 已加载并派生默认选中（净流入/流出前十），
+      // 行业维度 mock 三个板块净额均非零 → 全部默认选中
+      await expect(page.getByTestId('fund-flow-timeseries-chart')).toBeVisible()
+      await expect(page.getByTestId('fund-flow-selected-sectors')).toBeVisible()
+      await expect(page.getByTestId('fund-flow-remove-sector-半导体')).toBeVisible()
+      await expect(page.getByTestId('fund-flow-remove-sector-证券')).toBeVisible()
 
       // 板块候选清单可见（来自行业维度排行榜：半导体/证券/银行）
       await expect(page.getByTestId('fund-flow-toggle-sector-半导体')).toBeVisible()
@@ -168,30 +164,23 @@ test.describe('板块资金流页（plan-03，AC-01~AC-09）', () => {
       await expect(page.getByTestId('fund-flow-toggle-sector-银行')).toBeVisible()
     })
 
-    test('TC5 变化视图选板块叠加曲线，图表渲染', async ({ page }) => {
+    test('TC5 盘中变化区增减板块联动曲线', async ({ page }) => {
       await installFullMocks(page)
       await page.goto(SECTOR_FUND_FLOW_PAGE)
 
-      // 切换到盘中变化视图
-      await page.getByTestId('fund-flow-view-chart').click()
-      await expect(page.getByTestId('fund-flow-timeseries-guide')).toBeVisible()
-
-      // 选择「半导体」+「证券」两个板块叠加（mock 按 sector_names 返回两条曲线）
-      await page.getByTestId('fund-flow-toggle-sector-半导体').click()
-      await page.getByTestId('fund-flow-toggle-sector-证券').click()
-
-      // 已选板块 chip 区出现（AC-06：可移除）
-      await expect(page.getByTestId('fund-flow-selected-sectors')).toBeVisible()
-      await expect(page.getByTestId('fund-flow-remove-sector-半导体')).toBeVisible()
-      await expect(page.getByTestId('fund-flow-remove-sector-证券')).toBeVisible()
-
-      // 曲线图渲染（mock 返回 hasData=true，series 非空）
+      // 默认已选中 3 个板块（半导体/银行/证券），曲线渲染
       await expect(page.getByTestId('fund-flow-timeseries-chart')).toBeVisible()
+      await expect(page.getByTestId('fund-flow-remove-sector-半导体')).toBeVisible()
 
-      // 移除一个板块 → 仅剩证券，图表仍渲染
+      // 移除「半导体」→ chip 消失，曲线仍渲染（剩 银行/证券）
       await page.getByTestId('fund-flow-remove-sector-半导体').click()
       await expect(page.getByTestId('fund-flow-remove-sector-半导体')).toHaveCount(0)
       await expect(page.getByTestId('fund-flow-remove-sector-证券')).toBeVisible()
+      await expect(page.getByTestId('fund-flow-timeseries-chart')).toBeVisible()
+
+      // 再次点选「半导体」重新加入（mock 按 sector_names 返回曲线）
+      await page.getByTestId('fund-flow-toggle-sector-半导体').click()
+      await expect(page.getByTestId('fund-flow-remove-sector-半导体')).toBeVisible()
       await expect(page.getByTestId('fund-flow-timeseries-chart')).toBeVisible()
     })
   })

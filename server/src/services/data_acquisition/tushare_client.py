@@ -695,6 +695,162 @@ class TushareDataSource(BaseDataSource):
 
         return records
 
+    # ============== ETF 数据接口（第 14 期） ==============
+    #
+    # 复用 get_fund_list（offset 分页）+ _execute_with_retry + _enforce_rate_limit
+    # + 返回原始 dict 的范式。返回字段保持 Tushare 原始键名，由上层服务消费。
+
+    def get_fund_basic_etf(self) -> List[dict]:
+        """
+        获取 ETF 基础信息列表（market='E'，筛 name 含 'ETF'）
+
+        通过 offset 分页循环获取场内基金（pro.fund_basic market='E'），
+        再在客户端按 ``name`` 含 'ETF' 过滤，返回原始字典列表。
+
+        实测 market=E 返回约 2877 条，筛 name 含 ETF 后约 1806 只。
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (ts_code/name/management/fund_type/list_date/benchmark/status)
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+        all_records: List[dict] = []
+        offset = 0
+        batch_size = 15000
+
+        while True:
+            current_offset = offset
+
+            def _fetch(_offset=current_offset):
+                logger.info(
+                    f"[Tushare] 正在获取场内基金基本信息 (market=E, offset={_offset})..."
+                )
+                return pro.fund_basic(
+                    market="E",
+                    offset=_offset,
+                    limit=batch_size,
+                )
+
+            df = self._execute_with_retry(_fetch)
+            if df is None or (hasattr(df, "empty") and df.empty):
+                break
+
+            for _, row in df.iterrows():
+                record = {}
+                for col in df.columns:
+                    val = row[col]
+                    if pd.isna(val):
+                        record[col] = None
+                    else:
+                        record[col] = val
+                all_records.append(record)
+
+            if len(df) < batch_size:
+                break
+
+            offset += batch_size
+
+        # 客户端按 name 含 'ETF' 过滤（基金中带 ETF 的即为 ETF 产品）
+        etf_records = [
+            r for r in all_records if r.get("name") and "ETF" in str(r["name"])
+        ]
+        logger.info(
+            f"[Tushare] 获取到 {len(all_records)} 条场内基金，筛 name 含 ETF 后 {len(etf_records)} 条"
+        )
+        return etf_records
+
+    def get_fund_share(self, trade_date: str) -> List[dict]:
+        """
+        获取基金份额数据（按 trade_date 全量，客户端筛 fund_type=='ETF'）
+
+        Args:
+            trade_date: 交易日，格式 'YYYYMMDD'（如 '20260728'）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (ts_code/trade_date/fd_share/fund_type/market)
+            fd_share 单位为万份。
+
+        说明：实测按 trade_date 全量返回约 728 条（含 fund_type 列），
+        筛 fund_type='ETF' 后单批即够，无需 offset 分页。
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取基金份额 (trade_date={trade_date})..."
+            )
+            return pro.fund_share(trade_date=trade_date)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(f"[Tushare] fund_share 返回空数据 (trade_date={trade_date})")
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        # 客户端按 fund_type=='ETF' 筛选
+        etf_records = [
+            r for r in records if str(r.get("fund_type", "")).strip() == "ETF"
+        ]
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条基金份额，筛 fund_type=ETF 后 {len(etf_records)} 条"
+        )
+        return etf_records
+
+    def get_fund_nav(self, ts_code: str) -> List[dict]:
+        """
+        获取基金净值历史（按 ts_code）
+
+        fund_nav 接口按 ts_code 返回该基金的历史净值（不支持批量 trade_date），
+        上层 sync_etf_daily 需对每只 ETF 逐只调用，配 TUSHARE_API_INTERVAL 限流。
+
+        Args:
+            ts_code: 基金代码，如 '510300.SH'
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (ts_code/nav_date/unit_nav/accum_nav/accum_div/unit_accum_nav ...)
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(f"[Tushare] 正在获取基金净值 (ts_code={ts_code})...")
+            return pro.fund_nav(ts_code=ts_code)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(f"[Tushare] fund_nav 返回空数据 (ts_code={ts_code})")
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        return records
+
     async def get_top10_float_holders(
         self, ts_code: str, period: str
     ) -> List[dict]:
