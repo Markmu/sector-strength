@@ -581,7 +581,7 @@ async def test_admin_init_etf_daily_returns_task_id(admin_client, etf_seed):
     assert resp.status_code == 200, f"init etf-daily 状态码: {resp.status_code}"
     body = resp.json()
     assert body["success"] is True
-    task_id = body["data"]["taskId"]
+    task_id = body["data"]["task_id"]
     assert task_id, "应返回非空 task_id"
 
 

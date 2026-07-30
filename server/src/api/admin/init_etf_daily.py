@@ -76,6 +76,6 @@ async def init_etf_daily(
 
     return ApiResponse(
         success=True,
-        data={"taskId": task.task_id},
+        data={"task_id": task.task_id},
         message="ETF 当日采集任务已创建",
     )

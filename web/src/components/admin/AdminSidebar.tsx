@@ -16,6 +16,7 @@ import {
   Landmark,
   ArrowLeft,
   UserCheck,
+  BarChart3,
 } from 'lucide-react';
 
 /**
@@ -64,6 +65,13 @@ const navItems: NavItem[] = [
     icon: UserCheck,
     href: '/dashboard/admin/top10-holder-init',
     description: '十大流通股东数据采集和同步',
+  },
+  {
+    id: 'etf-init',
+    label: 'ETF 数据同步',
+    icon: BarChart3,
+    href: '/dashboard/admin/etf-init',
+    description: 'ETF 份额采集与历史回填',
   },
   {
     id: 'shareholder-groups',
