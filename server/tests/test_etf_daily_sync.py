@@ -113,76 +113,69 @@ PREV_TRADE_DATE = TRADE_DATE - timedelta(days=1)
 
 
 def _fake_fund_basic_etf():
-    """模拟 get_fund_basic_etf() 返回（架构 §7.2 EtfBasicRecord 口径）。"""
+    """模拟 get_fund_basic_etf() 返回（etf_basic 接口字段口径）。"""
     return [
         {
             "ts_code": "510300.SH",
-            "name": "华泰柏瑞沪深300ETF",
-            "management": "华泰柏瑞",
-            "fund_type": "ETF",
-            "list_date": "2012-05-28",
-            "benchmark": "沪深300指数收益率×100%",
-            "status": "I",
+            "csname": "华泰柏瑞沪深300ETF",
+            "cname": "华泰柏瑞沪深300交易型开放式指数证券投资基金",
+            "index_code": "000300.SH",
+            "index_name": "沪深300",
+            "list_date": "20120528",
+            "setup_date": "20120504",
+            "list_status": "L",
+            "exchange": "SH",
+            "mgr_name": "华泰柏瑞",
+            "etf_type": "纯境内",
         },
         {
             "ts_code": "512100.SH",
-            "name": "南方中证1000ETF",
-            "management": "南方基金",
-            "fund_type": "ETF",
-            "list_date": "2016-09-29",
-            "benchmark": "中证1000指数收益率×100%",
-            "status": "I",
+            "csname": "南方中证1000ETF",
+            "cname": "南方中证1000交易型开放式指数证券投资基金",
+            "index_code": "000852.SH",
+            "index_name": "中证1000",
+            "list_date": "20160929",
+            "setup_date": "20160920",
+            "list_status": "L",
+            "exchange": "SH",
+            "mgr_name": "南方基金",
+            "etf_type": "纯境内",
         },
         {
             "ts_code": "159915.SZ",
-            "name": "易方达创业板ETF",
-            "management": "易方达",
-            "fund_type": "ETF",
-            "list_date": "2011-09-20",
-            "benchmark": "创业板指收益率×100%",
-            "status": "I",
+            "csname": "易方达创业板ETF",
+            "cname": "易方达创业板交易型开放式指数证券投资基金",
+            "index_code": "399006.SZ",
+            "index_name": "创业板指",
+            "list_date": "20110920",
+            "setup_date": "20110909",
+            "list_status": "L",
+            "exchange": "SZ",
+            "mgr_name": "易方达",
+            "etf_type": "纯境内",
         },
     ]
 
 
-def _fake_fund_share(trade_date: str):
-    """模拟 get_fund_share(trade_date) 返回（fd_share 单位万份）。"""
-    return [
-        {"ts_code": "510300.SH", "trade_date": trade_date, "fd_share": 1200000.0,
-         "fund_type": "ETF", "market": "E"},
-        {"ts_code": "512100.SH", "trade_date": trade_date, "fd_share": 800000.0,
-         "fund_type": "ETF", "market": "E"},
-        {"ts_code": "159915.SZ", "trade_date": trade_date, "fd_share": 500000.0,
-         "fund_type": "ETF", "market": "E"},
-    ]
+def _fake_etf_share_size(trade_date: str):
+    """模拟 get_etf_share_size(trade_date) 返回（etf_share_size 接口字段口径）。
 
-
-def _fake_fund_nav_factory():
-    """模拟 get_fund_nav(ts_code)，按 ts_code 返回含当日 unit_nav 的历史列表。
-
-    nav_date 用动态 TRADE_DATE（与 collector 实际取的当日一致），保证服务内
-    ``_dates_equal(nav_date, trade_date)`` 命中（trade_date 由 collector 以
-    ``today.strftime("%Y%m%d")`` 传入，nav_date 此处给 ``YYYY-MM-DD`` 格式，
-    `_dates_equal` 会归一化去 ``-`` 后比较）。
+    total_share 万份 / total_size 万元 / nav 元 / close 元，与真实接口一致。
     """
-    nav_day = TRADE_DATE.strftime("%Y-%m-%d")
-
-    nav_map = {
-        "510300.SH": [
-            {"ts_code": "510300.SH", "nav_date": nav_day, "unit_nav": 4.0000},
-        ],
-        "512100.SH": [
-            {"ts_code": "512100.SH", "nav_date": nav_day, "unit_nav": 2.5000},
-        ],
-        "159915.SZ": [
-            {"ts_code": "159915.SZ", "nav_date": nav_day, "unit_nav": 3.0000},
-        ],
-    }
-
-    def _get_nav(ts_code: str):
-        return nav_map.get(ts_code, [])
-
-    return _get_nav
+    return [
+        {"ts_code": "510300.SH", "trade_date": trade_date,
+         "etf_name": "华泰柏瑞沪深300ETF",
+         "total_share": 1200000.0, "total_size": 4800000.0,
+         "nav": 4.0000, "close": 4.012, "exchange": "SH"},
+        {"ts_code": "512100.SH", "trade_date": trade_date,
+         "etf_name": "南方中证1000ETF",
+         "total_share": 800000.0, "total_size": 2000000.0,
+         "nav": 2.5000, "close": 2.518, "exchange": "SH"},
+        {"ts_code": "159915.SZ", "trade_date": trade_date,
+         "etf_name": "易方达创业板ETF",
+         "total_share": 500000.0, "total_size": 1500000.0,
+         "nav": 3.0000, "close": 3.015, "exchange": "SZ"},
+    ]
 
 
 def _patch_etf_data_source():
@@ -229,8 +222,7 @@ async def test_sync_etf_daily_task_completes_and_writes_etf_daily(db_session):
     # 用确定性 mock 数据替换数据采集层，避免依赖外部 Tushare
     fake_client = AsyncMock()
     fake_client.get_fund_basic_etf = _fake_fund_basic_etf
-    fake_client.get_fund_share = _fake_fund_share
-    fake_client.get_fund_nav = _fake_fund_nav_factory()
+    fake_client.get_etf_share_size = _fake_etf_share_size
 
     with patch("src.services.data_acquisition.DataSourceFactory.create",
                return_value=fake_client):
@@ -254,15 +246,16 @@ async def test_sync_etf_daily_task_completes_and_writes_etf_daily(db_session):
     daily_count = result.scalar_one()
     assert daily_count == 3, f"etf_daily 当日记录数 != 3: {daily_count}"
 
-    # 5. share / unit_nav 有值
+    # 5. total_share / nav / total_size 有值
     rows = (await db_session.execute(
         select(EtfDaily).where(EtfDaily.trade_date == TRADE_DATE)
     )).scalars().all()
     by_code = {r.ts_code: r for r in rows}
 
     for ts_code, row in by_code.items():
-        assert row.share is not None, f"{ts_code} share 为空"
-        assert row.unit_nav is not None, f"{ts_code} unit_nav 为空"
+        assert row.total_share is not None, f"{ts_code} total_share 为空"
+        assert row.nav is not None, f"{ts_code} nav 为空"
+        assert row.total_size is not None, f"{ts_code} total_size 为空"
 
     # 6. 首日（无前日份额）share_change / net_inflow 为 null（架构 §6.1 实现原则）
     for row in rows:
@@ -289,11 +282,14 @@ async def test_sync_etf_daily_computes_share_change_and_net_inflow(db_session):
     # 预置前一日（无 share_change/net_inflow，首日语义）
     prev_rows = [
         EtfDaily(trade_date=PREV_TRADE_DATE, ts_code="510300.SH",
-                 share=Decimal("1150000.0"), unit_nav=Decimal("3.9500")),
+                 total_share=Decimal("1150000.0"), nav=Decimal("3.9500"),
+                 close=Decimal("3.960")),
         EtfDaily(trade_date=PREV_TRADE_DATE, ts_code="512100.SH",
-                 share=Decimal("810000.0"), unit_nav=Decimal("2.4800")),
+                 total_share=Decimal("810000.0"), nav=Decimal("2.4800"),
+                 close=Decimal("2.490")),
         EtfDaily(trade_date=PREV_TRADE_DATE, ts_code="159915.SZ",
-                 share=Decimal("495000.0"), unit_nav=Decimal("2.9800")),
+                 total_share=Decimal("495000.0"), nav=Decimal("2.9800"),
+                 close=Decimal("2.990")),
     ]
     db_session.add_all(prev_rows)
     await db_session.commit()
@@ -307,8 +303,7 @@ async def test_sync_etf_daily_computes_share_change_and_net_inflow(db_session):
 
     fake_client = AsyncMock()
     fake_client.get_fund_basic_etf = _fake_fund_basic_etf
-    fake_client.get_fund_share = _fake_fund_share
-    fake_client.get_fund_nav = _fake_fund_nav_factory()
+    fake_client.get_etf_share_size = _fake_etf_share_size
 
     with patch("src.services.data_acquisition.DataSourceFactory.create",
                return_value=fake_client):
@@ -350,7 +345,7 @@ async def test_sync_etf_daily_idempotent_on_conflict(db_session):
     # 预置一条当日旧值
     db_session.add(EtfDaily(
         trade_date=TRADE_DATE, ts_code="510300.SH",
-        share=Decimal("999999.0"), unit_nav=Decimal("1.0000"),
+        total_share=Decimal("999999.0"), nav=Decimal("1.0000"),
     ))
     await db_session.commit()
 
@@ -363,8 +358,7 @@ async def test_sync_etf_daily_idempotent_on_conflict(db_session):
 
     fake_client = AsyncMock()
     fake_client.get_fund_basic_etf = _fake_fund_basic_etf
-    fake_client.get_fund_share = _fake_fund_share
-    fake_client.get_fund_nav = _fake_fund_nav_factory()
+    fake_client.get_etf_share_size = _fake_etf_share_size
 
     with patch("src.services.data_acquisition.DataSourceFactory.create",
                return_value=fake_client):
@@ -388,19 +382,19 @@ async def test_sync_etf_daily_idempotent_on_conflict(db_session):
             EtfDaily.ts_code == "510300.SH",
         )
     )).scalar_one()
-    assert row.share == Decimal("1200000.0"), (
-        f"on_conflict 未覆盖旧值: share={row.share}"
+    assert row.total_share == Decimal("1200000.0"), (
+        f"on_conflict 未覆盖旧值: total_share={row.total_share}"
     )
 
 
 @pytest.mark.asyncio
 async def test_sync_etf_daily_writes_etf_basic_with_index_classification(db_session):
     """
-    覆盖 plan-01 §5 后端验收：
-      - etf_basic 表有 ETF 清单，index_name/category 已归类；
-        宽基指数（沪深300/中证1000/创业板指）归类命中率为 100%。
+    覆盖后端验收：
+      - etf_basic 表有 ETF 清单，index_code/index_name 来自官方 etf_basic 接口；
+        沪深300/中证1000/创业板指 跟踪指数均已写入。
 
-    触发采集后断言 etf_basic 有 3 条、宽基归类正确。
+    触发采集后断言 etf_basic 有 3 条、跟踪指数正确。
     """
     from src.models.etf import EtfBasic
     from src.services.task_handlers import TaskType
@@ -414,8 +408,7 @@ async def test_sync_etf_daily_writes_etf_basic_with_index_classification(db_sess
 
     fake_client = AsyncMock()
     fake_client.get_fund_basic_etf = _fake_fund_basic_etf
-    fake_client.get_fund_share = _fake_fund_share
-    fake_client.get_fund_nav = _fake_fund_nav_factory()
+    fake_client.get_etf_share_size = _fake_etf_share_size
 
     with patch("src.services.data_acquisition.DataSourceFactory.create",
                return_value=fake_client):
@@ -427,13 +420,12 @@ async def test_sync_etf_daily_writes_etf_basic_with_index_classification(db_sess
     assert len(basics) == 3, f"etf_basic 记录数 != 3: {len(basics)}"
 
     by_code = {b.ts_code: b for b in basics}
-    # 宽基归类：沪深300 / 中证1000 / 创业板指 均为 broad
-    assert by_code["510300.SH"].category == "broad", (
-        f"510300 归类应为 broad: {by_code['510300.SH'].category}"
-    )
-    assert by_code["510300.SH"].index_name is not None
-    assert by_code["512100.SH"].category == "broad"
-    assert by_code["159915.SZ"].category == "broad"
+    # 跟踪指数（官方 etf_basic 接口直取）
+    assert by_code["510300.SH"].index_code == "000300.SH"
+    assert by_code["510300.SH"].index_name == "沪深300"
+    assert by_code["510300.SH"].list_status == "L"
+    assert by_code["512100.SH"].index_code == "000852.SH"
+    assert by_code["159915.SZ"].index_code == "399006.SZ"
 
 
 if __name__ == "__main__":

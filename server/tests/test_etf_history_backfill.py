@@ -135,7 +135,7 @@ class TestBackfillEtfHistoryImportable:
 # backfill 内部会：
 #   1. 调 sync_etf_basic() → get_fund_basic_etf()
 #   2. 用 TradingCalendar.get_trading_days_between() 取交易日 → get_trading_calendar()
-#   3. 逐日调 sync_etf_daily(trade_date) → get_fund_share(trade_date) + get_fund_nav(ts_code)
+#   3. 逐日调 sync_etf_daily(trade_date) → get_etf_share_size(trade_date)
 #
 # 用一个 fake client 同时提供 ETF 数据与交易日历，使整条链路不依赖外部 Tushare。
 # mock 数据刻意构造覆盖 §5 执行验证的确定性断言：份额逐日递增，便于断言 share_change。
@@ -146,31 +146,41 @@ _ETF_CODES = ["510300.SH", "512100.SH", "159915.SZ"]
 
 
 def _fake_fund_basic_etf():
-    """模拟 get_fund_basic_etf() 返回（架构 §7.2 EtfBasicRecord 口径）。"""
+    """模拟 get_fund_basic_etf() 返回（etf_basic 接口字段口径）。"""
     return [
         {
-            "ts_code": "510300.SH", "name": "华泰柏瑞沪深300ETF",
-            "management": "华泰柏瑞", "fund_type": "ETF", "list_date": "2012-05-28",
-            "benchmark": "沪深300指数收益率×100%", "status": "I",
+            "ts_code": "510300.SH", "csname": "华泰柏瑞沪深300ETF",
+            "cname": "华泰柏瑞沪深300交易型开放式指数证券投资基金",
+            "index_code": "000300.SH", "index_name": "沪深300",
+            "list_date": "20120528", "setup_date": "20120504",
+            "list_status": "L", "exchange": "SH",
+            "mgr_name": "华泰柏瑞", "etf_type": "纯境内",
         },
         {
-            "ts_code": "512100.SH", "name": "南方中证1000ETF",
-            "management": "南方基金", "fund_type": "ETF", "list_date": "2016-09-29",
-            "benchmark": "中证1000指数收益率×100%", "status": "I",
+            "ts_code": "512100.SH", "csname": "南方中证1000ETF",
+            "cname": "南方中证1000交易型开放式指数证券投资基金",
+            "index_code": "000852.SH", "index_name": "中证1000",
+            "list_date": "20160929", "setup_date": "20160920",
+            "list_status": "L", "exchange": "SH",
+            "mgr_name": "南方基金", "etf_type": "纯境内",
         },
         {
-            "ts_code": "159915.SZ", "name": "易方达创业板ETF",
-            "management": "易方达", "fund_type": "ETF", "list_date": "2011-09-20",
-            "benchmark": "创业板指收益率×100%", "status": "I",
+            "ts_code": "159915.SZ", "csname": "易方达创业板ETF",
+            "cname": "易方达创业板交易型开放式指数证券投资基金",
+            "index_code": "399006.SZ", "index_name": "创业板指",
+            "list_date": "20110920", "setup_date": "20110909",
+            "list_status": "L", "exchange": "SZ",
+            "mgr_name": "易方达", "etf_type": "纯境内",
         },
     ]
 
 
-def _fake_fund_share(trade_date: str):
-    """模拟 get_fund_share(trade_date)，按日返回确定性递增份额（万份）。
+def _fake_etf_share_size(trade_date: str):
+    """模拟 get_etf_share_size(trade_date)，按日返回确定性递增份额（万份）+ 净值 + 规模。
 
     每只 ETF 每日份额 = 基线 + 日序号 × 步长，保证升序逐日回填时
     share_change = 当日 − 前日 = 固定步长（确定性可断言）。
+    nav / close 固定，便于 net_inflow / change_percent 断言。
 
     trade_date 可能是 'YYYYMMDD' 或 'YYYY-MM-DD'，统一归一化后取日序号。
     """
@@ -187,42 +197,22 @@ def _fake_fund_share(trade_date: str):
         "512100.SH": 10000.0,
         "159915.SZ": 5000.0,
     }
+    # nav / close 固定（每日相同）
+    nav_map = {"510300.SH": 4.0000, "512100.SH": 2.5000, "159915.SZ": 3.0000}
+    close_map = {"510300.SH": 4.012, "512100.SH": 2.518, "159915.SZ": 3.015}
 
     return [
         {
             "ts_code": code, "trade_date": trade_date,
-            "fd_share": base[code] + day_index * step[code],
-            "fund_type": "ETF", "market": "E",
+            "etf_name": f"{code}ETF",
+            "total_share": base[code] + day_index * step[code],
+            "total_size": (base[code] + day_index * step[code]) * nav_map[code],
+            "nav": nav_map[code],
+            "close": close_map[code],
+            "exchange": "SH" if code.endswith(".SH") else "SZ",
         }
         for code in _ETF_CODES
     ]
-
-
-def _fake_fund_nav_factory():
-    """模拟 get_fund_nav(ts_code)，返回覆盖整个回填范围的历史净值列表。
-
-    backfill 每日调用 sync_etf_daily → 对每只 ts_code 取 nav_date==trade_date 的 unit_nav。
-    为支持范围内任意交易日匹配，这里返回覆盖全部 5 天的净值记录（unit_nav 固定，便于断言）。
-    """
-    nav_records = {
-        "510300.SH": [
-            {"ts_code": "510300.SH", "nav_date": d.isoformat(), "unit_nav": 4.0000}
-            for d in BACKFILL_TRADING_DAYS
-        ],
-        "512100.SH": [
-            {"ts_code": "512100.SH", "nav_date": d.isoformat(), "unit_nav": 2.5000}
-            for d in BACKFILL_TRADING_DAYS
-        ],
-        "159915.SZ": [
-            {"ts_code": "159915.SZ", "nav_date": d.isoformat(), "unit_nav": 3.0000}
-            for d in BACKFILL_TRADING_DAYS
-        ],
-    }
-
-    def _get_nav(ts_code: str):
-        return nav_records.get(ts_code, [])
-
-    return _get_nav
 
 
 def _fake_trading_calendar():
@@ -239,8 +229,7 @@ def _build_fake_client():
     """构造确定性 mock 数据源客户端（ETF 数据 + 交易日历）。"""
     fake_client = AsyncMock()
     fake_client.get_fund_basic_etf = _fake_fund_basic_etf
-    fake_client.get_fund_share = _fake_fund_share
-    fake_client.get_fund_nav = _fake_fund_nav_factory()
+    fake_client.get_etf_share_size = _fake_etf_share_size
     fake_client.get_trading_calendar = _fake_trading_calendar
     return fake_client
 
@@ -309,14 +298,15 @@ async def test_backfill_etf_history_task_completes_and_writes_range(db_session):
             f"etf_daily {trade_day} 记录数 != 3: {count}"
         )
 
-    # share / unit_nav 有值（抽查首尾两日）
+    # total_share / nav / total_size 有值（抽查首尾两日）
     for trade_day in (BACKFILL_TRADING_DAYS[0], BACKFILL_TRADING_DAYS[-1]):
         rows = (await db_session.execute(
             select(EtfDaily).where(EtfDaily.trade_date == trade_day)
         )).scalars().all()
         for row in rows:
-            assert row.share is not None, f"{row.ts_code}@{trade_day} share 为空"
-            assert row.unit_nav is not None, f"{row.ts_code}@{trade_day} unit_nav 为空"
+            assert row.total_share is not None, f"{row.ts_code}@{trade_day} total_share 为空"
+            assert row.nav is not None, f"{row.ts_code}@{trade_day} nav 为空"
+            assert row.total_size is not None, f"{row.ts_code}@{trade_day} total_size 为空"
 
 
 @pytest.mark.asyncio
@@ -530,16 +520,16 @@ async def test_backfill_reuses_sync_etf_daily_same_caliber(db_session):
 
         for code in _ETF_CODES:
             assert code in curr_rows, f"{code}@{curr_day} 缺记录"
-            expected_change = curr_rows[code].share - prev_rows[code].share
+            expected_change = curr_rows[code].total_share - prev_rows[code].total_share
             assert curr_rows[code].share_change == expected_change, (
                 f"{code}@{curr_day} share_change={curr_rows[code].share_change} "
                 f"!= 当日-前日 {expected_change}"
             )
-            # net_inflow = share_change × unit_nav / 10000（亿元，4 位小数）
-            if curr_rows[code].unit_nav is not None:
+            # net_inflow = share_change × nav / 10000（亿元，4 位小数）
+            if curr_rows[code].nav is not None:
                 expected_inflow = (
                     curr_rows[code].share_change
-                    * curr_rows[code].unit_nav
+                    * curr_rows[code].nav
                     / Decimal("10000")
                 ).quantize(Decimal("0.0001"))
                 assert curr_rows[code].net_inflow == expected_inflow, (

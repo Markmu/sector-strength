@@ -19,7 +19,7 @@ import {
  * - **plan-04 范围（导航 + 路由壳）**：入口存在、点击跳转、页面空载渲染、
  *   降级回归（现有导航不受影响）。这些用例依赖 plan-04 的 DashboardLayout 导航项 +
  *   /dashboard/etf-monitor 路由壳，已随 plan-04 green 通过。
- * - **plan-05 范围（业务交互）**：排行表四态、维度/排序/分页切换、明细展开、趋势曲线、
+ * - **plan-05 范围（业务交互）**：排行表四态、排序/分页切换、明细展开、趋势曲线、
  *   错误重试、排行→趋势跳转。这些用例依赖 plan-05 的 EtfMonitorPage 业务组件，由
  *   installEtfMonitorMocks（mock-etf-monitor-api.ts）mock etfMonitorApi 4 个端点。
  *   plan-05 red 阶段：业务组件未实现（page.tsx 仍是占位空壳），TC-5.1~5.12 因
@@ -160,20 +160,20 @@ test.describe('plan-04：ETF 监控导航入口与路由壳', () => {
 // plan-05 red 阶段：业务组件尚未实现（page.tsx 仍是 plan-04 占位空壳），TC-5.1~5.12
 // 因 data-testid 不存在（排行表/趋势图未渲染）而预期失败。
 // testid 命名与 plan-05 §3 实现规格一致：etf-index-ranking-table / etf-trend-chart /
-// etf-detail-row / etf-category-{broad|industry} / etf-sort-{field} / etf-view-{ranking|trend} 等。
+// etf-detail-row / etf-sort-{field} / etf-view-{ranking|trend} 等。
 // ============================================================================
 
 test.describe('plan-05：指数排行视图（AC-01/02/03/05/13）', () => {
-  test('TC-5.1 默认显示宽基指数排行（AC-01：骨架屏→数据，按 totalNetInflow 降序，正负色标）', async ({
+  test('TC-5.1 默认显示指数排行（骨架屏→数据，按 totalNetInflow 降序，正负色标）', async ({
     page,
   }) => {
     await installEtfMonitorMocks(page)
     await page.goto(ETF_MONITOR_PAGE)
 
-    // 排行表格可见（宽基维度默认）
+    // 排行表格可见
     await expect(page.getByTestId('etf-index-ranking-table')).toBeVisible()
 
-    // 默认宽基 3 行，按 netInflow desc：沪深300(+12亿) > 创业板指(+0.8亿) > 中证500(-3.5亿)
+    // 默认 3 行，按 netInflow desc：沪深300(+12亿) > 创业板指(+0.8亿) > 中证500(-3.5亿)
     const rows = page.locator('[data-testid="etf-index-ranking-table"] tbody tr')
     await expect(rows).toHaveCount(3)
     await expect(rows.first()).toContainText('沪深300')
@@ -182,31 +182,6 @@ test.describe('plan-05：指数排行视图（AC-01/02/03/05/13）', () => {
     // 净流入额正值带 + 号（formatSignedAmount）、负值无 + 号（红涨绿跌色标，断文案）
     await expect(rows.first()).toContainText('+12')
     await expect(rows.last()).toContainText('-3.5')
-  })
-
-  test('TC-5.2 宽基/行业维度切换（AC-02：数据联动，再切回正常）', async ({ page }) => {
-    await installEtfMonitorMocks(page)
-    await page.goto(ETF_MONITOR_PAGE)
-
-    // 初始宽基维度：沪深300 在第一行
-    await expect(
-      page.locator('[data-testid="etf-index-ranking-table"] tbody tr').first()
-    ).toContainText('沪深300')
-
-    // 切换为行业维度（mock 按 category 返回差异化标签）
-    await page.getByTestId('etf-category-industry').click()
-
-    // 数据联动：行业维度第一行为「半导体」，沪深300 消失
-    const rowsIndustry = page.locator('[data-testid="etf-index-ranking-table"] tbody tr')
-    await expect(rowsIndustry).toHaveCount(2)
-    await expect(rowsIndustry.first()).toContainText('半导体')
-    await expect(rowsIndustry.filter({ hasText: '沪深300' })).toHaveCount(0)
-
-    // 再切回宽基：沪深300 回归
-    await page.getByTestId('etf-category-broad').click()
-    await expect(
-      page.locator('[data-testid="etf-index-ranking-table"] tbody tr').first()
-    ).toContainText('沪深300')
   })
 
   test('TC-5.3 净流入额/份额变化/份额排序切换（AC-03：三态箭头，不可排序列不触发）', async ({

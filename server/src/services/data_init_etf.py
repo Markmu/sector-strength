@@ -3,7 +3,8 @@
 负责从 Tushare 拉取 ETF 基础信息与日份额/净值并写入数据库。
 仿 ``FundDataInitService``（progress/cancel 回调 + pg upsert）范式。
 
-- ``sync_etf_basic()``：拉 ETF 清单 → 经 EtfIndexClassifier 归类 → upsert etf_basic。
+- ``sync_etf_basic()``：拉 ETF 清单（pro.etf_basic list_status='L'）→ upsert etf_basic。
+  跟踪指数用官方 index_code / index_name 直接入库，不再做文本归类。
 - ``sync_etf_daily(trade_date)``：拉当日份额 → 逐只拉净值 → 查前日份额 →
   计算 share_change / net_inflow → upsert etf_daily。
 
@@ -23,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.etf import EtfBasic, EtfDaily
 from src.services.data_acquisition import DataSourceFactory
-from src.services.data_acquisition.etf_index_classifier import classify
 from src.services.trading_calendar import TradingCalendar
 
 logger = logging.getLogger(__name__)
@@ -78,15 +78,15 @@ class EtfDataInitService:
                 logger.error(f"进度回调失败: {e}")
 
     # ------------------------------------------------------------------
-    # sync_etf_basic：ETF 基础信息 + 指数归类
+    # sync_etf_basic：ETF 基础信息（etf_basic 接口，官方指数直取）
     # ------------------------------------------------------------------
 
     async def sync_etf_basic(self) -> dict:
-        """同步 ETF 基础信息并归类指数。
+        """同步 ETF 基础信息（跟踪指数用官方 index_code / index_name 直接入库）。
 
         流程（仿 FundDataInitService.sync_fund_basic）：
-        1. 调 get_fund_basic_etf() 拉 ETF 清单
-        2. 逐条经 EtfIndexClassifier.classify 得 index_name / category
+        1. 调 get_fund_basic_etf() 拉 ETF 清单（pro.etf_basic list_status='L'）
+        2. 字段映射（csname→name / cname→full_name / index_code / index_name 等）
         3. upsert etf_basic（冲突键 ts_code，on_conflict_do_update 覆盖字段）
 
         Returns:
@@ -101,7 +101,6 @@ class EtfDataInitService:
         added = 0
         failed = 0
         skipped = 0
-        other_samples = []  # 归类失败（other）样本，便于日志核对
 
         await self._update_progress(0, 1, "正在从 Tushare 拉取 ETF 基础信息...")
 
@@ -113,47 +112,43 @@ class EtfDataInitService:
 
         total = len(records)
         logger.info(f"拉取到 {total} 条 ETF 基础信息")
-        await self._update_progress(0, total, f"共 {total} 条 ETF 待归类入库")
+        await self._update_progress(0, total, f"共 {total} 条 ETF 待入库")
 
         for i, record in enumerate(records, 1):
             try:
                 ts_code = record.get("ts_code")
-                name = record.get("name")
 
                 if not ts_code:
                     failed += 1
                     continue
 
-                benchmark = record.get("benchmark")
-                # 归类：宽基精确枚举 + 行业关键词 + other 兜底（不抛异常）
-                index_name, category = classify(benchmark, name)
-                if category == "other" and len(other_samples) < 20:
-                    other_samples.append({"ts_code": ts_code, "name": name,
-                                          "benchmark": benchmark})
-
                 list_date = self._parse_date(record.get("list_date"))
+                setup_date = self._parse_date(record.get("setup_date"))
 
                 stmt = pg_insert(EtfBasic).values(
                     ts_code=ts_code,
-                    name=name,
-                    management=record.get("management"),
-                    fund_type=record.get("fund_type"),
+                    name=record.get("csname"),
+                    full_name=record.get("cname"),
+                    index_code=record.get("index_code"),
+                    index_name=record.get("index_name"),
                     list_date=list_date,
-                    benchmark=benchmark,
-                    index_name=index_name,
-                    category=category,
-                    status=record.get("status"),
-                    market=record.get("market", "E"),
+                    setup_date=setup_date,
+                    list_status=record.get("list_status"),
+                    exchange=record.get("exchange"),
+                    mgr_name=record.get("mgr_name"),
+                    etf_type=record.get("etf_type"),
                 )
                 update_cols = {
                     "name": stmt.excluded.name,
-                    "management": stmt.excluded.management,
-                    "fund_type": stmt.excluded.fund_type,
-                    "list_date": stmt.excluded.list_date,
-                    "benchmark": stmt.excluded.benchmark,
+                    "full_name": stmt.excluded.full_name,
+                    "index_code": stmt.excluded.index_code,
                     "index_name": stmt.excluded.index_name,
-                    "category": stmt.excluded.category,
-                    "status": stmt.excluded.status,
+                    "list_date": stmt.excluded.list_date,
+                    "setup_date": stmt.excluded.setup_date,
+                    "list_status": stmt.excluded.list_status,
+                    "exchange": stmt.excluded.exchange,
+                    "mgr_name": stmt.excluded.mgr_name,
+                    "etf_type": stmt.excluded.etf_type,
                 }
                 stmt = stmt.on_conflict_do_update(
                     index_elements=["ts_code"],
@@ -172,13 +167,6 @@ class EtfDataInitService:
 
         await self.session.commit()
 
-        # 可观测性（架构 §8.5）：记录归类失败数与样本
-        if other_samples:
-            logger.info(
-                f"[ETF] 归类失败（category=other）共记录中样本 {len(other_samples)} 条: "
-                f"{other_samples[:10]}"
-            )
-
         logger.info(
             f"[ETF] 基础信息同步完成: 总计 {total}, 入库 {added}, 失败 {failed}"
         )
@@ -195,35 +183,32 @@ class EtfDataInitService:
         }
 
     # ------------------------------------------------------------------
-    # sync_etf_daily：当日份额/净值采集 + share_change/net_inflow 计算
+    # sync_etf_daily：当日份额/规模/净值采集（etf_share_size 单接口）
     # ------------------------------------------------------------------
 
     async def sync_etf_daily(self, trade_date: str) -> dict:
-        """采集 ETF 当日份额/净值并计算 share_change / net_inflow 落库。
+        """采集 ETF 当日份额/规模/净值并计算 share_change / net_inflow / change_percent 落库。
 
         Args:
             trade_date: 交易日，格式 'YYYYMMDD'（如 '20260729'）。
 
         流程：
-        1. 调 get_fund_share(trade_date) 拉当日 ETF 份额（约 700 条）。
-        2. 取净值：对当日有份额的 ts_code，**逐只调 get_fund_nav(ts_code)**
-           取 nav_date==trade_date 的 unit_nav（fund_nav 按只返回历史，不支持批量）。
-        3. 查前一日份额：etf_daily 中 trade_date < 给定日的最大 trade_date 记录的 share。
-        4. 计算：share_change = 当日share − 前日share（前日不存在则 null）；
-           net_inflow = share_change × unit_nav / 10000（亿元）。
-        5. 批量 upsert etf_daily（on_conflict_do_update 覆盖，仿
-           collector._update_sector_fund_flow）。
-        6. 返回 {processed, added, updated, skipped}。
-
-        change_percent 来源：ETF 二级市场涨跌幅。实测 fund_daily 接口在当前数据源
-        返回"Token无效"，首版存 null（TODO，待数据源支持后补取）。
+        1. 调 get_etf_share_size(trade_date) 拉当日全市场 ETF 份额/规模/净值/收盘价
+           （约 1600 条，单接口拿齐，取代旧 fund_share + 逐只 fund_nav 方案）。
+        2. 查前一日份额与收盘价：etf_daily 中 trade_date < 给定日的最大 trade_date 记录。
+        3. 计算：
+           - share_change = 当日 total_share − 前日 total_share（前日不存在则 null）
+           - net_inflow = share_change × nav / 10000（亿元），nav 缺失则 null
+           - change_percent = (当日close − 前日close) / 前日close × 100，close 缺失则 null
+        4. 批量 upsert etf_daily（on_conflict_do_update 覆盖）。
+        5. 返回 {processed, added, updated, skipped}。
         """
         if self.session is None:
             raise RuntimeError("EtfDataInitService.session 未设置")
 
         tushare = DataSourceFactory.create()
         target_date = self._parse_trade_date(trade_date)
-        # 与 get_fund_nav 的 nav_date 归一化比较用的字符串（YYYYMMDD）
+        # etf_share_size 接口要求 YYYYMMDD 无横杠格式
         target_date_str_yyyymmdd = trade_date.replace("-", "")
 
         processed = 0
@@ -231,82 +216,95 @@ class EtfDataInitService:
         updated = 0
         skipped = 0
 
-        await self._update_progress(0, 1, f"正在拉取 ETF 当日份额 (trade_date={trade_date})...")
+        await self._update_progress(0, 1, f"正在拉取 ETF 份额/规模 (trade_date={trade_date})...")
 
-        # 1. 拉当日 ETF 份额（fund_share 接口要求 YYYYMMDD 无横杠格式）
+        # 1. 拉当日 ETF 份额/规模/净值/收盘价（etf_share_size 单接口）
         try:
-            share_records = tushare.get_fund_share(target_date_str_yyyymmdd)
+            records = tushare.get_etf_share_size(target_date_str_yyyymmdd)
         except Exception as e:
-            logger.error(f"拉取 ETF 份额失败 (trade_date={trade_date}): {e}")
+            logger.error(f"拉取 ETF 份额/规模失败 (trade_date={trade_date}): {e}")
             raise
 
-        total = len(share_records)
-        logger.info(f"拉取到 {total} 条 ETF 当日份额 (trade_date={trade_date})")
-        await self._update_progress(0, total, f"共 {total} 条 ETF 份额待处理")
+        total = len(records)
+        logger.info(f"拉取到 {total} 条 ETF 份额/规模 (trade_date={trade_date})")
+        await self._update_progress(0, total, f"共 {total} 条 ETF 待处理")
 
         nav_miss_count = 0
-        for i, record in enumerate(share_records, 1):
+        close_miss_count = 0
+        for i, record in enumerate(records, 1):
             try:
                 ts_code = record.get("ts_code")
                 if not ts_code:
                     skipped += 1
                     continue
 
-                fd_share = self._to_decimal(record.get("fd_share"))
-                if fd_share is None:
+                total_share = self._to_decimal(record.get("total_share"))
+                if total_share is None:
                     skipped += 1
                     continue
 
-                # 2. 逐只取净值，匹配 nav_date == trade_date
-                unit_nav = None
-                try:
-                    nav_records = tushare.get_fund_nav(ts_code)
-                    for nav_row in nav_records:
-                        nav_date = nav_row.get("nav_date")
-                        if self._dates_equal(nav_date, trade_date):
-                            unit_nav = self._to_decimal(nav_row.get("unit_nav"))
-                            break
-                except Exception as e:
-                    # 单只净值失败跳过该只净值，net_inflow 存 null（边界场景）
-                    logger.warning(f"取 ETF 净值失败 ({ts_code}): {e}")
+                total_size = self._to_decimal(record.get("total_size"))
+                nav = self._to_decimal(record.get("nav"))
+                close = self._to_decimal(record.get("close"))
 
-                if unit_nav is None:
+                # total_size 缺失时用 total_share(万份) × nav(元) 估算规模(万元)兜底。
+                # 实测 etf_share_size 在非主更新日可能不返回 total_size（全 NULL），
+                # 用份额×净值近似保证规模列总有值（与 total_size 口径一致：万元）。
+                if total_size is None and nav is not None:
+                    total_size = (total_share * nav).quantize(Decimal("0.0001"))
+
+                if nav is None:
                     nav_miss_count += 1
+                if close is None:
+                    close_miss_count += 1
 
-                # 3. 查前一日份额（trade_date < 给定日的最大 trade_date）
-                prev_share = await self._get_prev_share(ts_code, target_date)
+                # 2. 查前一日份额与收盘价
+                prev_share, prev_close = await self._get_prev_share_and_close(
+                    ts_code, target_date
+                )
 
-                # 4. 计算 share_change / net_inflow
+                # 3. 计算 share_change / net_inflow / change_percent
                 if prev_share is not None:
-                    share_change = fd_share - prev_share
-                    if unit_nav is not None:
-                        # net_inflow = share_change(万份) × unit_nav / 10000（亿元）
-                        net_inflow = (share_change * unit_nav / Decimal("10000"))
-                        # 保留 4 位小数与列精度对齐
+                    share_change = total_share - prev_share
+                    if nav is not None:
+                        # net_inflow = share_change(万份) × nav / 10000（亿元）
+                        net_inflow = (share_change * nav / Decimal("10000"))
                         net_inflow = net_inflow.quantize(Decimal("0.0001"))
                     else:
                         net_inflow = None
                 else:
-                    # 首日（无前日份额）share_change / net_inflow 为 null（架构 §6.1）
+                    # 首日（无前日数据）share_change / net_inflow 为 null
                     share_change = None
                     net_inflow = None
 
-                # 5. upsert etf_daily（on_conflict_do_update 覆盖，仿
-                #    collector._update_sector_fund_flow）
+                # change_percent = (当日close − 前日close) / 前日close × 100
+                if close is not None and prev_close is not None and prev_close != 0:
+                    change_percent = (
+                        (close - prev_close) / prev_close * Decimal("100")
+                    )
+                    change_percent = change_percent.quantize(Decimal("0.0001"))
+                else:
+                    change_percent = None
+
+                # 4. upsert etf_daily（on_conflict_do_update 覆盖）
                 stmt = pg_insert(EtfDaily).values(
                     trade_date=target_date,
                     ts_code=ts_code,
-                    share=fd_share,
-                    unit_nav=unit_nav,
+                    total_share=total_share,
+                    total_size=total_size,
+                    nav=nav,
+                    close=close,
                     share_change=share_change,
                     net_inflow=net_inflow,
-                    change_percent=None,  # TODO: fund_daily 接口可用后补取
+                    change_percent=change_percent,
                 )
                 stmt = stmt.on_conflict_do_update(
                     constraint="uq_etf_daily_date_code",
                     set_={
-                        "share": stmt.excluded.share,
-                        "unit_nav": stmt.excluded.unit_nav,
+                        "total_share": stmt.excluded.total_share,
+                        "total_size": stmt.excluded.total_size,
+                        "nav": stmt.excluded.nav,
+                        "close": stmt.excluded.close,
                         "share_change": stmt.excluded.share_change,
                         "net_inflow": stmt.excluded.net_inflow,
                         "change_percent": stmt.excluded.change_percent,
@@ -324,14 +322,14 @@ class EtfDataInitService:
             if i % 200 == 0 or i == total:
                 await self._update_progress(
                     i, total,
-                    f"已处理 {i}/{total} 条 ETF 份额 (净值缺失 {nav_miss_count})"
+                    f"已处理 {i}/{total} 条 ETF (净值缺失 {nav_miss_count}, 收盘价缺失 {close_miss_count})"
                 )
 
         await self.session.commit()
 
         logger.info(
-            f"[ETF] 当日份额采集完成 (trade_date={trade_date}): "
-            f"处理 {processed}, 跳过 {skipped}, 净值缺失 {nav_miss_count}"
+            f"[ETF] 当日份额/规模采集完成 (trade_date={trade_date}): "
+            f"处理 {processed}, 跳过 {skipped}, 净值缺失 {nav_miss_count}, 收盘价缺失 {close_miss_count}"
         )
         await self._update_progress(
             total, total,
@@ -463,19 +461,19 @@ class EtfDataInitService:
     # 辅助方法
     # ------------------------------------------------------------------
 
-    async def _get_prev_share(
+    async def _get_prev_share_and_close(
         self, ts_code: str, target_date: date
-    ) -> Optional[Decimal]:
-        """查询某 ts_code 在 target_date 之前最近一日的份额。
+    ) -> tuple[Optional[Decimal], Optional[Decimal]]:
+        """查询某 ts_code 在 target_date 之前最近一日的份额与收盘价。
 
-        子查询语义：SELECT share FROM etf_daily
+        子查询语义：SELECT total_share, close FROM etf_daily
                    WHERE ts_code=? AND trade_date<? ORDER BY trade_date DESC LIMIT 1
 
         Returns:
-            前一日份额（Decimal）或 None（首日无前日数据）
+            (前一日份额, 前一日收盘价)，首日无前日数据返回 (None, None)
         """
         stmt = (
-            select(EtfDaily.share)
+            select(EtfDaily.total_share, EtfDaily.close)
             .where(
                 EtfDaily.ts_code == ts_code,
                 EtfDaily.trade_date < target_date,
@@ -486,8 +484,8 @@ class EtfDataInitService:
         result = await self.session.execute(stmt)
         row = result.first()
         if row is None:
-            return None
-        return row[0]
+            return None, None
+        return row[0], row[1]
 
     @staticmethod
     def _parse_date(value) -> Optional[date]:
@@ -514,18 +512,6 @@ class EtfDataInitService:
         if d is None:
             raise ValueError(f"无效的 trade_date: {value}")
         return d
-
-    @staticmethod
-    def _dates_equal(nav_date, trade_date: str) -> bool:
-        """比较 fund_nav 返回的 nav_date 与目标 trade_date 是否同一天。
-
-        兼容 YYYYMMDD（如 20260729）与 YYYY-MM-DD（如 2026-07-29）两种格式。
-        """
-        if nav_date is None:
-            return False
-        a = str(nav_date).strip().replace("-", "")
-        b = str(trade_date).strip().replace("-", "")
-        return a == b
 
     @staticmethod
     def _to_decimal(value) -> Optional[Decimal]:

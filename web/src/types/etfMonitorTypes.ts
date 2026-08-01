@@ -1,20 +1,18 @@
 /**
- * ETF 监控前端契约类型（plan-04，14 期）
+ * ETF 监控前端契约类型
  *
  * 对应架构 §7.2 输出视角 Schema（camelCase）。后端路由 _dict_to_camel 已把
  * snake_case 键转为 camelCase，这里只描述前端最终拿到的业务对象。
  *
- * query 参数保持 snake_case（category / trade_date / sort_by / target_type /
+ * query 参数保持 snake_case（trade_date / sort_by / target_type /
  * target_code / metric / days / end_date / page / page_size），响应字段 camelCase
- * （hasData / tradeDate / indexName / etfCount / totalShare / totalShareChange /
- * totalNetInflow / tsCode / unitNav / share / shareChange / netInflow / changePercent 等）。
+ * （hasData / tradeDate / indexCode / indexName / etfCount / totalShare /
+ * totalShareChange / totalNetInflow / tsCode / unitNav / share / shareChange /
+ * netInflow / changePercent 等）。
  *
  * 特例（架构 §7.6）：sort_by 与 metric 参数的「值」用 camelCase（netInflow /
  * shareChange / share），与后端取值一致，不要下划线化。
  */
-
-/** 指数维度（宽基 / 行业） */
-export type EtfCategory = 'broad' | 'industry'
 
 /**
  * 排序字段（camelCase 值，架构 §7.6 特例）。
@@ -39,14 +37,14 @@ export type EtfTargetType = 'index' | 'etf'
 export type EtfTrendDays = 7 | 30 | 90
 
 /**
- * 指数排行单项（AC-01/02/03/05/13）。
- * 指数级数值 = 该指数下所有 ETF 加总（ADR-4）。
+ * 指数排行单项。
+ * 指数级数值 = 该指数下所有 ETF 加总（ADR-4）。按 index_code 聚合。
  */
 export interface EtfIndexRankingItem {
-  /** 跟踪指数名（归类后，宽基精确枚举 / 行业关键词 / other 兜底） */
+  /** 跟踪指数代码（官方 etf_basic 接口 index_code，如 000300.SH） */
+  indexCode: string
+  /** 跟踪指数名（官方 etf_basic 接口 index_name，如 沪深300） */
   indexName: string
-  /** 维度归类文本（与 category 参数对应但为后端输出文本） */
-  category: string
   /** 该指数下 ETF 只数 */
   etfCount: number
   /** 合计份额（亿份，ADR-7：存储万份 / 输出亿份 ÷10000），无数据为 null */
@@ -55,6 +53,8 @@ export interface EtfIndexRankingItem {
   totalShareChange: number | null
   /** 合计净流入额（亿元，net_inflow = share_change × 单位净值 估算），无数据为 null */
   totalNetInflow: number | null
+  /** 合计规模（亿元，share × unit_nav 聚合后 ÷10000 转亿元），无数据为 null */
+  totalSize: number | null
 }
 
 /** 指数排行响应 data */
@@ -81,9 +81,11 @@ export interface EtfDetailItem {
   unitNav: number | null
   /** 份额（亿份） */
   share: number | null
+  /** 合计份额（亿元，total_size ÷10000） */
+  totalSize: number | null
   /** 份额变化（亿份） */
   shareChange: number | null
-  /** 净流入额（亿元，share_change × unit_nav 估算） */
+  /** 净流入额（亿元） */
   netInflow: number | null
   /** 涨跌幅（百分比） */
   changePercent: number | null

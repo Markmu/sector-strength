@@ -77,7 +77,6 @@ def _dict_to_camel(d: dict) -> dict:
 
 @router.get("/index-rankings")
 async def get_index_rankings(
-    category: str = Query("broad", description="指数维度: broad/industry/other（默认 broad）"),
     trade_date: Optional[date] = Query(None, description="交易日（YYYY-MM-DD，默认取最新）"),
     sort_by: str = Query(
         "netInflow", description="排序字段: netInflow/shareChange/share（参数值 camelCase，默认 netInflow）"
@@ -91,14 +90,14 @@ async def get_index_rankings(
     """
     指数排行（AC-01/02/03/05/13）。
 
-    返回按 index_name 聚合的指数列表，每项含 etfCount/totalShare/totalShareChange/
-    totalNetInflow（归集 = 该指数各 ETF 之和），按 sort_by + order 排序并分页。
-    份额输出亿份（÷10000）；net_inflow 亿元直接 SUM。
+    返回按 index_code 聚合的指数列表，每项含 indexCode/indexName/etfCount/
+    totalShare/totalShareChange/totalNetInflow/totalScale（归集 = 该指数各 ETF 之和），
+    按 sort_by + order 排序并分页。份额输出亿份（÷10000）；net_inflow 亿元直接 SUM；
+    totalScale 合计规模（亿元）。
     """
     service = EtfMonitorService(session)
     try:
         result = await service.get_index_rankings(
-            category=category,
             trade_date=trade_date,
             sort_by=sort_by,
             order=order,
@@ -107,8 +106,8 @@ async def get_index_rankings(
         )
     except Exception:
         logger.exception(
-            "get_index_rankings error, category=%s, trade_date=%s, sort_by=%s, order=%s, page=%d, page_size=%d",
-            category, trade_date, sort_by, order, page, page_size,
+            "get_index_rankings error, trade_date=%s, sort_by=%s, order=%s, page=%d, page_size=%d",
+            trade_date, sort_by, order, page, page_size,
         )
         raise
     return {"success": True, "data": _dict_to_camel(result)}
@@ -116,8 +115,7 @@ async def get_index_rankings(
 
 @router.get("/index-detail")
 async def get_index_detail(
-    index_name: str = Query(..., description="指数名（如 沪深300）"),
-    category: Optional[str] = Query(None, description="指数维度: broad/industry/other（可选）"),
+    index_code: str = Query(..., description="跟踪指数代码（如 000300.SH）"),
     trade_date: Optional[date] = Query(None, description="交易日（YYYY-MM-DD，默认取最新）"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -131,14 +129,13 @@ async def get_index_detail(
     service = EtfMonitorService(session)
     try:
         result = await service.get_index_detail(
-            index_name=index_name,
-            category=category,
+            index_code=index_code,
             trade_date=trade_date,
         )
     except Exception:
         logger.exception(
-            "get_index_detail error, index_name=%s, category=%s, trade_date=%s",
-            index_name, category, trade_date,
+            "get_index_detail error, index_code=%s, trade_date=%s",
+            index_code, trade_date,
         )
         raise
     return {"success": True, "data": _dict_to_camel(result)}
@@ -147,7 +144,7 @@ async def get_index_detail(
 @router.get("/trend")
 async def get_trend(
     target_type: str = Query(..., description="对象类型: index（指数）/ etf（单只ETF）"),
-    target_code: str = Query(..., description="对象代码: 指数名（沪深300）或 ts_code（510300.SH）"),
+    target_code: str = Query(..., description="对象代码: 指数代码（000300.SH）或 ts_code（510300.SH）"),
     metric: str = Query("netInflow", description="指标: share（份额）/ netInflow（净流入额，参数值 camelCase，默认 netInflow）"),
     days: int = Query(30, ge=1, le=365, description="区间交易日数（实际有数据的最近 N 个交易日）"),
     end_date: Optional[date] = Query(None, description="区间结束日（YYYY-MM-DD，默认取最新）"),
@@ -159,7 +156,7 @@ async def get_trend(
 
     返回 target_type(index/etf) + target_code + metric(share/netInflow) 在最近 days 个
     交易日（trade_date <= end_date）的时间序列，trade_date 升序。
-    target_type=index 时按 index_name 聚合 SUM（指数各 ETF 之和）；target_type=etf 取单只。
+    target_type=index 时按 index_code 聚合 SUM（指数各 ETF 之和）；target_type=etf 取单只。
     份额输出亿份（÷10000）；net_inflow 亿元。完全无数据返回 hasData=false + 空 series。
     """
     service = EtfMonitorService(session)
@@ -182,19 +179,18 @@ async def get_trend(
 
 @router.get("/latest-date")
 async def get_latest_date(
-    category: str = Query("broad", description="指数维度: broad/industry/other（默认 broad）"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """
     最新交易日（日期选择器默认定位）。
 
-    返回该 category 下 etf_daily 最大 trade_date（YYYY-MM-DD 或 null）。
+    返回 etf_daily 最大 trade_date（YYYY-MM-DD 或 null）。
     """
     service = EtfMonitorService(session)
     try:
-        result = await service.get_latest_date(category=category)
+        result = await service.get_latest_date()
     except Exception:
-        logger.exception("get_latest_date error, category=%s", category)
+        logger.exception("get_latest_date error")
         raise
     return {"success": True, "data": _dict_to_camel(result)}

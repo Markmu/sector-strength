@@ -6,10 +6,10 @@
  * 仿 FundFlowRankingTable.tsx（src/components/sector-fund-flow/FundFlowRankingTable.tsx）范式：
  * 原生 `<table>`（不用 shadcn Table）+ 四态（loading 骨架/error 重试/empty/数据）+ data-testid 锚点。
  *
- * 列：指数名称 / ETF 数 / 合计份额(亿份) / 合计份额变化(亿份) / 合计净流入额(亿元) / 操作。
+ * 列：指数名称 / ETF 数 / 合计份数(亿份) / 合计份额(亿元) / 合计份额变化(亿份) / 合计净流入额(亿元) / 操作。
  *
  * 交互：
- * - AC-03：点击 合计份额变化/合计净流入额/合计份额 表头切换排序 + 三态箭头；不可排序列无反应。
+ * - AC-03：点击 合计份数/合计份额变化/合计净流入额 表头切换排序 + 三态箭头；不可排序列无反应。
  * - AC-04：行展开。点击 ▶/▼ 展开标记 → 调 useEtfIndexDetail 拉该指数下 ETF 明细，
  *   明细按 netInflow desc，渲染在指数行下方（跟随所在页）。再点收起。
  * - AC-11：每指数行 + 每明细 ETF 行有「趋势」入口，点击回调父组件切视图并定位对象。
@@ -41,6 +41,7 @@ import { useEtfIndexDetail } from '@/hooks/useEtfMonitor'
 type EtfOrder = 'desc' | 'asc'
 import {
   formatShare,
+  formatAmount,
   formatSignedAmount,
   formatPercent,
   formatPrice,
@@ -64,14 +65,12 @@ export interface EtfIndexRankingTableProps {
   loading: boolean
   error: boolean
   hasData: boolean
-  /** 当前展开的指数名（null=全部收起） */
+  /** 当前展开的指数 code（null=全部收起） */
   expandedIndex: string | null
-  /** 分类（透传给明细 hook） */
-  category?: 'broad' | 'industry'
   /** 交易日（透传给明细 hook） */
   tradeDate?: string | null
   onSort: (sortBy: EtfSortBy, order: EtfOrder) => void
-  onExpand: (indexName: string | null) => void
+  onExpand: (indexCode: string | null) => void
   /** AC-11：趋势入口回调（指数/ETF） */
   onTrend: (target: EtfTrendTarget) => void
   onRetry: () => void
@@ -89,7 +88,6 @@ export default function EtfIndexRankingTable({
   error,
   hasData,
   expandedIndex,
-  category,
   tradeDate,
   onSort,
   onExpand,
@@ -97,11 +95,10 @@ export default function EtfIndexRankingTable({
   onRetry,
   onPaginate,
 }: EtfIndexRankingTableProps) {
-  // 明细数据：仅当有展开指数时拉取（条件 hook，indexName=null 不发请求）
+  // 明细数据：仅当有展开指数时拉取（条件 hook，indexCode=null 不发请求）
   const { detail, isLoading: isDetailLoading, isError: isDetailError } =
     useEtfIndexDetail({
-      indexName: expandedIndex,
-      category,
+      indexCode: expandedIndex,
       tradeDate,
     })
 
@@ -135,7 +132,7 @@ export default function EtfIndexRankingTable({
           <table className="w-full text-sm">
             <thead className="bg-background border-b border-border">
               <tr>
-                {['指数名称', 'ETF数', '合计份额', '合计份额变化', '合计净流入额', '操作'].map(
+                {['指数名称', 'ETF数', '合计份数', '合计份额', '合计份额变化', '合计净流入额', '操作'].map(
                   (label) => (
                     <th
                       key={label}
@@ -150,7 +147,7 @@ export default function EtfIndexRankingTable({
             <tbody className="divide-y divide-secondary">
               {Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i}>
-                  {Array.from({ length: 6 }).map((_, j) => (
+                  {Array.from({ length: 7 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
                       <div className="h-4 bg-secondary/60 rounded animate-pulse" />
                     </td>
@@ -199,15 +196,19 @@ export default function EtfIndexRankingTable({
                 <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-right">
                   ETF 数
                 </th>
-                {/* 合计份额（可排序） */}
+                {/* 合计份数（可排序） */}
                 <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-right">
                   <SortButton
                     sortKey="share"
-                    label="合计份额"
+                    label="合计份数"
                     activeSort={sortBy}
                     order={order}
                     onClick={handleSortClick}
                   />
+                </th>
+                {/* 合计份额（亿元，存量指标，不可排序） */}
+                <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-right">
+                  合计份额
                 </th>
                 {/* 合计份额变化（可排序） */}
                 <th className="px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider text-right">
@@ -238,9 +239,9 @@ export default function EtfIndexRankingTable({
               {items.map((item) => {
                 const shareColor = getAmountColorClass(item.totalShareChange)
                 const inflowColor = getAmountColorClass(item.totalNetInflow)
-                const expanded = expandedIndex === item.indexName
+                const expanded = expandedIndex === item.indexCode
                 return (
-                  <React.Fragment key={item.indexName}>
+                  <React.Fragment key={item.indexCode}>
                     <tr className="hover:bg-background/80 transition-colors">
                       <td className="px-4 py-3 min-w-[7rem] whitespace-nowrap font-medium text-foreground">
                         {item.indexName}
@@ -251,6 +252,9 @@ export default function EtfIndexRankingTable({
                       <td className="px-4 py-3 text-right tabular-nums text-foreground">
                         {formatShare(item.totalShare)}
                       </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-foreground">
+                        {formatAmount(item.totalSize)}
+                      </td>
                       <td className={`px-4 py-3 text-right tabular-nums font-medium ${shareColor}`}>
                         {formatSignedAmount(item.totalShareChange, '亿份')}
                       </td>
@@ -259,11 +263,11 @@ export default function EtfIndexRankingTable({
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-3">
-                          {/* 展开标记（AC-04/AC-11：与趋势入口分离，点展开不跳视图） */}
+                          {/* 展开标记（与趋势入口分离，点展开不跳视图） */}
                           <button
                             type="button"
-                            onClick={() => handleExpand(item.indexName)}
-                            data-testid={`etf-expand-${item.indexName}`}
+                            onClick={() => handleExpand(item.indexCode)}
+                            data-testid={`etf-expand-${item.indexCode}`}
                             className="inline-flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground"
                             aria-label={expanded ? `收起 ${item.indexName} 明细` : `展开 ${item.indexName} 明细`}
                             aria-expanded={expanded}
@@ -273,17 +277,17 @@ export default function EtfIndexRankingTable({
                             />
                             {expanded ? '收起' : '展开'}
                           </button>
-                          {/* 趋势入口（AC-11：指数 → target_type=index） */}
+                          {/* 趋势入口（指数 → target_type=index，code 用 indexCode） */}
                           <button
                             type="button"
                             onClick={() =>
                               onTrend({
                                 type: 'index',
-                                code: item.indexName,
+                                code: item.indexCode,
                                 name: item.indexName,
                               })
                             }
-                            data-testid={`etf-trend-entry-${item.indexName}`}
+                            data-testid={`etf-trend-entry-${item.indexCode}`}
                             className="text-sm text-primary hover:underline"
                           >
                             趋势
@@ -291,10 +295,10 @@ export default function EtfIndexRankingTable({
                         </div>
                       </td>
                     </tr>
-                    {/* 展开明细行（AC-04，跟随指数行渲染） */}
+                    {/* 展开明细行（跟随指数行渲染） */}
                     {expanded && (
-                      <tr key={`${item.indexName}-detail`}>
-                        <td colSpan={6} className="px-4 py-3 bg-background/50">
+                      <tr key={`${item.indexCode}-detail`}>
+                        <td colSpan={7} className="px-4 py-3 bg-background/50">
                           <DetailPanel
                             indexName={item.indexName}
                             items={detailItems}
@@ -419,7 +423,7 @@ function DetailPanel({
       <table className="w-full text-sm">
         <thead className="bg-background border-b border-border">
           <tr>
-            {['基金代码', '简称', '净值', '份额', '份额变化', '净流入额', '涨跌幅', '操作'].map(
+            {['基金代码', '简称', '净值', '份额', '规模', '份额变化', '净流入额', '涨跌幅', '操作'].map(
               (label) => (
                 <th
                   key={label}
@@ -453,6 +457,9 @@ function DetailPanel({
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-foreground">
                   {formatShare(d.share)}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-foreground">
+                  {formatAmount(d.totalSize)}
                 </td>
                 <td className={`px-3 py-2 text-right tabular-nums font-medium ${shareColor}`}>
                   {formatSignedAmount(d.shareChange, '亿份')}

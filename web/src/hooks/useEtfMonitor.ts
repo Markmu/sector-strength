@@ -14,7 +14,6 @@
 import useSWR from 'swr'
 import { etfMonitorApi } from '@/lib/api'
 import type {
-  EtfCategory,
   EtfSortBy,
   EtfTrendMetric,
   EtfTargetType,
@@ -34,7 +33,6 @@ const SWR_OPTIONS = {
 // ============== 指数排行 ==============
 
 export interface UseEtfIndexRankingsParams {
-  category?: EtfCategory
   tradeDate?: string | null
   sortBy?: EtfSortBy
   order?: 'desc' | 'asc'
@@ -74,20 +72,19 @@ export function useEtfIndexRankings(params: UseEtfIndexRankingsParams) {
 // ============== 指数明细（条件 hook）==============
 
 export interface UseEtfIndexDetailParams {
-  indexName: string | null
-  category?: EtfCategory
+  indexCode: string | null
   tradeDate?: string | null
 }
 
 /**
  * 指数明细（展开指数查看其下 ETF 明细）。
- * 条件 hook：indexName 为 null 时传 null key，SWR 不发请求（展开前不预取）。
+ * 条件 hook：indexCode 为 null 时传 null key，SWR 不发请求（展开前不预取）。
  */
 export function useEtfIndexDetail(params: UseEtfIndexDetailParams) {
-  // indexName 缺失 → key=null，SWR 跳过请求（不进入 fetcher）
+  // indexCode 缺失 → key=null，SWR 跳过请求（不进入 fetcher）
   const key =
-    params.indexName != null
-      ? ['etfIndexDetail', params.indexName, params.category, params.tradeDate ?? null]
+    params.indexCode != null
+      ? ['etfIndexDetail', params.indexCode, params.tradeDate ?? null]
       : null
 
   const { data, error, isLoading, mutate, isValidating } = useSWR<{
@@ -98,8 +95,7 @@ export function useEtfIndexDetail(params: UseEtfIndexDetailParams) {
     () =>
       etfMonitorApi
         .getIndexDetail({
-          indexName: params.indexName as string,
-          category: params.category,
+          indexCode: params.indexCode as string,
           tradeDate: params.tradeDate,
         })
         .then(
@@ -184,20 +180,16 @@ export function useEtfTrend(params: UseEtfTrendParams) {
 
 // ============== 最新交易日 ==============
 
-export interface UseEtfLatestDateParams {
-  category?: EtfCategory
-}
-
 /** 最新交易日（日期选择器默认值 + 判断是否有任何数据）。 */
-export function useEtfLatestDate(params: UseEtfLatestDateParams) {
+export function useEtfLatestDate() {
   const { data, error, isLoading, mutate } = useSWR<{
     success: boolean
     data: EtfLatestDateData
   }>(
-    ['etfLatestDate', params.category],
+    ['etfLatestDate'],
     () =>
       etfMonitorApi
-        .getLatestDate({ category: params.category })
+        .getLatestDate()
         .then(
           (res) =>
             res.data as unknown as {

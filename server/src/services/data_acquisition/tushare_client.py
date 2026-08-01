@@ -702,64 +702,102 @@ class TushareDataSource(BaseDataSource):
 
     def get_fund_basic_etf(self) -> List[dict]:
         """
-        获取 ETF 基础信息列表（market='E'，筛 name 含 'ETF'）
+        获取 ETF 基础信息列表（pro.etf_basic，list_status='L' 仅上市）
 
-        通过 offset 分页循环获取场内基金（pro.fund_basic market='E'），
-        再在客户端按 ``name`` 含 'ETF' 过滤，返回原始字典列表。
+        通过 Tushare 独立的 ``etf_basic`` 接口获取全市场已上市 ETF，天然不含
+        LOF / 封闭式基金，且直接返回官方跟踪指数（index_code / index_name）。
+        不再做 name 含 'ETF' 的客户端过滤。
 
-        实测 market=E 返回约 2877 条，筛 name 含 ETF 后约 1806 只。
+        实测 list_status='L' 返回约 1600+ 只 ETF。
 
         Returns:
             原始字典列表，保留 Tushare 键名
-            (ts_code/name/management/fund_type/list_date/benchmark/status)
+            (ts_code/csname/extname/cname/index_code/index_name/setup_date/
+             list_date/list_status/exchange/mgr_name/custod_name/mgt_fee/etf_type)
         """
         import pandas as pd
 
         pro = self._get_pro_api()
-        all_records: List[dict] = []
-        offset = 0
-        batch_size = 15000
 
-        while True:
-            current_offset = offset
+        def _fetch():
+            logger.info(
+                "[Tushare] 正在获取 ETF 基础信息 (etf_basic, list_status=L)..."
+            )
+            return pro.etf_basic(list_status="L")
 
-            def _fetch(_offset=current_offset):
-                logger.info(
-                    f"[Tushare] 正在获取场内基金基本信息 (market=E, offset={_offset})..."
-                )
-                return pro.fund_basic(
-                    market="E",
-                    offset=_offset,
-                    limit=batch_size,
-                )
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning("[Tushare] etf_basic 返回空数据")
+            return []
 
-            df = self._execute_with_retry(_fetch)
-            if df is None or (hasattr(df, "empty") and df.empty):
-                break
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
 
-            for _, row in df.iterrows():
-                record = {}
-                for col in df.columns:
-                    val = row[col]
-                    if pd.isna(val):
-                        record[col] = None
-                    else:
-                        record[col] = val
-                all_records.append(record)
-
-            if len(df) < batch_size:
-                break
-
-            offset += batch_size
-
-        # 客户端按 name 含 'ETF' 过滤（基金中带 ETF 的即为 ETF 产品）
-        etf_records = [
-            r for r in all_records if r.get("name") and "ETF" in str(r["name"])
-        ]
         logger.info(
-            f"[Tushare] 获取到 {len(all_records)} 条场内基金，筛 name 含 ETF 后 {len(etf_records)} 条"
+            f"[Tushare] 获取到 {len(records)} 条已上市 ETF (etf_basic list_status=L)"
         )
-        return etf_records
+        return records
+
+    def get_etf_share_size(self, trade_date: str) -> List[dict]:
+        """
+        获取 ETF 每日份额/规模/净值（pro.etf_share_size，按 trade_date 全量）
+
+        Tushare 独立的 ``etf_share_size`` 接口，一次请求同时返回全市场 ETF 当日的
+        总份额、总规模、单位净值、收盘价，取代旧 fund_share + 逐只 fund_nav 方案。
+
+        实测 list_status='L' 交易日返回约 1600+ 条。
+
+        Args:
+            trade_date: 交易日，格式 'YYYYMMDD'（如 '20260728'）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (trade_date/ts_code/etf_name/total_share/total_size/nav/close/exchange)
+            - total_share：总份额（万份，与 fund_share.fd_share 同口径）
+            - total_size：总规模（万元，÷10000 转亿元展示）
+            - nav：单位净值（元，部分日期缺失）
+            - close：收盘价（元，部分日期缺失）
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取 ETF 份额/规模 (etf_share_size, trade_date={trade_date})..."
+            )
+            return pro.etf_share_size(trade_date=trade_date)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(
+                f"[Tushare] etf_share_size 返回空数据 (trade_date={trade_date})"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条 ETF 份额/规模 (etf_share_size, trade_date={trade_date})"
+        )
+        return records
 
     def get_fund_share(self, trade_date: str) -> List[dict]:
         """

@@ -42,7 +42,7 @@ async def init_etf_basic(
     手动触发 ETF 基础信息同步。
 
     创建 SYNC_ETF_BASIC 异步任务，从 Tushare 拉取全市场 ETF 基础信息，
-    经 EtfIndexClassifier 归类跟踪指数/分类后 upsert etf_basic。
+    跟踪指数用官方 index_code / index_name 直接入库（etf_basic 接口）。
     与当日份额采集独立，便于单独刷新指数归类或补全新上市 ETF。
     """
     # 并发保护：检查是否有同类型 pending/running 任务

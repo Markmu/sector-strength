@@ -1,6 +1,6 @@
 """ETF 监控查询服务（第 14 期 plan-03）
 
-提供按跟踪指数聚合的 ETF 监控查询：指数排行（group by index_name + SUM）、
+提供按跟踪指数聚合的 ETF 监控查询：指数排行（group by index_code + SUM）、
 指数明细、历史趋势、最新交易日。所有方法返回 snake_case dict，
 由路由层 ``_dict_to_camel`` 转 camelCase。
 
@@ -10,12 +10,13 @@
 - JOIN 聚合范式：架构 §6.3/§6.4 查询链路
 
 契约（架构 §6.3/§6.4/§6.5 + §7.2 输出视角 + plan-03 §3 #1）：
-- ``get_index_rankings``：JOIN etf_daily + etf_basic 筛 category + trade_date，
-  按 index_name 分组 SUM/COUNT，sort_by 参数值 camelCase，分页。
-- ``get_index_detail``：JOIN 筛 index_name + category + trade_date，按 netInflow 降序。
+- ``get_index_rankings``：JOIN etf_daily + etf_basic 筛 trade_date，
+  按 (index_code, index_name) 分组 SUM/COUNT，sort_by 参数值 camelCase，分页。
+  过滤 index_code IS NOT NULL（货币型等无跟踪指数的 ETF 不计入排行）。
+- ``get_index_detail``：JOIN 筛 index_code + trade_date，按 netInflow 降序。
 - ``get_trend``：取 trade_date <= end_date 的最近 N 个交易日；index 类型先筛该指数
   ts_code 集合再取交易日并集（P-08 修正）；按 trade_date 升序。
-- ``get_latest_date``：取该 category 下 etf_daily 最大 trade_date。
+- ``get_latest_date``：取 etf_daily 最大 trade_date（全表）。
 
 单位换算（架构 §7.6）：份额存储万份、API 输出 ÷10000 转亿份；net_inflow 已亿元直接 SUM。
 """
@@ -52,7 +53,6 @@ class EtfMonitorService:
 
     async def get_index_rankings(
         self,
-        category: str = "broad",
         trade_date: Optional[date] = None,
         sort_by: str = _DEFAULT_RANK_SORT_BY,
         order: str = _DEFAULT_ORDER,
@@ -62,12 +62,17 @@ class EtfMonitorService:
         """
         指数排行（架构 §6.3 + plan-03 §3 #1）。
 
-        JOIN etf_daily + etf_basic（ts_code），筛 category + trade_date，按
-        etf_basic.index_name 分组：COUNT(ts_code) 得 etfCount，SUM(share) 得
-        totalShare，SUM(share_change) 得 totalShareChange，SUM(net_inflow) 得
-        totalNetInflow。sort_by 参数值 camelCase（netInflow/shareChange/share）。
+        JOIN etf_daily + etf_basic（ts_code），筛 trade_date，按
+        (index_code, index_name) 分组：COUNT(ts_code) 得 etfCount，
+        SUM(total_share) 得 totalShare，SUM(share_change) 得 totalShareChange，
+        SUM(net_inflow) 得 totalNetInflow，SUM(total_size) 得 totalSize（合计份额亿元）。
+        sort_by 参数值 camelCase（netInflow/shareChange/share）。
 
-        单位换算：聚合在万份口径 SUM 后，输出 ÷10000 转亿份；net_inflow 已亿元直接 SUM。
+        过滤 index_code IS NOT NULL（货币型等无跟踪指数的 ETF 不计入排行）。
+
+        单位换算：total_share/share_change 聚合在万份口径 SUM 后 ÷10000 转亿份；
+        totalSize = SUM(total_size 万元) ÷10000 转亿元；
+        net_inflow 已亿元直接 SUM。
 
         边界场景：
         - trade_date 未传 → 默认取 latest_date；无数据 → has_data=False
@@ -78,22 +83,22 @@ class EtfMonitorService:
             {
                 "has_data", "trade_date",
                 "items": [{
-                    "index_name", "category", "etf_count",
-                    "total_share", "total_share_change", "total_net_inflow"
+                    "index_code", "index_name", "etf_count",
+                    "total_share", "total_share_change", "total_net_inflow", "total_size"
                 }],
                 "total", "page", "page_size"
             }
         """
         logger.info(
-            "get_index_rankings called, category=%s, trade_date=%s, sort_by=%s, order=%s, page=%d, page_size=%d",
-            category, trade_date, sort_by, order, page, page_size,
+            "get_index_rankings called, trade_date=%s, sort_by=%s, order=%s, page=%d, page_size=%d",
+            trade_date, sort_by, order, page, page_size,
         )
 
         # trade_date 默认取最新日期
         if trade_date is None:
-            trade_date = await self._get_latest_date_value(category)
+            trade_date = await self._get_latest_date_value()
         if trade_date is None:
-            logger.info("get_index_rankings: no data for category=%s", category)
+            logger.info("get_index_rankings: no data")
             return {
                 "has_data": False,
                 "trade_date": None,
@@ -107,26 +112,28 @@ class EtfMonitorService:
         if sort_by not in _RANK_SORT_KEYS:
             sort_by = _DEFAULT_RANK_SORT_BY
 
-        # 分组聚合：JOIN etf_daily + etf_basic，按 index_name 分组
-        # share/share_change 万份口径 SUM 后 ÷10000 转亿份；net_inflow 已亿元。
+        # 分组聚合：JOIN etf_daily + etf_basic，按 (index_code, index_name) 分组
+        # total_share/share_change 万份口径 SUM 后 ÷10000 转亿份；net_inflow 已亿元；
+        # total_size 万元口径 SUM 后 ÷10000 转亿元。
         # 先聚合到子查询，再外层 SELECT + ORDER BY + 分页，避免 ORDER BY 引用聚合列
         # 时出现 "missing FROM-clause entry"（外层可安全引用 subq.c.*）。
         agg_subq = (
             select(
+                EtfBasic.index_code.label("index_code"),
                 EtfBasic.index_name.label("index_name"),
-                EtfBasic.category.label("category"),
                 func.count(EtfDaily.ts_code).label("etf_count"),
-                (func.sum(EtfDaily.share) / _SHARE_FACTOR).label("total_share"),
+                (func.sum(EtfDaily.total_share) / _SHARE_FACTOR).label("total_share"),
                 (func.sum(EtfDaily.share_change) / _SHARE_FACTOR).label("total_share_change"),
                 func.sum(EtfDaily.net_inflow).label("total_net_inflow"),
+                # 合计份额(亿元)：SUM(total_size 万元) ÷10000 转亿元
+                (func.sum(EtfDaily.total_size) / _SHARE_FACTOR).label("total_size"),
             )
             .join(EtfBasic, EtfDaily.ts_code == EtfBasic.ts_code)
             .where(
                 EtfDaily.trade_date == trade_date,
-                EtfBasic.category == category,
-                EtfBasic.index_name.isnot(None),
+                EtfBasic.index_code.isnot(None),
             )
-            .group_by(EtfBasic.index_name, EtfBasic.category)
+            .group_by(EtfBasic.index_code, EtfBasic.index_name)
         ).subquery()
 
         # total：分组前的指数数（子查询 count）
@@ -142,12 +149,13 @@ class EtfMonitorService:
         sort_col = sort_col_map[sort_by]
 
         outer = select(
+            agg_subq.c.index_code,
             agg_subq.c.index_name,
-            agg_subq.c.category,
             agg_subq.c.etf_count,
             agg_subq.c.total_share,
             agg_subq.c.total_share_change,
             agg_subq.c.total_net_inflow,
+            agg_subq.c.total_size,
         )
         if order == "asc":
             outer = outer.order_by(asc(sort_col), asc(agg_subq.c.index_name))
@@ -163,12 +171,13 @@ class EtfMonitorService:
 
         items = [
             {
+                "index_code": row.index_code,
                 "index_name": row.index_name,
-                "category": row.category,
                 "etf_count": row.etf_count,
                 "total_share": row.total_share,
                 "total_share_change": row.total_share_change,
                 "total_net_inflow": row.total_net_inflow,
+                "total_size": row.total_size,
             }
             for row in rows
         ]
@@ -184,48 +193,45 @@ class EtfMonitorService:
 
     async def get_index_detail(
         self,
-        index_name: str,
-        category: Optional[str] = None,
+        index_code: str,
         trade_date: Optional[date] = None,
     ) -> dict:
         """
         指数明细（架构 §6.4 + plan-03 §3 #1）。
 
-        JOIN etf_daily + etf_basic，筛 index_name（+ category + trade_date），
+        JOIN etf_daily + etf_basic，筛 index_code（+ trade_date），
         返回该指数下的 ETF 明细，按 netInflow 降序。份额输出 ÷10000 亿份。
 
         边界场景：
         - trade_date 未传 → 默认取 latest_date；无数据 → has_data=False + 空 items
-        - index_name 含特殊字符 → SQLAlchemy 参数化查询防注入
+        - index_code 含特殊字符 → SQLAlchemy 参数化查询防注入
 
         Returns:
             {
                 "has_data", "trade_date",
                 "items": [{
-                    "ts_code", "name", "unit_nav", "share", "share_change",
-                    "net_inflow", "change_percent"
+                    "ts_code", "name", "unit_nav", "share", "total_size",
+                    "share_change", "net_inflow", "change_percent"
                 }]
             }
         """
         logger.info(
-            "get_index_detail called, index_name=%s, category=%s, trade_date=%s",
-            index_name, category, trade_date,
+            "get_index_detail called, index_code=%s, trade_date=%s",
+            index_code, trade_date,
         )
 
-        if not index_name:
+        if not index_code:
             return {"has_data": False, "trade_date": None, "items": []}
 
         # trade_date 默认取最新日期
         if trade_date is None:
-            trade_date = await self._get_latest_date_value(category)
+            trade_date = await self._get_latest_date_value()
 
         filters = [
-            EtfBasic.index_name == index_name,
-            EtfBasic.index_name.isnot(None),
+            EtfBasic.index_code == index_code,
+            EtfBasic.index_code.isnot(None),
             EtfDaily.ts_code == EtfBasic.ts_code,
         ]
-        if category is not None:
-            filters.append(EtfBasic.category == category)
         if trade_date is not None:
             filters.append(EtfDaily.trade_date == trade_date)
 
@@ -233,8 +239,9 @@ class EtfMonitorService:
             select(
                 EtfDaily.ts_code.label("ts_code"),
                 EtfBasic.name.label("name"),
-                EtfDaily.unit_nav.label("unit_nav"),
-                (EtfDaily.share / _SHARE_FACTOR).label("share"),
+                EtfDaily.nav.label("unit_nav"),
+                (EtfDaily.total_share / _SHARE_FACTOR).label("share"),
+                (EtfDaily.total_size / _SHARE_FACTOR).label("total_size"),
                 (EtfDaily.share_change / _SHARE_FACTOR).label("share_change"),
                 EtfDaily.net_inflow.label("net_inflow"),
                 EtfDaily.change_percent.label("change_percent"),
@@ -260,6 +267,7 @@ class EtfMonitorService:
                 "name": row.name,
                 "unit_nav": row.unit_nav,
                 "share": row.share,
+                "total_size": row.total_size,
                 "share_change": row.share_change,
                 "net_inflow": row.net_inflow,
                 "change_percent": row.change_percent,
@@ -287,10 +295,10 @@ class EtfMonitorService:
         取 etf_daily 中 trade_date <= end_date 的最近 ``days`` 个交易日（实际有数据的
         交易日，非日历日），按 metric 取值，trade_date 升序返回。
 
-        - target_type='index'（P-08 修正）：先 JOIN etf_basic 筛 index_name 得该指数的
+        - target_type='index'（P-08 修正）：先 JOIN etf_basic 筛 index_code 得该指数的
           ts_code 集合，再取该集合在 etf_daily 中 trade_date <= end_date 的最近 N 个
           distinct 交易日（取该指数全量 ETF 交易日的并集，避免取成全表交易日导致 series
-          长度偏差），最后在该 N 日内按 index_name 聚合 SUM。
+          长度偏差），最后在该 N 日内按 index_code 聚合 SUM。
         - target_type='etf'：按 ts_code 取单只，取该 ts_code 的最近 N 个交易日。
         - metric='share'：取 share（输出亿份 ÷10000）；metric='netInflow'：取 net_inflow（亿元）。
 
@@ -332,7 +340,7 @@ class EtfMonitorService:
 
         # 确定参与聚合的 ts_code 集合
         if target_type == "index":
-            # 先 JOIN etf_basic 筛 index_name 得该指数的 ts_code 集合
+            # 先 JOIN etf_basic 筛 index_code 得该指数的 ts_code 集合
             ts_codes = await self._get_index_ts_codes(target_code)
             if not ts_codes:
                 return {
@@ -368,7 +376,7 @@ class EtfMonitorService:
 
         # 在该 N 日内按 ts_code 集合聚合
         if metric == "share":
-            value_expr = func.sum(EtfDaily.share) / _SHARE_FACTOR
+            value_expr = func.sum(EtfDaily.total_share) / _SHARE_FACTOR
         else:  # netInflow（已亿元）
             value_expr = func.sum(EtfDaily.net_inflow)
 
@@ -405,17 +413,17 @@ class EtfMonitorService:
             "series": series,
         }
 
-    async def get_latest_date(self, category: str = "broad") -> dict:
+    async def get_latest_date(self) -> dict:
         """
         最新交易日（plan-03 §3 #1）。
 
-        返回该 category 下 etf_daily 最大 trade_date（通过 JOIN etf_basic 按 category 筛选）。
+        返回 etf_daily 最大 trade_date（全表）。
 
         Returns:
             {"has_data", "trade_date"}
         """
-        logger.info("get_latest_date called, category=%s", category)
-        latest = await self._get_latest_date_value(category)
+        logger.info("get_latest_date called")
+        latest = await self._get_latest_date_value()
         return {
             "has_data": latest is not None,
             "trade_date": latest,
@@ -423,29 +431,19 @@ class EtfMonitorService:
 
     # ============== private helpers ==============
 
-    async def _get_latest_date_value(self, category: Optional[str]) -> Optional[date]:
-        """取该 category 下 etf_daily 最大 trade_date（JOIN etf_basic 按 category 筛选）。
-
-        category 为 None 时退化为全表 MAX(trade_date)。
-        """
-        if category is None:
-            stmt = select(func.max(EtfDaily.trade_date))
-        else:
-            stmt = (
-                select(func.max(EtfDaily.trade_date))
-                .join(EtfBasic, EtfDaily.ts_code == EtfBasic.ts_code)
-                .where(EtfBasic.category == category)
-            )
-        return (await self.session.execute(stmt)).scalar_one_or_none()
-
-    async def _get_global_latest_date_value(self) -> Optional[date]:
-        """全表 MAX(trade_date)（不限 category）。"""
+    async def _get_latest_date_value(self) -> Optional[date]:
+        """取 etf_daily 最大 trade_date（全表）。"""
         stmt = select(func.max(EtfDaily.trade_date))
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
-    async def _get_index_ts_codes(self, index_name: str) -> list[str]:
-        """取该 index_name 归集的所有 ts_code 集合（从 etf_basic）。"""
-        stmt = select(EtfBasic.ts_code).where(EtfBasic.index_name == index_name)
+    async def _get_global_latest_date_value(self) -> Optional[date]:
+        """全表 MAX(trade_date)。"""
+        stmt = select(func.max(EtfDaily.trade_date))
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def _get_index_ts_codes(self, index_code: str) -> list[str]:
+        """取该 index_code 归集的所有 ts_code 集合（从 etf_basic）。"""
+        stmt = select(EtfBasic.ts_code).where(EtfBasic.index_code == index_code)
         rows = (await self.session.execute(stmt)).scalars().all()
         return [r for r in rows if r]
 

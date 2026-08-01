@@ -1336,15 +1336,14 @@ export const brokerRecommendApi = {
 // endpoint 不再带 /api/v1，避免双前缀（与 sectorFundFlowApi line 1086 一致）。
 //
 // 契约（plan-03 §3 / 架构 §7.3，dev-plan-check 已验证）：
-// - query 参数 snake_case：category / trade_date / sort_by / order / page / page_size /
-//   index_name / target_type / target_code / metric / days / end_date
+// - query 参数 snake_case：trade_date / sort_by / order / page / page_size /
+//   index_code / target_type / target_code / metric / days / end_date
 // - sort_by / metric 参数「值」用 camelCase（架构 §7.6 特例：netInflow / shareChange /
 //   share），与后端取值一致，不要下划线化
 // - 响应外层 { success, data }，data 内字段经后端 _dict_to_camel 转 camelCase
 // - apiClient.get 泛型 T 写 `{ success: boolean; data: 业务对象 }`（与 sectorFundFlowApi
 //   line 1096 一致），否则 hook 层 res.data 取值类型撒谎 + 运行时 undefined。
 import type {
-  EtfCategory,
   EtfSortBy,
   EtfTrendMetric,
   EtfTargetType,
@@ -1356,7 +1355,6 @@ import type {
 } from '@/types/etfMonitorTypes'
 
 export type {
-  EtfCategory,
   EtfSortBy,
   EtfTrendMetric,
   EtfTargetType,
@@ -1368,9 +1366,8 @@ export type {
  * 类型定义见 types/etfMonitorTypes.ts（camelCase 业务对象）。
  */
 export const etfMonitorApi = {
-  // 指数排行（AC-01/02/03/05/13）
+  // 指数排行（按 index_code 聚合）
   getIndexRankings: (params: {
-    category?: EtfCategory
     tradeDate?: string | null
     sortBy?: EtfSortBy
     order?: 'desc' | 'asc'
@@ -1380,7 +1377,6 @@ export const etfMonitorApi = {
     apiClient.get<{ success: boolean; data: EtfIndexRankingsData }>(
       '/etf-monitor/index-rankings',
       {
-        category: params.category,
         trade_date: params.tradeDate || undefined, // snake_case query 名
         sort_by: params.sortBy, // 值 camelCase（架构 §7.6 特例）
         order: params.order,
@@ -1389,22 +1385,20 @@ export const etfMonitorApi = {
       }
     ),
 
-  // 指数明细（AC-04：展开指数查看 ETF 明细）
+  // 指数明细（展开指数查看 ETF 明细）
   getIndexDetail: (params: {
-    indexName: string
-    category?: EtfCategory
+    indexCode: string
     tradeDate?: string | null
   }) =>
     apiClient.get<{ success: boolean; data: EtfIndexDetailData }>(
       '/etf-monitor/index-detail',
       {
-        index_name: params.indexName,
-        category: params.category,
+        index_code: params.indexCode,
         trade_date: params.tradeDate || undefined,
       }
     ),
 
-  // 历史趋势（AC-06/07/08/09）
+  // 历史趋势
   getTrend: (params: {
     targetType: EtfTargetType
     targetCode: string
@@ -1421,11 +1415,9 @@ export const etfMonitorApi = {
     }),
 
   // 最新交易日（日期选择器默认值 + 判断是否有任何数据）
-  getLatestDate: (params: { category?: EtfCategory }) =>
+  getLatestDate: () =>
     apiClient.get<{ success: boolean; data: EtfLatestDateData }>(
       '/etf-monitor/latest-date',
-      {
-        category: params.category,
-      }
+      {}
     ),
 }

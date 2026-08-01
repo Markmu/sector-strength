@@ -24,6 +24,16 @@ export function formatShare(value: number | null | undefined): string {
 }
 
 /**
+ * 正数金额格式化（规模「亿元」等存量指标，不带正负号）。
+ * - null/undefined：返回 '—'
+ * - 否则：X.XX 亿元（带千分位整数部分）
+ */
+export function formatAmount(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  return `${value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}亿元`
+}
+
+/**
  * 带正负号格式化（净流入额「亿元」/ 份额变化「亿份」共用，均带正负色标）。
  * - null/undefined：返回 '—'
  * - isPositive=true 时强制加 '+' 号（用于明确正负语义的场景）

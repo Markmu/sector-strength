@@ -1346,8 +1346,8 @@ async def sync_etf_basic_task(
     """
     ETF 基础信息同步任务。
 
-    调 EtfDataInitService.sync_etf_basic 拉取全市场 ETF 清单，经
-    EtfIndexClassifier 归类跟踪指数/分类后 upsert etf_basic。
+    调 EtfDataInitService.sync_etf_basic 拉取全市场 ETF 清单，
+    跟踪指数用官方 index_code / index_name 直接入库（etf_basic 接口）。
     与 sync_etf_daily 独立，便于单独刷新指数归类或补全新上市 ETF。
 
     Args:

@@ -55,25 +55,25 @@ async def main():
         basic_result = await svc.sync_etf_basic()
         print(f"  结果: {basic_result}")
 
-        # 归类分布核对（架构 §8.5 自检）
-        cat_result = await session.execute(
-            select(EtfBasic.category, func.count(EtfBasic.id))
-            .group_by(EtfBasic.category)
+        # 跟踪指数分布核对（index_code 自检）
+        idx_result = await session.execute(
+            select(EtfBasic.index_name, func.count(EtfBasic.id))
+            .group_by(EtfBasic.index_name)
         )
-        cat_dist = Counter()
-        for cat, cnt in cat_result:
-            cat_dist[cat or "(null)"] = cnt
-        print(f"  归类分布: {dict(cat_dist)}")
+        idx_dist = Counter()
+        for idx_name, cnt in idx_result:
+            idx_dist[idx_name or "(无跟踪指数)"] = cnt
+        print(f"  跟踪指数分布(top): {dict(idx_dist.most_common(10))}")
 
-        # 宽基命中率自检（沪深300/中证500/中证1000 等应 100% 命中 broad）
-        broad_sample = await session.execute(
-            select(EtfBasic.ts_code, EtfBasic.name, EtfBasic.index_name)
-            .where(EtfBasic.category == "broad")
+        # 跟踪指数样本
+        idx_sample = await session.execute(
+            select(EtfBasic.ts_code, EtfBasic.name, EtfBasic.index_code, EtfBasic.index_name)
+            .where(EtfBasic.index_code.isnot(None))
             .limit(10)
         )
-        print("  宽基样本:")
-        for ts_code, name, index_name in broad_sample:
-            print(f"    {ts_code}  {name}  ->  {index_name}")
+        print("  跟踪指数样本:")
+        for ts_code, name, index_code, index_name in idx_sample:
+            print(f"    {ts_code}  {name}  ->  {index_code} / {index_name}")
 
         # 2. sync_etf_daily
         print(f"\n[2/2] sync_etf_daily(trade_date={trade_date}) ...")
