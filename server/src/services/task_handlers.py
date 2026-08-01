@@ -74,6 +74,9 @@ class TaskType(str, Enum):
     # ETF 基础信息同步任务（Tushare fund_basic_etf，归类跟踪指数后 upsert etf_basic）
     SYNC_ETF_BASIC = "sync_etf_basic"
 
+    # 涨停专题数据同步任务（limit_list_d/limit_step/limit_cpt_list 三表，按交易日同步）
+    SYNC_LIMIT_DATA = "sync_limit_data"
+
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
     """
@@ -1376,5 +1379,76 @@ async def sync_etf_basic_task(
         )
     except Exception as e:
         error_msg = f"ETF basic info sync failed: {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+@TaskRegistry.register(TaskType.SYNC_LIMIT_DATA)
+async def sync_limit_data_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    涨停专题数据同步任务。
+
+    调 LimitDataInitService.sync_limit_data 同步涨停专题三表
+    （limit_list_d / limit_step / limit_cpt_list），按 trade_date 删旧插新。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数，trade_date 可选（YYYYMMDD，默认最新交易日）
+        manager: 任务管理器
+    """
+    from src.services.data_init_limit import LimitDataInitService
+    from src.services.data_acquisition import DataSourceFactory
+
+    trade_date = params.get("trade_date")
+
+    # 未指定日期时通过 trade_cal 取最新交易日（SSE，最近开盘日）
+    if not trade_date:
+        try:
+            from datetime import datetime
+            tushare = DataSourceFactory.create()
+            pro = tushare._get_pro_api()
+            today = datetime.now().strftime("%Y%m%d")
+            df = pro.trade_cal(exchange="SSE", end_date=today, limit=15)
+            if df is None or df.empty:
+                raise RuntimeError("trade_cal 返回为空")
+            df = df.sort_values("cal_date", ascending=False)
+            open_dates = df[df["is_open"] == 1]["cal_date"].tolist()
+            if not open_dates:
+                raise RuntimeError("未找到最近的开放交易日")
+            trade_date = str(open_dates[0])
+            await manager.log_message(
+                task_id, "INFO",
+                f"No trade_date specified, using latest: {trade_date}"
+            )
+        except Exception as e:
+            error_msg = f"Failed to resolve latest trade_date: {e}"
+            await manager.log_message(task_id, "ERROR", error_msg)
+            raise
+
+    await manager.log_message(
+        task_id, "INFO",
+        f"Starting limit data sync (trade_date={trade_date})"
+    )
+
+    service = LimitDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    try:
+        result = await service.sync_limit_data(trade_date)
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"Limit data sync completed (trade_date={result.get('trade_date')}): "
+            f"limit_list_d={result.get('limit_list_d', 0)}, "
+            f"limit_step={result.get('limit_step', 0)}, "
+            f"limit_cpt_list={result.get('limit_cpt_list', 0)}"
+        )
+    except Exception as e:
+        error_msg = f"Limit data sync failed: {e}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise

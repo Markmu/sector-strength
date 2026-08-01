@@ -799,6 +799,157 @@ class TushareDataSource(BaseDataSource):
         )
         return records
 
+    def get_limit_list_d(self, trade_date: str) -> List[dict]:
+        """
+        获取每日涨跌停/炸板个股明细（pro.limit_list_d，按 trade_date 全量）
+
+        Tushare ``limit_list_d`` 接口返回全市场当日涨跌停、炸板个股明细，
+        数据从 2020 年开始（不含 ST 股票）。实测每个交易日返回约 200 条。
+
+        Args:
+            trade_date: 交易日，格式 'YYYYMMDD'（如 '20260731'）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (trade_date/ts_code/industry/name/close/pct_chg/amount/limit_amount/
+             float_mv/total_mv/turnover_ratio/fd_amount/first_time/last_time/
+             open_times/up_stat/limit_times/limit)
+            - limit：U涨停 / D跌停 / Z炸板
+            - limit_times：连板数（1=首板）
+            - industry：申万行业（个股板块归属维度）
+            - fd_amount：封单成交额（元，limit_amount 常为空）
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取涨跌停明细 (limit_list_d, trade_date={trade_date})..."
+            )
+            return pro.limit_list_d(trade_date=trade_date)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(
+                f"[Tushare] limit_list_d 返回空数据 (trade_date={trade_date})"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条涨跌停明细 (limit_list_d, trade_date={trade_date})"
+        )
+        return records
+
+    def get_limit_step(self, trade_date: str) -> List[dict]:
+        """
+        获取涨停连板天梯（pro.limit_step，按 trade_date 全量）
+
+        Tushare ``limit_step`` 接口返回当日各连板高度晋级的股票，
+        可分析连续涨停进阶个数。实测每个交易日返回约 10 条。
+
+        Args:
+            trade_date: 交易日，格式 'YYYYMMDD'（如 '20260731'）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (ts_code/name/trade_date/nums)
+            - nums：连板数
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取连板天梯 (limit_step, trade_date={trade_date})..."
+            )
+            return pro.limit_step(trade_date=trade_date)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(
+                f"[Tushare] limit_step 返回空数据 (trade_date={trade_date})"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条连板天梯 (limit_step, trade_date={trade_date})"
+        )
+        return records
+
+    def get_limit_cpt_list(self, trade_date: str) -> List[dict]:
+        """
+        获取涨停最强概念板块（pro.limit_cpt_list，按 trade_date 全量）
+
+        Tushare ``limit_cpt_list`` 接口返回当日涨停家数最多的概念板块排名，
+        可分析强势板块轮动。实测每个交易日返回约 20 条。
+
+        Args:
+            trade_date: 交易日，格式 'YYYYMMDD'（如 '20260731'）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (ts_code/name/trade_date/days/up_stat/cons_nums/up_nums/pct_chg/rank)
+            - up_nums：涨停家数
+            - cons_nums：连板家数
+            - rank：排名
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取涨停最强板块 (limit_cpt_list, trade_date={trade_date})..."
+            )
+            return pro.limit_cpt_list(trade_date=trade_date)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(
+                f"[Tushare] limit_cpt_list 返回空数据 (trade_date={trade_date})"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    record[col] = None
+                else:
+                    record[col] = val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条涨停最强板块 (limit_cpt_list, trade_date={trade_date})"
+        )
+        return records
+
     def get_fund_share(self, trade_date: str) -> List[dict]:
         """
         获取基金份额数据（按 trade_date 全量，客户端筛 fund_type=='ETF'）

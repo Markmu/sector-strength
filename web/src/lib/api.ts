@@ -610,6 +610,9 @@ export const adminApi = {
   // ETF 历史数据回填（第 14 期 plan-02，start_date/end_date 为 YYYY-MM-DD）
   initEtfHistory: (start_date: string, end_date: string) =>
     adminApiClient.post<{task_id: string}>('/admin/init/etf-history', { start_date, end_date }),
+  // 涨停专题三表同步（trade_date 可选，YYYYMMDD，未传时取最新交易日）
+  initLimit: (trade_date?: string) =>
+    adminApiClient.post<{task_id: string}>('/admin/init/limit', trade_date ? { trade_date } : {}),
 
   // 股东监控组管理（plan-03 / plan-01 后端契约）
   // 后端 ApiResponse 包 { success, data, message }，AdminApiClient.request 已提取 data 字段
@@ -1353,6 +1356,13 @@ import type {
   EtfTrendData,
   EtfLatestDateData,
 } from '@/types/etfMonitorTypes'
+import type {
+  LimitLadderData,
+  LimitMultiDaysData,
+  LimitListData,
+  LimitLatestDateData,
+  LimitType,
+} from '@/types/limitTypes'
 
 export type {
   EtfSortBy,
@@ -1418,6 +1428,50 @@ export const etfMonitorApi = {
   getLatestDate: () =>
     apiClient.get<{ success: boolean; data: EtfLatestDateData }>(
       '/etf-monitor/latest-date',
+      {}
+    ),
+}
+
+/**
+ * 涨停专题（连板天梯）查询 API
+ *
+ * 对应后端 /api/v1/limit/*。query 参数 snake_case，响应字段 camelCase。
+ */
+export const limitApi = {
+  // 单日连板天梯（板块统计 + 按连板数分层个股）
+  getLadder: (params: { tradeDate?: string | null }) =>
+    apiClient.get<{ success: boolean; data: LimitLadderData }>('/limit/ladder', {
+      trade_date: params.tradeDate || undefined,
+    }),
+
+  // 多日连板统计表格
+  getMultiDays: (params: { endDate?: string | null; days?: number }) =>
+    apiClient.get<{ success: boolean; data: LimitMultiDaysData }>(
+      '/limit/multi-days',
+      {
+        end_date: params.endDate || undefined,
+        days: params.days || 5,
+      }
+    ),
+
+  // 当日涨停个股平铺列表（分页）
+  getList: (params: {
+    tradeDate?: string | null
+    limitType?: LimitType | null
+    page?: number
+    pageSize?: number
+  }) =>
+    apiClient.get<{ success: boolean; data: LimitListData }>('/limit/list', {
+      trade_date: params.tradeDate || undefined,
+      limit_type: params.limitType || undefined,
+      page: params.page || 1,
+      page_size: params.pageSize || 50,
+    }),
+
+  // 最新有数据交易日
+  getLatestDate: () =>
+    apiClient.get<{ success: boolean; data: LimitLatestDateData }>(
+      '/limit/latest-date',
       {}
     ),
 }
