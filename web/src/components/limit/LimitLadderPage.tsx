@@ -31,6 +31,14 @@ function formatFdAmount(val: number | null | undefined): string {
   return val.toFixed(0);
 }
 
+/** 涨停时间格式化：Tushare 返回 HHMMSS 数字/字符串（如 92501）→ HH:MM:SS（09:25:01） */
+function formatTime(val: string | null | undefined): string {
+  if (val == null || val === "") return "-";
+  const s = String(val).padStart(6, "0");
+  if (s.length < 6) return val;
+  return `${s.slice(0, 2)}:${s.slice(2, 4)}:${s.slice(4, 6)}`;
+}
+
 /** 连板数标签（1=首板，2=2连板...） */
 function levelLabel(times: number): string {
   if (times <= 1) return "首板涨停";
@@ -68,6 +76,43 @@ function stockTags(stock: LimitStockItem): string[] {
 function LadderView({ tradeDate }: { tradeDate: string | null }) {
   const { ladder, isLoading, isError } = useLimitLadder({ tradeDate });
 
+  // 板块筛选：从全部涨停个股的 industry 去重生成筛选项（个股自带的申万行业）
+  // 所有 hooks 必须在 early return 之前调用（React Hooks 规则）
+  const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
+
+  // 所有个股扁平化，用于生成板块筛选项（ladder 为空时返回空数组）
+  const allStocks = useMemo(
+    () => (ladder?.levels ?? []).flatMap((lv) => lv.stocks),
+    [ladder]
+  );
+
+  // 板块筛选项：(板块名, 数量)，按数量降序
+  const industryOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of allStocks) {
+      const ind = (s.industry ?? "未分类").trim() || "未分类";
+      counts.set(ind, (counts.get(ind) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }, [allStocks]);
+
+  // 筛选后的分层（个股按 industry 过滤，空层级自动隐藏）
+  const filteredLevels = useMemo(() => {
+    if (!ladder) return [];
+    if (!selectedIndustry) return ladder.levels;
+    return ladder.levels
+      .map((lv) => ({
+        ...lv,
+        stocks: lv.stocks.filter(
+          (s) => (s.industry ?? "未分类").trim() === selectedIndustry
+        ),
+      }))
+      .filter((lv) => lv.stocks.length > 0)
+      .map((lv) => ({ ...lv, count: lv.stocks.length }));
+  }, [ladder, selectedIndustry]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-gray-400">
@@ -97,32 +142,67 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
 
   return (
     <div className="space-y-6">
-      {/* 涨停最强板块统计条 */}
-      {ladder.sectors.length > 0 && (
+      {/* 板块筛选条（涨停最强板块统计 + 可点击筛选） */}
+      {industryOptions.length > 0 && (
         <div>
           <h3 className="mb-2 text-sm font-medium text-gray-500">
-            涨停最强板块
+            按板块筛选{selectedIndustry && (
+              <button
+                onClick={() => setSelectedIndustry(null)}
+                className="ml-2 text-xs text-blue-500 hover:underline"
+              >
+                显示全部
+              </button>
+            )}
           </h3>
           <div className="flex flex-wrap gap-2">
-            {ladder.sectors.map((s, i) => (
-              <div
-                key={i}
-                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm shadow-sm"
-                title={`${s.upStat ?? ""} | 连板${s.consNums ?? 0}家`}
-              >
-                <span className="font-medium text-gray-800">{s.name}</span>
-                <span className="rounded-full bg-red-100 px-1.5 text-xs font-semibold text-red-600">
-                  {s.upNums}
-                </span>
-              </div>
-            ))}
+            {/* 全部 */}
+            <button
+              onClick={() => setSelectedIndustry(null)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${
+                selectedIndustry === null
+                  ? "border-blue-500 bg-blue-50 text-blue-600"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <span className="font-medium">全部</span>
+              <span className="rounded-full bg-gray-100 px-1.5 text-xs font-semibold text-gray-500">
+                {allStocks.length}
+              </span>
+            </button>
+            {/* 各板块 */}
+            {industryOptions.map((opt) => {
+              const active = selectedIndustry === opt.name;
+              return (
+                <button
+                  key={opt.name}
+                  onClick={() => setSelectedIndustry(opt.name)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${
+                    active
+                      ? "border-orange-500 bg-orange-50 text-orange-600"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  <span className="font-medium">{opt.name}</span>
+                  <span
+                    className={`rounded-full px-1.5 text-xs font-semibold ${
+                      active
+                        ? "bg-orange-200 text-orange-700"
+                        : "bg-red-100 text-red-600"
+                    }`}
+                  >
+                    {opt.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* 连板天梯分层 */}
+      {/* 连板天梯分层（按板块筛选后） */}
       <div className="space-y-4">
-        {ladder.levels.map((level) => (
+        {filteredLevels.map((level) => (
           <div key={level.limitTimes} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             {/* 层标题 */}
             <div className="mb-3 flex items-center gap-2">
@@ -146,13 +226,18 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
                   key={stock.tsCode}
                   className="flex flex-col rounded-lg border border-gray-100 bg-gray-50 p-2.5 transition hover:border-orange-300 hover:bg-orange-50"
                 >
-                  {/* 股票名 + 板块 */}
+                  {/* 股票名 + 代码 + 首封时间 */}
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-gray-900 truncate">
-                      {stock.name}
+                    <span className="flex items-baseline gap-1 truncate">
+                      <span className="font-medium text-gray-900">
+                        {stock.name}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {stock.tsCode}
+                      </span>
                     </span>
                     <span className="ml-1 shrink-0 text-xs text-gray-400">
-                      {stock.firstTime ?? "-"}
+                      {formatTime(stock.firstTime)}
                     </span>
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5">

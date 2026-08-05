@@ -23,13 +23,25 @@ interface FormErrors {
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [formData, setFormData] = useState<LoginFormData>({
-    email: '',
-    password: ''
+
+  // 读取"记住密码"保存的凭据，页面加载时自动回填
+  const [formData, setFormData] = useState<LoginFormData>(() => {
+    if (typeof window === 'undefined') {
+      return { email: '', password: '' };
+    }
+    const savedEmail = localStorage.getItem('rememberedEmail');
+    const savedPassword = localStorage.getItem('rememberedPassword');
+    if (savedEmail && savedPassword) {
+      return { email: savedEmail, password: savedPassword };
+    }
+    return { email: '', password: '' };
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('rememberedEmail') !== null;
+  });
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
@@ -62,6 +74,16 @@ export default function LoginPage() {
 
     try {
       await login(formData.email, formData.password, rememberMe);
+
+      // 记住密码：勾选则存凭据，取消则清除
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', formData.email);
+        localStorage.setItem('rememberedPassword', formData.password);
+      } else {
+        localStorage.removeItem('rememberedEmail');
+        localStorage.removeItem('rememberedPassword');
+      }
+
       // 登录成功后导航到dashboard
       const urlParams = new URLSearchParams(window.location.search);
       const redirect = urlParams.get('redirect');
@@ -154,7 +176,7 @@ export default function LoginPage() {
                 className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-border rounded"
               />
               <label htmlFor="remember-me" className="ml-2 block text-sm text-foreground">
-                记住我
+                记住密码
               </label>
             </div>
 
