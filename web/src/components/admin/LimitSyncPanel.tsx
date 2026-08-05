@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import useSWR from 'swr';
 import {
   Flame,
@@ -10,7 +10,7 @@ import {
   XCircle,
   Calendar,
 } from 'lucide-react';
-import { adminApi } from '@/lib/api';
+import { adminApi, limitApi } from '@/lib/api';
 import { useTaskStatus, type TaskData } from '@/hooks/useTaskStatus';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
@@ -53,7 +53,36 @@ export default function LimitSyncPanel() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [total, setTotal] = useState(0);
-  const [tradeDate, setTradeDate] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  // 数据库中已有的最新数据日期（limit_list_d 表）
+  const [latestDataDate, setLatestDataDate] = useState<string | null>(null);
+  const [latestDateLoading, setLatestDateLoading] = useState(true);
+
+  // 拉取最新数据日期，并据此把起始日期默认填为「最新日期 + 1 天」
+  const fetchLatestDate = useCallback(async () => {
+    setLatestDateLoading(true);
+    try {
+      const res = await limitApi.getLatestDate();
+      const d = res?.data?.data?.tradeDate ?? null;
+      setLatestDataDate(d);
+      // 仅在用户未手动改过起始日期时，自动填入「最新日期 + 1 天」
+      if (d && !startDate) {
+        const next = new Date(d);
+        next.setDate(next.getDate() + 1);
+        setStartDate(next.toISOString().slice(0, 10));
+      }
+    } catch {
+      setLatestDataDate(null);
+    } finally {
+      setLatestDateLoading(false);
+    }
+  }, [startDate]);
+
+  useEffect(() => {
+    fetchLatestDate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 同步记录表
   const {
@@ -89,8 +118,10 @@ export default function LimitSyncPanel() {
       setTaskId(null);
       refreshOnTaskChange();
       showToast('success', '涨停专题同步完成');
+      // 同步完成后刷新最新数据日期
+      fetchLatestDate();
     },
-    [refreshOnTaskChange, showToast]
+    [refreshOnTaskChange, showToast, fetchLatestDate]
   );
 
   const handleFailed = useCallback(
@@ -119,15 +150,30 @@ export default function LimitSyncPanel() {
   });
 
   const startSync = async () => {
+    // 起止必须同时出现或同时缺省（YYYY-MM-DD，input[type=date] 原生格式）
+    const hasStart = !!startDate;
+    const hasEnd = !!endDate;
+    if (hasStart !== hasEnd) {
+      showToast('error', '请同时选择起止日期，或都留空同步最新交易日');
+      return;
+    }
+    // 字符串字典序比较（YYYY-MM-DD 等价于日期序）
+    if (hasStart && hasEnd && startDate > endDate) {
+      showToast('error', '开始日期不能晚于结束日期');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
       setProgress(0);
       setTotal(0);
 
-      // tradeDate 统一去横杠（YYYYMMDD）
-      const normalizedDate = tradeDate ? tradeDate.replace(/-/g, '') : undefined;
-      const response = await adminApi.initLimit(normalizedDate);
+      // 起止都留空=最新交易日；都填=日期范围（YYYY-MM-DD，不再去横杠）
+      const response = await adminApi.initLimit(
+        startDate || undefined,
+        endDate || undefined,
+      );
       const newTaskId = response.data?.task_id;
 
       if (!newTaskId) {
@@ -198,20 +244,45 @@ export default function LimitSyncPanel() {
           </div>
         </div>
 
+        {/* 最新数据日期 */}
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-gray-50 px-4 py-2 text-sm">
+          <Calendar size={15} className="text-gray-400" />
+          <span className="text-gray-500">最新数据日期：</span>
+          {latestDateLoading ? (
+            <Loader2 size={14} className="animate-spin text-gray-400" />
+          ) : latestDataDate ? (
+            <span className="font-medium text-gray-900">{latestDataDate}</span>
+          ) : (
+            <span className="text-gray-400">暂无数据</span>
+          )}
+        </div>
+
         {/* 日期选择 */}
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <Calendar size={16} />
-            交易日（可选）
+            时间范围（可选）
           </label>
           <input
             type="date"
-            value={tradeDate}
-            onChange={(e) => setTradeDate(e.target.value)}
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
             disabled={loading}
+            aria-label="开始日期"
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
           />
-          <span className="text-xs text-gray-400">留空则同步最新交易日</span>
+          <span className="text-sm text-gray-500">至</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            disabled={loading}
+            aria-label="结束日期"
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+          />
+          <span className="text-xs text-gray-400">
+            都留空则同步最新交易日；都填则按范围逐交易日同步
+          </span>
         </div>
 
         {/* 同步按钮 */}
@@ -291,10 +362,12 @@ export default function LimitSyncPanel() {
                       {TASK_TYPE_LABELS[r.taskType] || r.taskType}
                     </td>
                     <td className="py-2 pr-4">{statusBadge(r.status)}</td>
-                    <td className="py-2 pr-4 text-gray-500">
-                      {r.params?.trade_date
-                        ? `trade_date=${r.params.trade_date}`
-                        : '最新交易日'}
+                    <td className="py-2 pr-4 whitespace-nowrap text-gray-500">
+                      {r.params?.start_date && r.params?.end_date
+                        ? `${r.params.start_date} ~ ${r.params.end_date}`
+                        : r.params?.trade_date
+                          ? `trade_date=${r.params.trade_date}`
+                          : '最新交易日'}
                     </td>
                     <td className="py-2 text-red-500">
                       {r.errorMessage || '-'}

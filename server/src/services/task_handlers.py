@@ -1392,20 +1392,61 @@ async def sync_limit_data_task(
     """
     涨停专题数据同步任务。
 
-    调 LimitDataInitService.sync_limit_data 同步涨停专题三表
-    （limit_list_d / limit_step / limit_cpt_list），按 trade_date 删旧插新。
+    按参数分支：
+    - 日期范围（start_date + end_date 都给）：调
+      ``LimitDataInitService.sync_limit_data_range``，按日期升序逐日复用单日
+      同步，范围级进度 + 单日失败不中断。
+    - 单日 / 最新交易日（默认）：调 ``LimitDataInitService.sync_limit_data``，
+      传 trade_date 时按指定日同步，未传时通过 trade_cal 回退最新交易日。
+
+    同步目标为涨停专题三表（limit_list_d / limit_step / limit_cpt_list），
+    均按 trade_date 删旧插新，幂等可重跑。
 
     Args:
         task_id: 任务ID
-        params: 任务参数，trade_date 可选（YYYYMMDD，默认最新交易日）
+        params: 任务参数 {
+            "start_date": "YYYY-MM-DD",   # 可选，与 end_date 同时出现=范围同步
+            "end_date": "YYYY-MM-DD",
+            "trade_date": "YYYYMMDD",     # 可选，单日；start/end 缺省时生效，
+                                          # 未传则取最新交易日
+        }
         manager: 任务管理器
     """
     from src.services.data_init_limit import LimitDataInitService
     from src.services.data_acquisition import DataSourceFactory
 
+    start_date = params.get("start_date")
+    end_date = params.get("end_date")
     trade_date = params.get("trade_date")
 
-    # 未指定日期时通过 trade_cal 取最新交易日（SSE，最近开盘日）
+    service = LimitDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    # 分支一：日期范围同步（start_date + end_date 都给）
+    if start_date and end_date:
+        await manager.log_message(
+            task_id, "INFO",
+            f"Starting limit data range sync: {start_date} ~ {end_date}"
+        )
+        try:
+            result = await service.sync_limit_data_range(start_date, end_date)
+            await manager.log_message(
+                task_id, "INFO",
+                f"Limit data range sync completed "
+                f"({result.get('start_date')} ~ {result.get('end_date')}): "
+                f"total={result.get('total_days', 0)}, "
+                f"processed={result.get('processed_days', 0)}, "
+                f"failed={result.get('failed_days', 0)}"
+            )
+        except Exception as e:
+            error_msg = f"Limit data range sync failed: {e}"
+            await manager.log_message(task_id, "ERROR", error_msg)
+            raise
+        return
+
+    # 分支二：单日 / 最新交易日（默认）
+    # 未指定 trade_date 时通过 trade_cal 取最新交易日（SSE，最近开盘日）
     if not trade_date:
         try:
             from datetime import datetime
@@ -1433,10 +1474,6 @@ async def sync_limit_data_task(
         task_id, "INFO",
         f"Starting limit data sync (trade_date={trade_date})"
     )
-
-    service = LimitDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
-    service.set_progress_callback(callback)
 
     try:
         result = await service.sync_limit_data(trade_date)
