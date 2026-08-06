@@ -17,6 +17,8 @@ from .exceptions import DataFetchError, RetryExhaustedError
 from .models import DailyQuote, SectorInfo, SectorMemberInfo, StockInfo
 from .sector_types import (
     SECTOR_TYPES,
+    SW_LEVELS,
+    SW_SRC,
     THS_TYPE_LABEL,
     THS_TYPE_MAP,
     is_valid_sector_type,
@@ -947,6 +949,108 @@ class TushareDataSource(BaseDataSource):
 
         logger.info(
             f"[Tushare] 获取到 {len(records)} 条涨停最强板块 (limit_cpt_list, trade_date={trade_date})"
+        )
+        return records
+
+    # ------------------------------------------------------------------
+    # 申万行业分类（index_classify / index_member_all）
+    # ------------------------------------------------------------------
+
+    def get_sw_index_classify(self, level: str, src: str = SW_SRC) -> List[dict]:
+        """
+        获取申万行业分类列表（pro.index_classify，按 level 全量）
+
+        Tushare ``index_classify`` 接口返回申万一/二/三级行业分类。
+        实测 L1=31 条、L2=134 条、L3=346 条（SW2021 版）。
+
+        Args:
+            level: 行业层级，'L1' / 'L2' / 'L3'
+            src: 分类标准，默认 'SW2021'（2021 版），可选 'SW2014'
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (index_code/industry_name/level/industry_code/is_pub/parent_code/src)
+            - index_code：申万指数代码（如 801010.SI）
+            - parent_code：父级行业代码，一级为 '0'
+            - is_pub：是否发布了指数（1/0）
+        """
+        import pandas as pd
+
+        if level not in SW_LEVELS:
+            raise ValueError(f"无效的申万行业层级: {level}（可选 {SW_LEVELS}）")
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取申万{level}行业分类 (index_classify, src={src})..."
+            )
+            return pro.index_classify(level=level, src=src)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(
+                f"[Tushare] index_classify 返回空数据 (level={level}, src={src})"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                record[col] = None if pd.isna(val) else val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条申万{level}行业分类 (index_classify)"
+        )
+        return records
+
+    def get_sw_index_member_all(self, src: str = SW_SRC) -> List[dict]:
+        """
+        获取申万行业成分股当前快照（pro.index_member_all，is_new='Y'）
+
+        Tushare ``index_member_all`` 接口返回申万行业成分股，按三级分类展开。
+        取当前快照（is_new='Y'），每只股票一行，含完整的 L1/L2/L3 归属。
+        实测约 5889 条。
+
+        Args:
+            src: 分类标准（仅用于日志，接口本身按最新版返回）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (l1_code/l1_name/l2_code/l2_name/l3_code/l3_name/
+             ts_code/name/in_date/out_date/is_new)
+            - l*_code 与 index_classify.index_code 格式一致（如 801010.SI）
+            - is_new='Y' 表示当前在册
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                "[Tushare] 正在获取申万行业成分股当前快照 "
+                "(index_member_all, is_new='Y')..."
+            )
+            return pro.index_member_all(is_new="Y")
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning("[Tushare] index_member_all 返回空数据")
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                record[col] = None if pd.isna(val) else val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条申万行业成分股 (index_member_all)"
         )
         return records
 

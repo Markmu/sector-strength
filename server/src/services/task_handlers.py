@@ -77,6 +77,12 @@ class TaskType(str, Enum):
     # 涨停专题数据同步任务（limit_list_d/limit_step/limit_cpt_list 三表，按交易日同步）
     SYNC_LIMIT_DATA = "sync_limit_data"
 
+    # 申万行业分类目录同步任务（index_classify，L1/L2/L3 全量覆盖）
+    SYNC_SW_CLASSIFY = "sync_sw_classify"
+
+    # 申万行业成分股当前快照同步任务（index_member_all is_new='Y'）
+    SYNC_SW_MEMBERS = "sync_sw_members"
+
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
     """
@@ -1450,5 +1456,89 @@ async def sync_limit_data_task(
         )
     except Exception as e:
         error_msg = f"Limit data sync failed: {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+@TaskRegistry.register(TaskType.SYNC_SW_CLASSIFY)
+async def sync_sw_classify_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    申万行业分类目录同步任务。
+
+    调 SwSectorDataInitService.sync_sw_classify 同步申万一/二/三级行业分类
+    （index_classify），delete + insert 全量覆盖 sectors 表中 type='sw_industry' 的记录。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数（无参数，保留兼容）
+        manager: 任务管理器
+    """
+    from src.services.data_init_sw_sector import SwSectorDataInitService
+
+    await manager.log_message(
+        task_id, "INFO", "Starting SW sector classify sync"
+    )
+
+    service = SwSectorDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    try:
+        result = await service.sync_sw_classify()
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"SW sector classify sync completed: "
+            f"L1={result.get('L1', 0)}, L2={result.get('L2', 0)}, "
+            f"L3={result.get('L3', 0)}, total={result.get('total', 0)}"
+        )
+    except Exception as e:
+        error_msg = f"SW sector classify sync failed: {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+@TaskRegistry.register(TaskType.SYNC_SW_MEMBERS)
+async def sync_sw_members_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    申万行业成分股当前快照同步任务。
+
+    调 SwSectorDataInitService.sync_sw_members 同步申万行业成分股（index_member_all
+    is_new='Y'），delete + insert 全量覆盖 sector_stocks 表中申万相关关联。
+    依赖申万分类目录已入库（否则报错）。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数（无参数，保留兼容）
+        manager: 任务管理器
+    """
+    from src.services.data_init_sw_sector import SwSectorDataInitService
+
+    await manager.log_message(
+        task_id, "INFO", "Starting SW sector members sync"
+    )
+
+    service = SwSectorDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    try:
+        result = await service.sync_sw_members()
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"SW sector members sync completed: "
+            f"stocks={result.get('stocks', 0)}, links={result.get('links', 0)}"
+        )
+    except Exception as e:
+        error_msg = f"SW sector members sync failed: {e}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
