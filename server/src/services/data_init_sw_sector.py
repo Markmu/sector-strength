@@ -242,7 +242,10 @@ class SwSectorDataInitService:
             ts_code = self._to_str(record.get("ts_code"))
             if not ts_code:
                 continue
-            stocks_seen.add(ts_code)
+            # ts_code 形如 "600850.SH" / "002796.SZ"，去掉交易所后缀，
+            # 只保留数字代码以对齐 stocks.symbol（项目内 stock_code 全程用短码）
+            stock_code = ts_code.split(".")[0] if "." in ts_code else ts_code
+            stocks_seen.add(stock_code)
 
             for code_key in ("l1_code", "l2_code", "l3_code"):
                 sector_code = self._to_str(record.get(code_key))
@@ -251,7 +254,7 @@ class SwSectorDataInitService:
                 self.session.add(
                     SectorStock(
                         sector_code=sector_code,
-                        stock_code=ts_code,
+                        stock_code=stock_code,
                     )
                 )
                 links += 1
