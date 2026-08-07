@@ -205,6 +205,12 @@ export const sectorsApi = {
         value: number
       }>
     }>('/sectors/search', { keyword, ...params }),
+  // 按板块名精确查询 sector_id（资金流页跳转用，避免 JOIN sectors 导致重复）
+  lookupSectorByName: (name: string, sectorType: string) =>
+    apiClient.get<{
+      success: boolean
+      data: { sector_id: number; sector_name: string } | null
+    }>('/sectors/lookup-by-name', { name, sector_type: sectorType }),
   // 获取板块强度历史数据 (用于图表)
   getSectorStrengthHistory: (sectorId: number, params?: { start_date?: string; end_date?: string }) =>
     apiClient.get<{

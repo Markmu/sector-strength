@@ -7,7 +7,7 @@
  *
  * 交互：
  * - AC-03：点击 流入/流出/净额 表头切换排序 + 箭头；不可排序列无反应
- * - AC-10：sectorId 非 null 的板块名可点击跳转 /dashboard/sector-analysis/{id}，null 不可点击
+ * - AC-10：板块名可点击跳转 /dashboard/sector-analysis/{id}（点击时单独查 sector_id）
  * - 不分页，全量展示（父组件一次拉取全部板块）
  * - 净额正值红、负值绿（A 股惯例）；流入/流出中性色
  *
@@ -16,8 +16,9 @@
  * - 排序按钮：fund-flow-sort-{sortBy}
  * - 板块名跳转：fund-flow-sector-link-{sectorName}
  */
-import React from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { sectorsApi } from '@/lib/api'
 import type { FundFlowRankingItem, FundFlowSortBy, FundFlowOrder } from '@/types/fundFlowTypes'
 import {
   formatAmount,
@@ -70,6 +71,8 @@ export default function FundFlowRankingTable({
   onRetry,
 }: FundFlowRankingTableProps) {
   const router = useRouter()
+  // 跳转中正在查询 id 的板块名（防止重复点击 + 给 loading 反馈）
+  const [navigatingSector, setNavigatingSector] = useState<string | null>(null)
 
   // AC-03：当前列切换升降序，其它列切过去默认降序
   const handleSortClick = (column: FundFlowSortBy) => {
@@ -80,10 +83,22 @@ export default function FundFlowRankingTable({
     }
   }
 
-  // AC-10：sectorId 非 null 跳转强度页
-  const handleSectorClick = (item: FundFlowRankingItem) => {
-    if (item.sectorId === null || item.sectorId === undefined) return
-    router.push(`/dashboard/sector-analysis/${item.sectorId}`)
+  // 跳转：rankings 不再 JOIN sectors 取 id，点击时单独按 name+industry 精确查 id。
+  // 查到后跳转强度分析页；查不到或失败则不跳转（数据验证 industry 板块名 100% 命中）。
+  const handleSectorClick = async (item: FundFlowRankingItem) => {
+    if (navigatingSector) return
+    setNavigatingSector(item.sectorName)
+    try {
+      const res = await sectorsApi.lookupSectorByName(item.sectorName, 'industry')
+      const sectorId = res.data?.data?.sector_id
+      if (sectorId) {
+        router.push(`/dashboard/sector-analysis/${sectorId}`)
+      }
+    } catch {
+      // 查询失败静默处理（不阻断其它板块操作）
+    } finally {
+      setNavigatingSector(null)
+    }
   }
 
   const alignClass = (align?: 'left' | 'right') =>
@@ -196,7 +211,7 @@ export default function FundFlowRankingTable({
                 const netColor = getAmountColorClass(item.netInflow)
                 const changeColor = getAmountColorClass(item.changePercent)
                 const leadingChangeColor = getAmountColorClass(item.leadingStockChange)
-                const clickable = item.sectorId !== null && item.sectorId !== undefined
+                const isNavigating = navigatingSector === item.sectorName
                 return (
                   <tr
                     key={`${item.rank}-${item.sectorName}`}
@@ -206,19 +221,16 @@ export default function FundFlowRankingTable({
                       {item.rank}
                     </td>
                     <td className="px-4 py-3 min-w-[7rem] whitespace-nowrap">
-                      {clickable ? (
-                        <button
-                          type="button"
-                          onClick={() => handleSectorClick(item)}
-                          data-testid={`fund-flow-sector-link-${item.sectorName}`}
-                          className="text-primary hover:underline font-medium"
-                          title="跳转板块强度分析"
-                        >
-                          {item.sectorName}
-                        </button>
-                      ) : (
-                        <span className="text-foreground">{item.sectorName}</span>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleSectorClick(item)}
+                        disabled={isNavigating || navigatingSector !== null}
+                        data-testid={`fund-flow-sector-link-${item.sectorName}`}
+                        className="text-primary hover:underline font-medium disabled:opacity-50 disabled:cursor-wait"
+                        title={isNavigating ? '正在查询板块…' : '跳转板块强度分析'}
+                      >
+                        {item.sectorName}
+                      </button>
                     </td>
                     <td className={`px-4 py-3 tabular-nums ${changeColor}`}>
                       {formatPercent(item.changePercent)}

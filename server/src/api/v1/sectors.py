@@ -205,6 +205,44 @@ async def search_sectors(
     return ApiResponse(success=True, data=items)
 
 
+@router.get("/lookup-by-name", response_model=ApiResponse[Optional[dict]])
+async def lookup_sector_by_name(
+    name: str = Query(..., min_length=1, description="板块名称（精确匹配）"),
+    sector_type: str = Query("industry", description="板块类型: industry/concept/region"),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> ApiResponse[Optional[dict]]:
+    """
+    按板块名称精确查询板块 id。
+
+    用于板块资金流等「不 JOIN sectors 表」的场景：前端拿到板块名后，
+    点击跳转时单独调本接口取 sector_id，避免因 sectors 表同名板块
+    （industry / sw_industry）导致数据重复。
+
+    精确匹配（name == 参数），非模糊搜索；按 type 过滤排除重名。
+    无匹配返回 data=null。
+    """
+    stmt = (
+        select(SectorModel.id, SectorModel.name)
+        .where(
+            SectorModel.name == name,
+            SectorModel.type == sector_type,
+        )
+        .order_by(asc(SectorModel.id))
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    row = result.first()
+
+    if row is None:
+        return ApiResponse(success=True, data=None)
+
+    return ApiResponse(
+        success=True,
+        data={"sector_id": row.id, "sector_name": row.name},
+    )
+
+
 @router.get("/{sector_id}", response_model=SectorDetailResponse)
 async def get_sector_detail(
     sector_id: str,

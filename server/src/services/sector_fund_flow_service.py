@@ -7,10 +7,10 @@
 复用声明：
 - Service 构造范式：src/services/fund_crowd_analysis_service.py:44（__init__(session)）
 - 最新采样点子查询：架构 §6.2 排行链路（每 sector_name 取 MAX(sample_time)）
-- LEFT JOIN sectors 取 sector_id：src/models/sector.py:12（sectors.name 有索引）
 
 契约（架构 §6.2/§6.3 + plan-02 §3）：
-- get_rankings：返回最新采样点排行，按净额/流入/流出排序 + 分页
+- get_rankings：返回最新采样点排行，按净额/流入/流出排序 + 分页（不 JOIN sectors，
+  sector_id 恒 null，前端跳转时单独查 /sectors/lookup-by-name）
 - get_timeseries：按板块名分组返回 sample_time 升序的净额序列
 - get_latest_date：返回 MAX(trade_date)（YYYY-MM-DD 或 null）
 """
@@ -23,7 +23,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import desc, asc, func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.sector import Sector
 from src.models.sector_fund_flow import SectorFundFlow
 
 logger = logging.getLogger(__name__)
@@ -59,8 +58,13 @@ class SectorFundFlowService:
         板块资金流排行榜（架构 §6.2 + plan-02 §3 #1）。
 
         取该 trade_date + sector_type 下每个 sector_name 的最新采样点，
-        LEFT JOIN sectors 取 sector_id（匹配不上为 null），按指定字段排序后分页。
-        rank 按当前排序结果的全局序号编号（offset + 页内序号 + 1）。
+        按指定字段排序后分页。rank 按当前排序结果的全局序号编号
+        （offset + 页内序号 + 1）。
+
+        注意：不再 LEFT JOIN sectors 取 sector_id。sectors 表中 industry 与
+        sw_industry 存在大量同名板块，JOIN 会导致一行资金流被展开成多行（前端
+        板块列表重复）。sector_id 恒返回 null，前端跳转时单独调
+        /sectors/lookup-by-name 按 name+type 精确查询。
 
         边界场景：
         - trade_date 未传 → 默认取 latest_date；无数据 → has_data=False
@@ -70,7 +74,7 @@ class SectorFundFlowService:
         Returns:
             {
                 "has_data", "trade_date", "items": [{
-                    "rank", "sector_name", "sector_id", "change_percent",
+                    "rank", "sector_name", "sector_id"(恒 null), "change_percent",
                     "inflow", "outflow", "net_inflow", "company_count",
                     "leading_stock", "leading_stock_change", "current_price"
                 }], "total", "page", "page_size"
@@ -114,12 +118,12 @@ class SectorFundFlowService:
             .subquery()
         )
 
-        # 主查询：JOIN 子查询锁定最新采样点，LEFT JOIN sectors 取 sector_id
+        # 主查询：JOIN 子查询锁定最新采样点。
+        # 不再 LEFT JOIN sectors 取 sector_id——sectors 表中 industry 与 sw_industry
+        # 存在大量同名板块（如"半导体"），JOIN 会把一条资金流记录展开成多行，导致前端
+        # 板块列表重复。sector_id 由前端跳转时单独调 /sectors/lookup-by-name 获取。
         stmt = (
-            select(
-                SectorFundFlow,
-                Sector.id.label("sector_id"),
-            )
+            select(SectorFundFlow)
             .join(
                 latest_subq,
                 and_(
@@ -127,7 +131,6 @@ class SectorFundFlowService:
                     SectorFundFlow.sample_time == latest_subq.c.max_sample_time,
                 ),
             )
-            .outerjoin(Sector, Sector.name == SectorFundFlow.sector_name)
             .where(
                 SectorFundFlow.trade_date == trade_date,
                 SectorFundFlow.sector_type == sector_type,
@@ -150,16 +153,17 @@ class SectorFundFlowService:
         stmt = stmt.limit(page_size).offset(offset)
 
         result = await self.session.execute(stmt)
-        rows = result.all()
+        rows = result.scalars().all()
 
         items = []
         base_rank = offset + 1
-        for idx, (flow, sector_id) in enumerate(rows):
+        for idx, flow in enumerate(rows):
             items.append(
                 {
                     "rank": base_rank + idx,
                     "sector_name": flow.sector_name,
-                    "sector_id": sector_id,
+                    # 不再 JOIN sectors，恒返回 null；跳转 id 由前端单独查询获取
+                    "sector_id": None,
                     "change_percent": flow.change_percent,
                     "inflow": flow.inflow,
                     "outflow": flow.outflow,
