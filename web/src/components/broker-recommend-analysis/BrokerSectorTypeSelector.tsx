@@ -13,13 +13,13 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
 import {
-  SECTOR_TYPE_OPTIONS,
-  type SectorType,
+  THS_SECTOR_TYPE_OPTIONS,
+  type ThsSectorType,
 } from '@/types/sectorTypes'
 
 export interface BrokerSectorTypeSelectorProps {
-  value: SectorType
-  onChange: (sectorType: SectorType) => void
+  value: ThsSectorType
+  onChange: (sectorType: ThsSectorType) => void
   disabled?: boolean
 }
 
@@ -35,7 +35,7 @@ export default function BrokerSectorTypeSelector({
       role="group"
       aria-label="板块类型切换"
     >
-      {SECTOR_TYPE_OPTIONS.map((opt) => {
+      {THS_SECTOR_TYPE_OPTIONS.map((opt) => {
         const isActive = value === opt.value
         return (
           <button

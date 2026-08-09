@@ -262,20 +262,24 @@ class DataCollector:
         async with get_session() as session:
             # 构建板块映射 {code: (id, name, type)}
             sector_result = await session.execute(select(Sector))
-            sector_map = {s.code: (s.id, s.name, s.type) for s in sector_result.scalars().all()}
+            sector_map = {
+                s.code: (s.id, s.name, s.type, s.code)
+                for s in sector_result.scalars().all()
+            }
 
             # 构建股票映射 {symbol: id}
             stock_result = await session.execute(select(Stock))
             stock_map = {s.symbol: s.id for s in stock_result.scalars().all()}
 
-            # 写入板块行情
-            for code, (entity_id, name, stype) in sector_map.items():
+            # 写入板块行情（按 type 分流：同花顺按名称反查，申万按 code 取数）
+            for code, (entity_id, name, stype, sector_code) in sector_map.items():
                 try:
                     quotes = data_source.get_sector_daily_data(
                         sector_name=name,
                         sector_type=stype,
                         start_date=today,
                         end_date=today,
+                        sector_code=sector_code,
                     )
                     if quotes:
                         for q in quotes:

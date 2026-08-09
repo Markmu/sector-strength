@@ -39,7 +39,12 @@ router = APIRouter(prefix="/rankings", tags=["rankings"])
 async def get_sector_rankings(
     top_n: int = Query(20, ge=1, le=100, description="返回数量"),
     order: str = Query("desc", description="desc=强势, asc=弱势"),
-    sector_type: Optional[str] = Query(None, description="板块类型筛选: industry/concept/region"),
+    sector_type: Optional[str] = Query(
+        None, description="板块类型筛选: industry/concept/region/sw_industry"
+    ),
+    level: Optional[str] = Query(
+        None, description="申万行业层级筛选: L1/L2/L3（仅 sector_type=sw_industry 时生效）"
+    ),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> RankingResponse:
@@ -53,6 +58,8 @@ async def get_sector_rankings(
 
     if sector_type:
         stmt = stmt.where(SectorModel.type == sector_type)
+    if level:
+        stmt = stmt.where(SectorModel.level == level)
 
     # 只返回有强度得分的板块
     stmt = stmt.where(SectorModel.strength_score.isnot(None))
@@ -240,16 +247,33 @@ async def get_sector_rankings_v2(
     calc_date: Optional[date] = Query(None, description="计算日期，默认为最新"),
     offset: int = Query(0, ge=0, description="偏移量"),
     limit: int = Query(20, ge=1, le=100, description="返回数量"),
+    sector_type: Optional[str] = Query(
+        None, description="板块类型筛选: industry/concept/region/sw_industry"
+    ),
+    level: Optional[str] = Query(
+        None, description="申万行业层级筛选: L1/L2/L3（仅 sector_type=sw_industry 时生效）"
+    ),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> StrengthRankingResponse:
-    """获取板块强度排名 (V2)"""
+    """获取板块强度排名 (V2)
+
+    支持按板块来源筛选：同花顺（industry/concept/region）与申万行业
+    （sw_industry，可进一步按 L1/L2/L3 层级筛选）。两者各自排名，避免不同
+    分类体系混排。不传 sector_type 时返回全部板块的混合排名。
+    """
     stmt = select(StrengthScoreModel, SectorModel).join(
         SectorModel, StrengthScoreModel.entity_id == SectorModel.id
     ).where(
         StrengthScoreModel.entity_type == "sector",
         StrengthScoreModel.period == "all"
     )
+
+    # 按板块来源/层级筛选（申万与同花顺各自排名，避免混排）
+    if sector_type:
+        stmt = stmt.where(SectorModel.type == sector_type)
+    if level:
+        stmt = stmt.where(SectorModel.level == level)
 
     if calc_date:
         stmt = stmt.where(StrengthScoreModel.date == calc_date)

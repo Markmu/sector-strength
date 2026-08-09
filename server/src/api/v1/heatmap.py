@@ -49,7 +49,12 @@ def _get_color_for_strength(strength: float) -> str:
 
 @router.get("", response_model=HeatmapResponse)
 async def get_heatmap_data(
-    sector_type: Optional[str] = Query(None, description="板块类型筛选: industry/concept/region"),
+    sector_type: Optional[str] = Query(
+        None, description="板块类型筛选: industry/concept/region/sw_industry"
+    ),
+    level: Optional[str] = Query(
+        None, description="申万行业层级筛选: L1/L2/L3（仅 sector_type=sw_industry 时生效）"
+    ),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> HeatmapResponse:
@@ -63,6 +68,8 @@ async def get_heatmap_data(
 
     if sector_type:
         stmt = stmt.where(SectorModel.type == sector_type)
+    if level:
+        stmt = stmt.where(SectorModel.level == level)
 
     # 只返回有强度得分的板块
     stmt = stmt.where(SectorModel.strength_score.isnot(None))

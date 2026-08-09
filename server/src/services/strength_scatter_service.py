@@ -22,7 +22,10 @@ from src.api.schemas.strength import (
     FiltersApplied,
     PaginationInfo,
 )
-from src.services.data_acquisition.sector_types import is_valid_sector_type
+from src.services.data_acquisition.sector_types import (
+    is_valid_sector_type_incl_sw,
+    is_valid_sw_level,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,7 @@ class StrengthScatterService:
         x_axis: str = 'short',
         y_axis: str = 'medium',
         sector_type: Optional[str] = None,
+        level: Optional[str] = None,
         min_grade: Optional[str] = None,
         max_grade: Optional[str] = None,
         offset: int = 0,
@@ -117,9 +121,13 @@ class StrengthScatterService:
             # 筛选条件
             filters = []
 
-            # 板块类型筛选
-            if sector_type and is_valid_sector_type(sector_type):
+            # 板块类型筛选（含申万行业 sw_industry）
+            if sector_type and is_valid_sector_type_incl_sw(sector_type):
                 filters.append(Sector.type == sector_type)
+
+            # 申万行业层级筛选（仅 sector_type=sw_industry 时生效）
+            if level and is_valid_sw_level(level):
+                filters.append(Sector.level == level)
 
             # 强度等级筛选
             if min_grade or max_grade:

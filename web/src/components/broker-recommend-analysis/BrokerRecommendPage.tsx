@@ -28,7 +28,7 @@ import {
 import type { BrokerView } from '@/lib/api'
 import {
   SECTOR_TYPE_LABELS,
-  type SectorType,
+  type ThsSectorType,
 } from '@/types/sectorTypes'
 import SimpleSelect, {
   type SimpleSelectOption,
@@ -52,7 +52,7 @@ export default function BrokerRecommendPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
   // 板块筛选（仅股票维度生效）
-  const [sectorType, setSectorType] = useState<SectorType>('industry')
+  const [sectorType, setSectorType] = useState<ThsSectorType>('industry')
   const [sectorName, setSectorName] = useState<string | undefined>(undefined)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -90,7 +90,7 @@ export default function BrokerRecommendPage() {
   }
 
   // 切板块类型：清空板块名（不同维度的板块名互不相通）+ 回第 1 页
-  const handleSectorTypeChange = (nextSectorType: SectorType) => {
+  const handleSectorTypeChange = (nextSectorType: ThsSectorType) => {
     if (nextSectorType === sectorType) return
     setSectorType(nextSectorType)
     setSectorName(undefined)

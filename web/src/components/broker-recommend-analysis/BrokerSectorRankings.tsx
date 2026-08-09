@@ -15,8 +15,8 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 import type { BrokerSectorRankingItem } from '@/lib/api'
 import {
-  SECTOR_TYPE_OPTIONS,
-  type SectorType,
+  THS_SECTOR_TYPE_OPTIONS,
+  type ThsSectorType,
 } from '@/types/sectorTypes'
 
 export interface BrokerSectorRankingsProps {
@@ -37,7 +37,7 @@ function SectorCard({
   isLoading,
   isError,
 }: {
-  sectorType: SectorType
+  sectorType: ThsSectorType
   label: string
   display: string
   items: BrokerSectorRankingItem[]
@@ -126,7 +126,7 @@ export default function BrokerSectorRankings({
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {SECTOR_TYPE_OPTIONS.map((opt) => (
+        {THS_SECTOR_TYPE_OPTIONS.map((opt) => (
           <SectorCard
             key={opt.value}
             sectorType={opt.value}

@@ -43,7 +43,12 @@ router = APIRouter(prefix="/sectors", tags=["sectors"])
 
 @router.get("", response_model=SectorListResponse)
 async def get_sectors(
-    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region"),
+    sector_type: Optional[str] = Query(
+        None, description="板块类型: industry/concept/region/sw_industry"
+    ),
+    level: Optional[str] = Query(
+        None, description="申万行业层级: L1/L2/L3（仅 sector_type=sw_industry 时生效）"
+    ),
     min_strength_score: Optional[float] = Query(None, ge=0, le=100, description="最小强度分数"),
     max_strength_score: Optional[float] = Query(None, ge=0, le=100, description="最大强度分数"),
     sort_by: str = Query("strength_score", description="排序字段"),
@@ -95,6 +100,9 @@ async def get_sectors(
     # 按类型筛选
     if sector_type:
         stmt = stmt.where(SectorModel.type == sector_type)
+    # 按申万层级筛选（仅 sector_type=sw_industry 时有意义）
+    if level:
+        stmt = stmt.where(SectorModel.level == level)
 
     # 按分数区间筛选（使用 JOIN 后的分数）
     if min_strength_score is not None:

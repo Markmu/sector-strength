@@ -36,6 +36,22 @@ def is_valid_sector_type(sector_type: str) -> bool:
     return sector_type in SECTOR_TYPES
 
 
+def is_valid_sector_type_incl_sw(sector_type: str) -> bool:
+    """检查是否为合法的板块类型（含申万行业）
+
+    与 :func:`is_valid_sector_type` 的区别：本函数同时认可申万行业类型
+    ``sw_industry``，用于查询/排行接口需要放行申万板块的场景（如热力图、
+    散点图、排行榜）。不影响 :func:`is_valid_sector_type` 在同花顺数据采集
+    链路的严格校验语义。
+    """
+    return sector_type in SECTOR_TYPES or sector_type == SW_SECTOR_TYPE
+
+
+def is_valid_sw_level(level: str) -> bool:
+    """检查是否为合法的申万行业层级（L1/L2/L3）"""
+    return level in SW_LEVELS
+
+
 # ======================================================================
 # 申万行业分类（与同花顺体系隔离，独立 type/level 体系）
 # ======================================================================

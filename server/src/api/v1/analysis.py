@@ -25,7 +25,12 @@ router = APIRouter(prefix="/analysis", tags=["analysis"])
 async def get_sector_scatter_data(
     x_axis: str = Query("short", description="X轴维度: short/medium/long/composite"),
     y_axis: str = Query("medium", description="Y轴维度: short/medium/long/composite"),
-    sector_type: Optional[str] = Query(None, description="板块类型: industry/concept/region"),
+    sector_type: Optional[str] = Query(
+        None, description="板块类型: industry/concept/region/sw_industry"
+    ),
+    level: Optional[str] = Query(
+        None, description="申万行业层级: L1/L2/L3（仅 sector_type=sw_industry 时生效）"
+    ),
     min_grade: Optional[str] = Query(None, description="最低等级: D/C/B/A/A+/S/S+"),
     max_grade: Optional[str] = Query(None, description="最高等级: D/C/B/A/A+/S/S+"),
     offset: int = Query(0, ge=0, description="分页偏移"),
@@ -72,6 +77,7 @@ async def get_sector_scatter_data(
         x_axis=x_axis,
         y_axis=y_axis,
         sector_type=sector_type,
+        level=level,
         min_grade=min_grade,
         max_grade=max_grade,
         offset=offset,

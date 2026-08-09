@@ -12,7 +12,7 @@ import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
 import { Disclaimer } from '@/components/ui/Disclaimer'
 import { sectorsApi } from '@/lib/api'
 import type { Sector } from '@/types'
-import { SECTOR_TYPES, SECTOR_TYPE_DISPLAY, SECTOR_TYPE_LABELS, type SectorType } from '@/types/sectorTypes'
+import { SECTOR_TYPES, SECTOR_TYPE_DISPLAY, SECTOR_TYPE_LABELS, SW_LEVEL_OPTIONS, SW_LEVEL_LABELS, SW_SECTOR_TYPE, type SectorType, type SwLevel } from '@/types/sectorTypes'
 import {
   LineChartIcon,
   TrendingUpIcon,
@@ -42,6 +42,8 @@ export default function SectorAnalysisListPage() {
 
   // 筛选状态（实际用于API请求的值）
   const [sectorTypeFilter, setSectorTypeFilter] = useState<SectorTypeFilter>('industry')
+  // 申万行业层级筛选（仅 sectorTypeFilter === 'sw_industry' 时生效）
+  const [swLevel, setSwLevel] = useState<'all' | SwLevel>('all')
   const [minScore, setMinScore] = useState<number>(0)
   const [maxScore, setMaxScore] = useState<number>(100)
 
@@ -91,6 +93,7 @@ export default function SectorAnalysisListPage() {
           page: currentPage,
           page_size: PAGE_SIZE,
           sector_type: sectorTypeFilter === 'all' ? undefined : sectorTypeFilter,
+          level: sectorTypeFilter === SW_SECTOR_TYPE && swLevel !== 'all' ? swLevel : undefined,
           min_strength_score: minScore,
           max_strength_score: maxScore,
         })
@@ -118,7 +121,7 @@ export default function SectorAnalysisListPage() {
     }
 
     fetchSectors()
-  }, [currentPage, sectorTypeFilter, minScore, maxScore])
+  }, [currentPage, sectorTypeFilter, swLevel, minScore, maxScore])
 
   // 计算总页数
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
@@ -139,6 +142,13 @@ export default function SectorAnalysisListPage() {
 
   const handleTypeFilterChange = (newType: SectorTypeFilter) => {
     setSectorTypeFilter(newType)
+    // 切换类型时重置申万层级筛选
+    setSwLevel(newType === SW_SECTOR_TYPE ? 'L1' : 'all')
+    setCurrentPage(1) // 重置到第一页
+  }
+
+  const handleSwLevelChange = (newLevel: 'all' | SwLevel) => {
+    setSwLevel(newLevel)
     setCurrentPage(1) // 重置到第一页
   }
 
@@ -299,6 +309,31 @@ export default function SectorAnalysisListPage() {
                 ))}
               </div>
             </div>
+
+            {/* 申万行业层级筛选（仅选中申万时显示） */}
+            {sectorTypeFilter === SW_SECTOR_TYPE && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  申万层级
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {SW_LEVEL_OPTIONS.map((l) => (
+                    <button
+                      key={l.value}
+                      type="button"
+                      onClick={() => handleSwLevelChange(l.value)}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg border ${
+                        swLevel === l.value
+                          ? 'bg-primary text-primary-foreground border-primary z-10'
+                          : 'bg-card text-foreground border-border hover:bg-secondary relative'
+                      }`}
+                    >
+                      {SW_LEVEL_LABELS[l.value]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 分数区间筛选 */}
             <div className="md:col-span-2">

@@ -175,6 +175,7 @@ export const sectorsApi = {
     page?: number
     page_size?: number
     sector_type?: string
+    level?: string
     min_strength_score?: number
     max_strength_score?: number
   }) =>
@@ -305,7 +306,7 @@ export const userApi = {
 
 // 热力图 API
 export const heatmapApi = {
-  getHeatmap: (params?: { sector_type?: string }) =>
+  getHeatmap: (params?: { sector_type?: string; level?: string }) =>
     apiClient.get<any>('/heatmap', params),
 }
 

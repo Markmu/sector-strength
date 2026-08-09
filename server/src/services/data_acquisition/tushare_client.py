@@ -18,6 +18,7 @@ from .models import DailyQuote, SectorInfo, SectorMemberInfo, StockInfo
 from .sector_types import (
     SECTOR_TYPES,
     SW_LEVELS,
+    SW_SECTOR_TYPE,
     SW_SRC,
     THS_TYPE_LABEL,
     THS_TYPE_MAP,
@@ -467,17 +468,42 @@ class TushareDataSource(BaseDataSource):
         sector_type: str,
         start_date: date,
         end_date: date,
+        sector_code: Optional[str] = None,
     ) -> List[DailyQuote]:
-        """获取板块日线行情"""
-        if not sector_name:
-            raise ValueError("板块名称不能为空")
+        """获取板块日线行情
+
+        按 ``sector_type`` 分流数据源：
+        - 申万行业（``sw_industry``）：走 :meth:`get_sw_index_daily`，按 ``sector_code``
+          取数（申万指数代码形如 801010.SI，避免与同花顺同名行业的 name 歧义）。
+        - 同花顺（industry/concept/region）：维持原有按板块名称反查 ts_code +
+          ``pro.ths_daily`` 的取数逻辑。
+
+        Args:
+            sector_name: 板块名称（同花顺按名称反查 ts_code；申万仅用于日志）
+            sector_type: 板块类型，同花顺 industry/concept/region 或申万 sw_industry
+            start_date: 开始日期
+            end_date: 结束日期
+            sector_code: 板块代码，申万分支必填（同花顺分支可选，用于日志）
+        """
         if not sector_type:
             raise ValueError("板块类型不能为空")
         normalized = sector_type.strip().lower()
-        if not is_valid_sector_type(normalized):
-            raise ValueError(f"无效的板块类型: {sector_type}")
         if start_date > end_date:
             raise ValueError("开始日期不能晚于结束日期")
+
+        # 申万行业：按 sector_code 走申万指数日线接口
+        if normalized == SW_SECTOR_TYPE:
+            return self.get_sw_index_daily(
+                ts_code=sector_code or "",
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+        # 同花顺：维持原有校验与按名称反查 ts_code 的取数逻辑
+        if not sector_name:
+            raise ValueError("板块名称不能为空")
+        if not is_valid_sector_type(normalized):
+            raise ValueError(f"无效的板块类型: {sector_type}")
 
         pro = self._get_pro_api()
 
@@ -1053,6 +1079,75 @@ class TushareDataSource(BaseDataSource):
             f"[Tushare] 获取到 {len(records)} 条申万行业成分股 (index_member_all)"
         )
         return records
+
+    def get_sw_index_daily(
+        self,
+        ts_code: str,
+        start_date: date,
+        end_date: date,
+    ) -> List[DailyQuote]:
+        """获取申万行业指数日线行情（pro.sw_daily，按 ts_code 拉取）
+
+        申万板块目录同步时已将申万指数代码（如 801010.SI）写入 ``sectors.code``，
+        本方法直接按 code 取数，无需像同花顺那样按板块名称反查 ts_code，
+        也避免了申万与同花顺存在同名行业（如"银行"）时的 name 歧义。
+
+        Args:
+            ts_code: 申万指数代码（如 801010.SI，需以 .SI 结尾）
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            按交易日期升序排序的日线行情列表
+        """
+        if not ts_code:
+            raise ValueError("申万指数代码不能为空")
+        if start_date > end_date:
+            raise ValueError("开始日期不能晚于结束日期")
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取申万指数 {ts_code} 的日线数据 "
+                f"({start_date} 至 {end_date})..."
+            )
+            return pro.sw_daily(
+                ts_code=ts_code,
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=end_date.strftime("%Y%m%d"),
+            )
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(f"[Tushare] 申万指数 {ts_code} 无日线数据")
+            return []
+
+        quotes: List[DailyQuote] = []
+        errors = 0
+        for _, row in df.iterrows():
+            try:
+                trade_date = datetime.strptime(str(row["trade_date"]), "%Y%m%d").date()
+                quote = DailyQuote(
+                    symbol=ts_code,
+                    trade_date=trade_date,
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row["vol"]),
+                    amount=float(row["amount"]) if "amount" in df.columns else None,
+                )
+                quotes.append(quote)
+            except (ValidationError, ValueError, TypeError):
+                errors += 1
+
+        quotes.sort(key=lambda q: q.trade_date)
+        logger.info(
+            f"[Tushare] 成功转换 {len(quotes)} 条申万指数 {ts_code} 日线数据，"
+            f"忽略 {errors} 条异常数据"
+        )
+        return quotes
 
     def get_fund_share(self, trade_date: str) -> List[dict]:
         """

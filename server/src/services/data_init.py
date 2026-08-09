@@ -1070,11 +1070,13 @@ class DataInitService:
                     # 使用 savepoint 隔离每个板块的操作
                     async with _safe_nested_tx(self.session):
                         # 从数据源直接获取板块历史数据
+                        # 申万按 sector_code 取数（避免同名行业歧义），同花顺按名称反查
                         quotes = self.data_source.get_sector_daily_data(
                             sector.name,
                             sector.type,
                             start_date,
                             end_date,
+                            sector_code=sector.code,
                         )
 
                         if not quotes:
