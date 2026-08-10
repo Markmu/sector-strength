@@ -617,9 +617,12 @@ export const adminApi = {
   // ETF 历史数据回填（第 14 期 plan-02，start_date/end_date 为 YYYY-MM-DD）
   initEtfHistory: (start_date: string, end_date: string) =>
     adminApiClient.post<{task_id: string}>('/admin/init/etf-history', { start_date, end_date }),
-  // 涨停专题三表同步（trade_date 可选，YYYYMMDD，未传时取最新交易日）
-  initLimit: (trade_date?: string) =>
-    adminApiClient.post<{task_id: string}>('/admin/init/limit', trade_date ? { trade_date } : {}),
+  // 涨停专题三表同步（起止都留空=最新交易日；都填=日期范围，YYYY-MM-DD）
+  initLimit: (start_date?: string, end_date?: string) =>
+    adminApiClient.post<{task_id: string}>(
+      '/admin/init/limit',
+      start_date && end_date ? { start_date, end_date } : {},
+    ),
 
   // 股东监控组管理（plan-03 / plan-01 后端契约）
   // 后端 ApiResponse 包 { success, data, message }，AdminApiClient.request 已提取 data 字段

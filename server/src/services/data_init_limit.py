@@ -7,6 +7,8 @@
   - limit_list_d：每日涨跌停/炸板个股明细（约 200 条/日）
   - limit_step：涨停连板天梯（约 10 条/日）
   - limit_cpt_list：涨停最强概念板块（约 20 条/日）
+- ``sync_limit_data_range(start_date, end_date)``：按日期范围逐交易日复用
+  ``sync_limit_data``（仿 ``backfill_etf_history``），范围级进度 + 单日失败不中断。
 
 三表同属一日、数据量小，合并为一个同步任务，按 trade_date 删除当日旧数据
 + 批量插入，保证幂等可重跑。
@@ -15,13 +17,14 @@
 import logging
 import asyncio
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.limit import LimitListD, LimitStep, LimitCptList
 from src.services.data_acquisition import DataSourceFactory
+from src.services.trading_calendar import TradingCalendar
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,8 @@ logger = logging.getLogger(__name__)
 class LimitDataInitService:
     """涨跌停专题数据采集服务
 
-    提供按交易日的涨停专题三表同步（sync_limit_data）。
+    提供按交易日的涨停专题三表同步（sync_limit_data），以及按日期范围
+    逐交易日复用单日同步的范围同步（sync_limit_data_range）。
     """
 
     def __init__(self, session: Optional[AsyncSession] = None):
@@ -226,6 +230,130 @@ class LimitDataInitService:
         )
 
         return result
+
+    # ------------------------------------------------------------------
+    # sync_limit_data_range：按日期范围逐交易日同步（复用 sync_limit_data）
+    # ------------------------------------------------------------------
+
+    async def sync_limit_data_range(self, start_date: str, end_date: str) -> dict:
+        """按日期范围逐交易日同步涨停专题三表（仿 ``backfill_etf_history``）。
+
+        用 TradingCalendar 筛选范围内交易日（按日期升序），逐日复用
+        ``sync_limit_data``（删旧插新，幂等可重跑）。范围级进度对外暴露
+        ``(i, total_days)``，单日同步内部的三表粒度进度被临时屏蔽避免噪音。
+
+        某日失败计入 ``failed_days`` 并继续下一日（不中断整体）；仅
+        ``CancelledError`` 向上抛出。
+
+        Args:
+            start_date: 起始日期，'YYYYMMDD' 或 'YYYY-MM-DD'。
+            end_date: 结束日期，'YYYYMMDD' 或 'YYYY-MM-DD'。
+
+        Returns:
+            {
+                "start_date": str,
+                "end_date": str,
+                "total_days": int,    # 范围内交易日数
+                "processed_days": int,  # 成功日数
+                "failed_days": int,     # 失败日数
+            }
+        """
+        if self.session is None:
+            raise RuntimeError("LimitDataInitService.session 未设置")
+
+        # 1. 日期校验（start <= end，范围上限 10 年）
+        start = self._parse_trade_date(start_date)
+        end = self._parse_trade_date(end_date)
+        if start > end:
+            raise ValueError("开始日期不能晚于结束日期")
+        if (end - start).days > 3650:
+            raise ValueError("日期范围不能超过 10 年")
+
+        # 2. 用交易日历筛选范围内交易日（按日期升序）
+        calendar = TradingCalendar()
+        trading_days: List[date] = await calendar.get_trading_days_between(start, end)
+        total_days = len(trading_days)
+
+        logger.info(
+            f"[Limit] 范围同步开始: {start} ~ {end}, 交易日 {total_days} 天"
+        )
+
+        # 3. 屏蔽内层三表粒度进度（置 None 让 sync_limit_data 内部的
+        #    _update_progress 短路），范围级 (i, total_days) 进度由本地
+        #    helper 直接调用保存的原始回调发出（不能用 _update_progress，
+        #    否则同样被短路）。
+        saved_cb = self._progress_callback
+        self._progress_callback = None
+
+        async def _emit_range_progress(current: int, msg: str):
+            """范围级进度：直接走 saved_cb，不受 self._progress_callback=None 影响。"""
+            if saved_cb is None:
+                return
+            try:
+                if asyncio.iscoroutinefunction(saved_cb):
+                    await saved_cb(current, max(total_days, 1), msg)
+                else:
+                    saved_cb(current, max(total_days, 1), msg)
+            except Exception as e:
+                logger.error(f"进度回调失败: {e}")
+
+        processed_days = 0
+        failed_days = 0
+        try:
+            await _emit_range_progress(
+                0, f"涨停专题范围同步 {start} ~ {end}，共 {total_days} 个交易日"
+            )
+
+            if total_days == 0:
+                logger.info(f"[Limit] 范围 {start} ~ {end} 内无交易日，跳过")
+                return {
+                    "start_date": start.isoformat(),
+                    "end_date": end.isoformat(),
+                    "total_days": 0,
+                    "processed_days": 0,
+                    "failed_days": 0,
+                }
+
+            # 4. 按日期升序逐日复用 sync_limit_data（删旧插新，幂等可重跑）
+            for i, td in enumerate(trading_days, 1):
+                await self._check_cancelled()
+                td_str = td.isoformat()
+                try:
+                    await self.sync_limit_data(td_str)
+                    processed_days += 1
+                except asyncio.CancelledError:
+                    logger.warning(f"[Limit] 范围同步在 {td_str} 被取消")
+                    raise
+                except Exception as e:
+                    failed_days += 1
+                    logger.warning(
+                        f"[Limit] 范围同步 {td_str} 失败，跳过该日: {e}"
+                    )
+
+                await _emit_range_progress(
+                    i, f"涨停专题范围同步进度 {i}/{total_days}（{td_str}）"
+                )
+
+            logger.info(
+                f"[Limit] 范围同步完成: 总计 {total_days}, "
+                f"成功 {processed_days}, 失败 {failed_days}"
+            )
+            await _emit_range_progress(
+                total_days,
+                f"涨停专题范围同步完成: 成功 {processed_days}, "
+                f"失败 {failed_days}"
+            )
+
+            return {
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "total_days": total_days,
+                "processed_days": processed_days,
+                "failed_days": failed_days,
+            }
+        finally:
+            # 恢复原进度回调
+            self._progress_callback = saved_cb
 
     # ------------------------------------------------------------------
     # 辅助方法
