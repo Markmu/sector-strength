@@ -5,6 +5,7 @@ Admin API 路由模块
 - 数据初始化 (init.py)
 - 基金数据同步 (init_funds.py)
 - 股票十大流通股东同步 (init_top10_holders.py)
+- 关键指数同步 (init_index_basic.py)
 - 异步任务管理 (tasks.py)
 - RBAC 权限管理 (rbac.py)
 """
@@ -19,6 +20,7 @@ from .init_etf_history import router as init_etf_history_router
 from .init_etf_daily import router as init_etf_daily_router  # 第 14 期 plan-03
 from .init_etf_basic import router as init_etf_basic_router
 from .init_limit import router as init_limit_router
+from .init_index_basic import router as init_index_basic_router  # 第 15 期 plan-02
 from .tasks import router as tasks_router
 from .rbac import router as rbac_router
 from .data_status import router as data_status_router
@@ -39,6 +41,7 @@ router.include_router(init_etf_history_router)  # /api/admin/init/etf-history
 router.include_router(init_etf_daily_router)  # /api/admin/init/etf-daily（第 14 期 plan-03）
 router.include_router(init_etf_basic_router)  # /api/admin/init/etf-basic
 router.include_router(init_limit_router)  # /api/admin/init/limit
+router.include_router(init_index_basic_router)  # /api/admin/init/index-*（第 15 期 plan-02）
 router.include_router(tasks_router)   # /api/admin/tasks/*
 router.include_router(rbac_router)    # /api/admin/*
 router.include_router(data_status_router)  # /api/admin/data/*

@@ -83,6 +83,11 @@ class TaskType(str, Enum):
     # 申万行业成分股当前快照同步任务（index_member_all is_new='Y'）
     SYNC_SW_MEMBERS = "sync_sw_members"
 
+    # 关键指数数据同步任务（第 15 期 plan-02）
+    SYNC_INDEX_BASIC = "sync_index_basic"
+    BACKFILL_INDEX_HISTORY = "backfill_index_history"
+    SYNC_INDEX_DAILY = "sync_index_daily"
+
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
     """
@@ -651,6 +656,9 @@ __all__ = [
     "sync_etf_daily_task",
     "backfill_etf_history_task",
     "sync_etf_basic_task",
+    "sync_index_basic_task",
+    "backfill_index_history_task",
+    "sync_index_daily_task",
 ]
 
 
@@ -1577,5 +1585,154 @@ async def sync_sw_members_task(
         )
     except Exception as e:
         error_msg = f"SW sector members sync failed: {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+# ============== 关键指数数据同步任务（第 15 期 plan-02） ==============
+
+@TaskRegistry.register(TaskType.SYNC_INDEX_BASIC)
+async def sync_index_basic_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    关键指数基础信息同步任务（第 15 期 plan-02）。
+
+    调 IndexDataInitService.sync_index_basic 拉取全市场指数基础信息（index_basic
+    接口，约 1 万条），upsert index_basic 表（on_conflict 排除 is_watched 字段，
+    保留用户关注配置），完成后将 14 只预置关注指数置为 true。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数（无必需参数）
+        manager: 任务管理器
+    """
+    from src.services.data_init_index import IndexDataInitService
+
+    await manager.log_message(
+        task_id, "INFO", "Starting index basic info sync"
+    )
+
+    service = IndexDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    try:
+        result = await service.sync_index_basic()
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"Index basic info sync completed: "
+            f"added={result.get('added', 0)}, "
+            f"failed={result.get('failed', 0)}, "
+            f"preset_watched={result.get('preset_watched', 0)}"
+        )
+    except Exception as e:
+        error_msg = f"Index basic info sync failed: {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+@TaskRegistry.register(TaskType.BACKFILL_INDEX_HISTORY)
+async def backfill_index_history_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    关键指数历史数据回填任务（第 15 期 plan-02）。
+
+    从 params 取 start_date/end_date，调 IndexDataInitService.backfill_index_history
+    按日期升序逐交易日回填 index_daily / index_dailybasic / index_weight，
+    权重数据按月缓存（同月只拉一次，用当月 1 日至月末宽窗口）。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数 {
+            "start_date": "YYYY-MM-DD",
+            "end_date": "YYYY-MM-DD",
+        }
+        manager: 任务管理器
+    """
+    from src.services.data_init_index import IndexDataInitService
+
+    start_date = params.get("start_date")
+    end_date = params.get("end_date")
+
+    await manager.log_message(
+        task_id, "INFO",
+        f"Starting index history backfill: {start_date} ~ {end_date}"
+    )
+
+    service = IndexDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    try:
+        result = await service.backfill_index_history(start_date, end_date)
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"Index history backfill completed: "
+            f"trading_days={result.get('trading_days', 0)}, "
+            f"daily={result.get('daily_records', 0)}, "
+            f"basic={result.get('basic_records', 0)}, "
+            f"weight={result.get('weight_records', 0)}, "
+            f"errors={len(result.get('errors', []))}"
+        )
+    except Exception as e:
+        error_msg = f"Index history backfill failed: {e}"
+        await manager.log_message(task_id, "ERROR", error_msg)
+        raise
+
+
+@TaskRegistry.register(TaskType.SYNC_INDEX_DAILY)
+async def sync_index_daily_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """
+    关键指数当日增量同步任务（第 15 期 plan-02）。
+
+    调 IndexDataInitService.sync_index_daily 采集当日 index_daily /
+    index_dailybasic / index_weight 增量。权重数据当月未入库时用当月宽窗口拉取。
+
+    Args:
+        task_id: 任务ID
+        params: 任务参数（无必需参数；当日由 collector 取北京时区当日）
+        manager: 任务管理器
+    """
+    from datetime import datetime, timezone, timedelta
+
+    from src.services.data_init_index import IndexDataInitService
+
+    # 北京时区当日（UTC+8）
+    beijing_tz = timezone(timedelta(hours=8))
+    trade_date = datetime.now(beijing_tz).date().isoformat()
+
+    await manager.log_message(
+        task_id, "INFO", f"Starting index daily sync (trade_date={trade_date})"
+    )
+
+    service = IndexDataInitService(manager.db)
+    callback = await _make_progress_callback(manager, task_id)
+    service.set_progress_callback(callback)
+
+    try:
+        result = await service.sync_index_daily(trade_date)
+
+        await manager.log_message(
+            task_id, "INFO",
+            f"Index daily sync completed: "
+            f"daily={result.get('daily_records', 0)}, "
+            f"basic={result.get('basic_records', 0)}, "
+            f"weight={result.get('weight_records', 0)}, "
+            f"errors={len(result.get('errors', []))}"
+        )
+    except Exception as e:
+        error_msg = f"Index daily sync failed: {e}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
