@@ -1331,3 +1331,242 @@ class TushareDataSource(BaseDataSource):
             f"[Tushare] 获取到 {len(records)} 条券商金股数据 (month={month})"
         )
         return records
+
+    # ------------------------------------------------------------------
+    # 关键指数数据接口（第 15 期 index monitor）
+    #
+    # 复用 _get_pro_api + _execute_with_retry + _enforce_rate_limit + 返回原始 dict
+    # 的范式。字段名保持 Tushare 原始键名，由上层服务（plan-02 IndexDataInitService）
+    # 消费入库。
+    # 存储层保持原始单位：成交额千元 / 成交量手，API 输出层（plan-03）再转亿元。
+    # ------------------------------------------------------------------
+
+    def get_index_basic(
+        self, market: Optional[str] = None, ts_code: Optional[str] = None
+    ) -> List[dict]:
+        """获取指数基础信息（pro.index_basic，全量或按 market/ts_code 过滤）
+
+        Tushare ``index_basic`` 接口返回全市场指数基础信息。实测全量返回约 1 万条，
+        覆盖 SSE/SZSE/CSI/SW 各市场。
+
+        注意：``name`` 参数在数据源代理（ts.gyzcloud.top）上不生效，不能靠 name
+        过滤查代码，故本方法不暴露 name 入参。
+
+        Args:
+            market: 可选市场过滤（SSE/SZSE/CSI/SW），不传则全量
+            ts_code: 可选指数代码过滤（如 '000300.SH'），不传则全量
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (ts_code/name/market/publisher/category/base_date/base_point/list_date)
+        """
+        import pandas as pd
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取指数基础信息 (index_basic, "
+                f"market={market or '全部'}, ts_code={ts_code or '全部'})..."
+            )
+            params: dict = {}
+            if market:
+                params["market"] = market
+            if ts_code:
+                params["ts_code"] = ts_code
+            return pro.index_basic(**params)
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning("[Tushare] index_basic 返回空数据")
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                record[col] = None if pd.isna(val) else val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条指数基础信息 (index_basic)"
+        )
+        return records
+
+    def get_index_daily(
+        self, ts_code: str, start_date: date, end_date: date
+    ) -> List[dict]:
+        """获取指数日线行情（pro.index_daily，按 ts_code + 日期区间）
+
+        Tushare ``index_daily`` 接口返回指数日线行情（开盘/最高/最低/收盘/涨跌幅/
+        成交量/成交额）。存储层保持原始单位：
+        - ``vol``：成交量（手）
+        - ``amount``：成交额（千元）
+
+        Args:
+            ts_code: 指数代码（如 '000300.SH' 沪深300）
+            start_date: 开始日期（date 对象，内部转 YYYYMMDD）
+            end_date: 结束日期（date 对象，内部转 YYYYMMDD）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (ts_code/trade_date/open/high/low/close/pre_close/change/pct_chg/vol/amount)
+        """
+        import pandas as pd
+
+        if not ts_code:
+            raise ValueError("指数代码不能为空")
+        if start_date > end_date:
+            raise ValueError("开始日期不能晚于结束日期")
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取指数 {ts_code} 日线数据 "
+                f"({start_date} 至 {end_date})..."
+            )
+            return pro.index_daily(
+                ts_code=ts_code,
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=end_date.strftime("%Y%m%d"),
+            )
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(f"[Tushare] index_daily 返回空数据 (ts_code={ts_code})")
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                record[col] = None if pd.isna(val) else val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条指数日线 (index_daily, ts_code={ts_code})"
+        )
+        return records
+
+    def get_index_dailybasic(
+        self, ts_code: str, start_date: date, end_date: date
+    ) -> List[dict]:
+        """获取指数每日估值指标（pro.index_dailybasic，按 ts_code + 日期区间）
+
+        Tushare ``index_dailybasic`` 接口返回指数的市值/股本/换手率/估值指标。
+        估值覆盖有限：仅宽基指数（沪深300/上证50/中证500/上证180/深证成指/创业板指等）
+        有数据，其余指数（如科创50 000688.SH）返回空列表，上层如实提示"暂无估值"。
+
+        Args:
+            ts_code: 指数代码（如 '000300.SH' 沪深300）
+            start_date: 开始日期（date 对象，内部转 YYYYMMDD）
+            end_date: 结束日期（date 对象，内部转 YYYYMMDD）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名。无估值的指数返回空列表 []。
+            (ts_code/trade_date/total_mv/float_mv/total_share/float_share/
+             free_share/turnover_rate/turnover_rate_f/pe/pe_ttm/pb)
+        """
+        import pandas as pd
+
+        if not ts_code:
+            raise ValueError("指数代码不能为空")
+        if start_date > end_date:
+            raise ValueError("开始日期不能晚于结束日期")
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取指数 {ts_code} 估值指标 "
+                f"({start_date} 至 {end_date})..."
+            )
+            return pro.index_dailybasic(
+                ts_code=ts_code,
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=end_date.strftime("%Y%m%d"),
+            )
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.info(
+                f"[Tushare] index_dailybasic 返回空（指数 {ts_code} 可能无估值数据）"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                record[col] = None if pd.isna(val) else val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条指数估值指标 "
+            f"(index_dailybasic, ts_code={ts_code})"
+        )
+        return records
+
+    def get_index_weight(
+        self, index_code: str, start_date: date, end_date: date
+    ) -> List[dict]:
+        """获取指数成分权重（pro.index_weight，按 index_code + 日期区间）
+
+        Tushare ``index_weight`` 接口返回指数成分股及其权重。注意接口参数名是
+        ``index_code``（不是 ts_code）。沪深300 实测返回约 300 条。
+
+        成分股权重通常在指数调整日（如半年报）刷新，其余交易日数据沿用最近一次调整。
+
+        Args:
+            index_code: 指数代码（如 '000300.SH' 沪深300），作为接口入参
+            start_date: 开始日期（date 对象，内部转 YYYYMMDD）
+            end_date: 结束日期（date 对象，内部转 YYYYMMDD）
+
+        Returns:
+            原始字典列表，保留 Tushare 键名
+            (index_code/con_code/trade_date/weight)
+        """
+        import pandas as pd
+
+        if not index_code:
+            raise ValueError("指数代码不能为空")
+        if start_date > end_date:
+            raise ValueError("开始日期不能晚于结束日期")
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取指数 {index_code} 成分权重 "
+                f"({start_date} 至 {end_date})..."
+            )
+            return pro.index_weight(
+                index_code=index_code,
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=end_date.strftime("%Y%m%d"),
+            )
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            logger.warning(
+                f"[Tushare] index_weight 返回空数据 (index_code={index_code})"
+            )
+            return []
+
+        records: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                record[col] = None if pd.isna(val) else val
+            records.append(record)
+
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条指数成分权重 "
+            f"(index_weight, index_code={index_code})"
+        )
+        return records
