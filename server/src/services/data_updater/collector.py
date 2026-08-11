@@ -91,6 +91,7 @@ class DataCollector:
             'calculations_performed': 0,
             'cache_cleared': 0,
             'etf_daily_updated': 0,
+            'index_daily_updated': 0,
             'errors': []
         }
 
@@ -136,6 +137,14 @@ class DataCollector:
                 # ETF 采集失败不影响主更新流程，仅记录
                 logger.error(f"[数据更新] ETF 当日采集失败: {e}")
                 results['errors'].append(f"etf_daily: {e}")
+
+            # 9. 关键指数当日行情/估值/权重采集（第 15 期）：调用 IndexDataInitService.sync_index_daily
+            try:
+                results['index_daily_updated'] = await self._update_index_daily()
+            except Exception as e:
+                # 指数采集失败不影响主更新流程，仅记录
+                logger.error(f"[数据更新] 指数当日采集失败: {e}")
+                results['errors'].append(f"index_daily: {e}")
 
             # 更新日志状态为完成
             log_entry.status = 'completed'
@@ -513,6 +522,42 @@ class DataCollector:
             f"处理 {processed}, 跳过 {skipped}"
         )
         return processed
+
+    async def _update_index_daily(self) -> int:
+        """关键指数当日行情/估值/权重采集（第 15 期，架构 §6.1 当日采集链路）。
+
+        复用 IndexDataInitService.sync_index_daily 的采集能力，collector 仅负责
+        编排与 session 注入（仿 _update_etf_daily 的 session 使用范式）。
+
+        Returns:
+            当日处理的指数日线记录条数（daily_records）
+        """
+        from src.services.data_init_index import IndexDataInitService
+        # 调用时从 db 模块取会话工厂，确保测试期 conftest 对
+        # ``db_module.AsyncSessionLocal`` 的替换能生效（与 get_session() 不同，
+        # 后者持有了模块加载时的 import 绑定，不会被运行时替换覆盖）。
+        from src.db import database as db_module
+
+        today = datetime.now(BJ_TZ).date()
+        trade_date = today.strftime("%Y%m%d")
+
+        logger.info(f"[数据更新] 开始采集指数当日行情 (trade_date={trade_date})")
+
+        async with db_module.AsyncSessionLocal() as session:
+            service = IndexDataInitService()
+            service.set_session(session)
+            try:
+                result = await service.sync_index_daily(trade_date)
+            except Exception as e:
+                logger.error(f"[数据更新] 指数当日采集失败: {e}")
+                raise
+
+        daily_records = result.get("daily_records", 0)
+        logger.info(
+            f"[数据更新] 指数当日采集完成 (trade_date={trade_date}): "
+            f"daily {daily_records}"
+        )
+        return daily_records
 
     async def _run_calculations(self) -> int:
         """执行强度计算"""

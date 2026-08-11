@@ -18,7 +18,8 @@
  * - 视图切换：etf-view-{ranking|trend}
  * - 日期选择器：etf-trade-date
  */
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { BarChart3Icon, LineChartIcon } from 'lucide-react'
 import {
   useEtfIndexRankings,
@@ -45,7 +46,10 @@ const RANKINGS_PAGE_SIZE = 20
 // 历史不足区间测试对象（mock 按 target_code 含 '__short__' 标记返回 3 天 < 所选 days）
 const SHORT_HISTORY_OPTION = { code: '__short__不足区间', name: '__short__不足区间' }
 
-export default function EtfMonitorPage() {
+function EtfMonitorPageInner() {
+  // ---- URL 参数（AC-05：从 index_code 自动展开指数详情）----
+  const searchParams = useSearchParams()
+
   // ---- 视图/排序/分页状态 ----
   const [currentView, setCurrentView] = useState<'ranking' | 'trend'>('ranking')
   // tradeDate 默认 ''（让 latestDate hook 取最新填入 input）
@@ -55,6 +59,15 @@ export default function EtfMonitorPage() {
   const [page, setPage] = useState(1)
   // 展开的指数 code（切排序/翻页时收起）
   const [expandedIndex, setExpandedIndex] = useState<string | null>(null)
+
+  // 首次渲染读取 index_code 参数，自动展开对应指数（AC-05 跳转落地）
+  useEffect(() => {
+    const indexCode = searchParams.get('index_code')
+    if (indexCode) {
+      setExpandedIndex(indexCode)
+      setCurrentView('ranking')
+    }
+  }, [searchParams])
 
   // ---- 趋势状态（视图切换后保留）----
   const [trendTarget, setTrendTarget] = useState<EtfTrendTarget | null>(null)
@@ -329,5 +342,23 @@ export default function EtfMonitorPage() {
 
       <Disclaimer showSeparator={true} />
     </div>
+  )
+}
+
+/**
+ * 默认导出：用 Suspense 包裹，因为 useSearchParams 在 Next.js 静态渲染时需要
+ * Suspense 边界（AC-05：从 index_code 自动展开，避免 build 警告）。
+ */
+export default function EtfMonitorPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">
+          加载中...
+        </div>
+      }
+    >
+      <EtfMonitorPageInner />
+    </Suspense>
   )
 }

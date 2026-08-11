@@ -617,6 +617,16 @@ export const adminApi = {
   // ETF 历史数据回填（第 14 期 plan-02，start_date/end_date 为 YYYY-MM-DD）
   initEtfHistory: (start_date: string, end_date: string) =>
     adminApiClient.post<{task_id: string}>('/admin/init/etf-history', { start_date, end_date }),
+  // 关键指数同步（第 15 期 plan-02）
+  // 指数基础信息同步（全量拉取 index_basic，预置 14 只关注指数）
+  initIndexBasic: () =>
+    adminApiClient.post<{task_id: string}>('/admin/init/index-basic'),
+  // 指数历史数据回填（start_date/end_date 为 YYYY-MM-DD）
+  initIndexHistory: (start_date: string, end_date: string) =>
+    adminApiClient.post<{task_id: string}>('/admin/init/index-history', { start_date, end_date }),
+  // 指数当日行情/估值/权重采集（无参数，复用 collector._update_index_daily）
+  initIndexDaily: () =>
+    adminApiClient.post<{task_id: string}>('/admin/init/index-daily'),
   // 涨停专题三表同步（起止都留空=最新交易日；都填=日期范围，YYYY-MM-DD）
   initLimit: (start_date?: string, end_date?: string) =>
     adminApiClient.post<{task_id: string}>(
@@ -718,6 +728,9 @@ export const tasksApi = {
     SYNC_ETF_DAILY: 'sync_etf_daily',
     BACKFILL_ETF_HISTORY: 'backfill_etf_history',
     SYNC_ETF_BASIC: 'sync_etf_basic',
+    SYNC_INDEX_BASIC: 'sync_index_basic',
+    BACKFILL_INDEX_HISTORY: 'backfill_index_history',
+    SYNC_INDEX_DAILY: 'sync_index_daily',
   } as const,
 
   // 任务状态定义
@@ -1373,6 +1386,14 @@ import type {
   LimitLatestDateData,
   LimitType,
 } from '@/types/limitTypes'
+import type {
+  IndexOverviewData,
+  IndexTrendData,
+  IndexValuationData,
+  IndexWeightData,
+  IndexWatchlistData,
+  IndexWatchlistUpdateData,
+} from '@/types/indexMonitorTypes'
 
 export type {
   EtfSortBy,
@@ -1483,5 +1504,73 @@ export const limitApi = {
     apiClient.get<{ success: boolean; data: LimitLatestDateData }>(
       '/limit/latest-date',
       {}
+    ),
+}
+
+// ===================== 关键指数监控（15 期 plan-03 查询 API / plan-04 前端客户端）=====================
+//
+// apiClient.baseURL 已含 /api/v1（见上方 API_BASE_WITH_PREFIX），
+// endpoint 不再带 /api/v1，避免双前缀（与 etfMonitorApi 一致）。
+//
+// 契约（plan-03 §3 / 架构 §7.2）：
+// - query 参数 snake_case：ts_codes / start_date / end_date / ts_code /
+//   index_code / top_n
+// - 响应外层 { success, data }，data 内字段经后端 _dict_to_camel 转 camelCase
+// - amount 后端已 ÷10000 转亿元输出（plan-03 Task 2），前端 helpers 不再除
+
+/**
+ * 关键指数监控查询 API（总览 / 走势 / 估值 / 权重 / 关注清单）。
+ * 类型定义见 types/indexMonitorTypes.ts（camelCase 业务对象）。
+ */
+export const indexMonitorApi = {
+  // 关注指数当日行情总览（AC-01）
+  getOverview: () =>
+    apiClient.get<{ success: boolean; data: IndexOverviewData }>(
+      '/index-monitor/overview'
+    ),
+
+  // 多指数收盘价走势（最多 6 只，AC-02）
+  getTrend: (tsCodes: string[], startDate?: string, endDate?: string) =>
+    apiClient.get<{ success: boolean; data: IndexTrendData }>(
+      '/index-monitor/trend',
+      {
+        ts_codes: tsCodes.join(','),
+        start_date: startDate,
+        end_date: endDate,
+      }
+    ),
+
+  // 单指数估值序列 PE/PB/换手率（AC-03）
+  getValuation: (tsCode: string, startDate?: string, endDate?: string) =>
+    apiClient.get<{ success: boolean; data: IndexValuationData }>(
+      '/index-monitor/valuation',
+      {
+        ts_code: tsCode,
+        start_date: startDate,
+        end_date: endDate,
+      }
+    ),
+
+  // 成分股权重 + 集中度（AC-04）
+  getWeights: (indexCode: string, topN: number = 20) =>
+    apiClient.get<{ success: boolean; data: IndexWeightData }>(
+      '/index-monitor/weights',
+      {
+        index_code: indexCode,
+        top_n: topN,
+      }
+    ),
+
+  // 关注清单查询（AC-07）
+  getWatchlist: () =>
+    apiClient.get<{ success: boolean; data: IndexWatchlistData }>(
+      '/index-monitor/watchlist'
+    ),
+
+  // 关注清单全量更新（AC-07）
+  updateWatchlist: (tsCodes: string[]) =>
+    apiClient.put<{ success: boolean; data: IndexWatchlistUpdateData }>(
+      '/index-monitor/watchlist',
+      { ts_codes: tsCodes }
     ),
 }

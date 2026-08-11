@@ -200,6 +200,9 @@ function TaskRow({ task, onCancel, onViewLogs }: TaskRowProps) {
             {task.taskType === 'init_sector_stocks' && '初始化板块成分股'}
             {task.taskType === 'backfill_by_date' && '按日期补齐数据'}
             {task.taskType === 'backfill_by_range' && '按时间段补齐数据'}
+            {task.taskType === 'sync_index_basic' && '同步指数清单'}
+            {task.taskType === 'backfill_index_history' && '回填指数历史'}
+            {task.taskType === 'sync_index_daily' && '采集指数当日'}
           </p>
         </div>
 

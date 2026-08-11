@@ -95,6 +95,23 @@ class JobManager:
         #     max_instances=1,
         # )
 
+        # 关键指数当日行情/估值/权重采集（第 15 期）：按惯例注释注册——与除板块
+        # 资金流外的所有 job 保持一致的停用状态（开发期间避免后台任务自动执行）。
+        # 需要恢复时取消下方注释即可。采集频率日级，复用 Tushare 0.3s 限流避免风控。
+        # 由 SYNC_INDEX_DAILY task handler 手动触发（架构 §6.1 / AC-10）。
+        # self.scheduler.add_job(
+        #     self._index_daily_update,
+        #     trigger=CronTrigger(
+        #         day_of_week='mon-fri',
+        #         hour=15,
+        #         minute=30,
+        #     ),
+        #     id='index_daily_update',
+        #     name='关键指数当日采集（每个交易日 15:30）',
+        #     replace_existing=True,
+        #     max_instances=1,
+        # )
+
     async def _daily_data_update(self):
         """每日数据更新任务"""
         from src.services.data_updater.collector import DataCollector
@@ -142,6 +159,24 @@ class JobManager:
             logger.info(f"[定时任务] ETF 当日份额采集完成: {count} 条记录")
         except Exception as e:
             logger.error(f"[定时任务] ETF 当日份额采集失败: {e}")
+            # 不 raise：采集失败不影响下一次调度
+
+    async def _index_daily_update(self):
+        """关键指数当日行情/估值/权重采集任务（第 15 期）
+
+        每个交易日 15:30 触发，调用 collector._update_index_daily 采集当日关键指数
+        日线行情 / 估值 / 权重数据落库。
+        当前按项目惯例注释停用（见 _register_jobs），由 SYNC_INDEX_DAILY task handler
+        手动触发（架构 §6.1 / AC-10）。
+        """
+        try:
+            from src.services.data_updater.collector import DataCollector
+
+            collector = DataCollector()
+            count = await collector._update_index_daily()
+            logger.info(f"[定时任务] 指数当日采集完成: {count} 条记录")
+        except Exception as e:
+            logger.error(f"[定时任务] 指数当日采集失败: {e}")
             # 不 raise：采集失败不影响下一次调度
 
 

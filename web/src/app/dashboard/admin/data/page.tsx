@@ -9,13 +9,15 @@ import SectorMACalculationPanel from '@/components/admin/SectorMACalculationPane
 import SectorStrengthCalculationPanel from '@/components/admin/SectorStrengthCalculationPanel';
 import DataStatusPanel from '@/components/admin/DataStatusPanel';
 import BrokerRecommendSyncPanel from '@/components/admin/BrokerRecommendSyncPanel';
+import IndexSyncPanel from '@/components/index-monitor/IndexSyncPanel';
 
 type DataTab =
   | 'data-status'
   | 'init'
   | 'ma-calc'
   | 'strength-calc'
-  | 'broker-recommend';
+  | 'broker-recommend'
+  | 'index-data';
 
 /**
  * 数据管理页面
@@ -88,6 +90,17 @@ export default function DataManagementPage() {
           >
             券商金股同步
           </button>
+          <button
+            data-testid="tab-index-data"
+            onClick={() => setActiveTab('index-data')}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'index-data'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            指数数据
+          </button>
         </nav>
       </div>
 
@@ -97,6 +110,7 @@ export default function DataManagementPage() {
       {activeTab === 'ma-calc' && <SectorMACalculationPanel />}
       {activeTab === 'strength-calc' && <SectorStrengthCalculationPanel />}
       {activeTab === 'broker-recommend' && <BrokerRecommendSyncPanel />}
+      {activeTab === 'index-data' && <IndexSyncPanel />}
     </AdminLayoutWithSidebar>
   );
 }
