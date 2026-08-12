@@ -31,7 +31,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic.alias_generators import to_camel
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_user, get_session
@@ -543,19 +543,49 @@ async def update_watchlist(
     body: { "ts_codes": ["000300.SH", ...] } — 全量列表。
 
     逻辑：
-    1. UPDATE index_basic SET is_watched=false（清空）；
-    2. UPDATE index_basic SET is_watched=true WHERE ts_code IN(...)（设置新列表）。
+    1. 校验所有 ts_code 是否存在于 index_basic；不存在的拒绝并返回清单，
+       避免静默 UPDATE 不命中导致"保存成功但未生效"的假成功。
+    2. UPDATE index_basic SET is_watched=false（清空）；
+    3. UPDATE index_basic SET is_watched=true WHERE ts_code IN(...)（设置新列表）。
 
-    返回 { success, data: { updated: N } }（N = 实际命中的行数）。
+    返回 { success, data: { updated: N, not_found: [...] } }。
+    success=False 时 data.updated=0 且 not_found 列出未识别的 ts_code，前端据此提示。
     """
     try:
         ts_codes_raw = body.get("ts_codes", []) if isinstance(body, dict) else []
-        ts_codes = [str(c).strip() for c in ts_codes_raw if str(c).strip()]
+        # 去重保序，避免重复 ts_code 干扰 not_found 对比
+        seen: set[str] = set()
+        ts_codes: list[str] = []
+        for c in ts_codes_raw:
+            code = str(c).strip()
+            if code and code not in seen:
+                seen.add(code)
+                ts_codes.append(code)
 
-        # 1. 清空关注标记
+        # 1. 存在性校验：找出 index_basic 中不存在的 ts_code
+        not_found: list[str] = []
+        if ts_codes:
+            res = await session.execute(
+                select(IndexBasic.ts_code).where(IndexBasic.ts_code.in_(ts_codes))
+            )
+            existing = {row[0] for row in res.all()}
+            not_found = [c for c in ts_codes if c not in existing]
+
+        if not_found:
+            logger.warning(
+                "update_watchlist rejected: not_found=%s", not_found
+            )
+            return {
+                "success": False,
+                "data": _dict_to_camel(
+                    {"updated": 0, "not_found": not_found}
+                ),
+            }
+
+        # 2. 清空关注标记
         await session.execute(update(IndexBasic).values(is_watched=False))
 
-        # 2. 设置新列表
+        # 3. 设置新列表
         updated = 0
         if ts_codes:
             res = await session.execute(
@@ -567,8 +597,74 @@ async def update_watchlist(
 
         await session.commit()
         logger.debug("update_watchlist: requested=%d, updated=%d", len(ts_codes), updated)
-        return {"success": True, "data": _dict_to_camel({"updated": updated})}
+        return {"success": True, "data": _dict_to_camel({"updated": updated, "not_found": []})}
     except Exception:
         await session.rollback()
         logger.exception("update_watchlist error, body=%s", body)
+        raise
+
+
+@router.get("/search")
+async def search_indexes(
+    keyword: str = Query(..., min_length=1, description="按 ts_code 前缀或 name 包含模糊匹配"),
+    page: int = Query(1, ge=1, description="页码，从 1 开始"),
+    page_size: int = Query(15, ge=1, le=100, description="每页条数，默认 15"),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    指数模糊搜索（关注管理输入框用）。
+
+    匹配规则（与 stocks/funds 范式一致）：
+    - ts_code 前缀匹配：ilike(f"{keyword}%")
+    - name 包含匹配：ilike(f"%{keyword}%")
+    二者 OR。按 ts_code 升序，分页返回。
+
+    返回 { success, data: { items, total, page, page_size } }，
+    items = [{ ts_code, name, market, publisher, category }]（camelCase）。
+    """
+    try:
+        kw = keyword.strip()
+        if not kw:
+            return {"success": True, "data": _dict_to_camel({"items": [], "total": 0, "page": page, "page_size": page_size})}
+
+        cond = or_(
+            IndexBasic.ts_code.ilike(f"{kw}%"),
+            IndexBasic.name.ilike(f"%{kw}%"),
+        )
+
+        # 总数
+        total = (
+            await session.execute(
+                select(func.count()).select_from(
+                    select(IndexBasic.id).where(cond).subquery()
+                )
+            )
+        ).scalar() or 0
+
+        # 分页查询
+        offset = (page - 1) * page_size
+        res = await session.execute(
+            select(IndexBasic)
+            .where(cond)
+            .order_by(IndexBasic.ts_code.asc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        rows = res.scalars().all()
+
+        items = [
+            {
+                "ts_code": r.ts_code,
+                "name": r.name,
+                "market": r.market,
+                "publisher": r.publisher,
+                "category": r.category,
+            }
+            for r in rows
+        ]
+        logger.debug("search_indexes: keyword=%s, page=%d, total=%d, returned=%d", kw, page, total, len(items))
+        return {"success": True, "data": _dict_to_camel({"items": items, "total": total, "page": page, "page_size": page_size})}
+    except Exception:
+        logger.exception("search_indexes error, keyword=%s", keyword)
         raise

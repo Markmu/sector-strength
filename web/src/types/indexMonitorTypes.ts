@@ -141,4 +141,23 @@ export interface IndexWatchlistData {
 export interface IndexWatchlistUpdateData {
   /** 更新的指数条数 */
   updated: number
+  /** 未识别的 ts_code（success=false 时填写，前端据此提示用户） */
+  notFound?: string[]
+}
+
+/** /search 返回的单条指数 */
+export interface IndexSearchItem {
+  tsCode: string
+  name: string
+  market: string | null
+  publisher: string | null
+  category: string | null
+}
+
+/** /search 响应 data */
+export interface IndexSearchData {
+  items: IndexSearchItem[]
+  total: number
+  page: number
+  pageSize: number
 }

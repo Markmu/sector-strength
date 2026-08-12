@@ -7,9 +7,9 @@
  * - 三同步卡片（清单/历史/当日）+ isAnySyncRunning 互斥锁（AC-08c）
  * - useTaskStatus 轮询进度（AC-08c）
  * - 失败时显示错误 + 重试（AC-08d）
- * - 关注管理区：当前关注清单 + ts_code 输入增删 + 保存（AC-07）
- *   注意：plan-03 /watchlist GET 只返回当前关注列表（非全量 index_basic），
- *   故管理区采用"输入 ts_code 增删 + 保存"模式，而非 checkbox 全量列表。
+ * - 关注管理区：当前关注清单 + 名称/代码模糊搜索添加 + 保存（AC-07）
+ *   搜索走 /index-monitor/search（查 index_basic 全表），默认展示 15 条；
+ *   选中即加入 pending，点保存全量提交。
  * - 同步记录表（SWR 拉 task_types=sync_index_basic,backfill_index_history,sync_index_daily）
  */
 import React, { useState, useCallback } from 'react';
@@ -25,7 +25,7 @@ import {
   RefreshCw,
   Calendar,
   Star,
-  Plus,
+  Search,
   X,
 } from 'lucide-react';
 import { adminApi, indexMonitorApi } from '@/lib/api';
@@ -33,6 +33,8 @@ import { useTaskStatus, type TaskData } from '@/hooks/useTaskStatus';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { fetcher } from '@/lib/fetcher';
+import SearchDropdownInput from '@/components/ui/SearchDropdownInput';
+import type { SearchDropdownOption } from '@/components/ui/SearchDropdownInput';
 
 /** 同步记录行（与后端 AsyncTask.to_dict camelCase 契约一致） */
 interface SyncRecord {
@@ -89,7 +91,6 @@ export default function IndexSyncPanel() {
   const [endDate, setEndDate] = useState('');
 
   // ---- 关注管理状态 ----
-  const [newCode, setNewCode] = useState('');
   const [pendingCodes, setPendingCodes] = useState<string[] | null>(null);
   const [savingWatchlist, setSavingWatchlist] = useState(false);
   const [watchlistError, setWatchlistError] = useState<string | null>(null);
@@ -327,16 +328,32 @@ export default function IndexSyncPanel() {
   };
 
   // ---- 关注管理 ----
-  const addCode = () => {
-    const code = newCode.trim().toUpperCase();
-    if (!code) return;
-    if (currentCodes.includes(code)) {
-      showToast('error', `${code} 已在关注列表`);
-      return;
-    }
-    setPendingCodes([...currentCodes, code]);
-    setNewCode('');
-  };
+  // 模糊搜索指数（按 ts_code 前缀 / name 包含），供 SearchDropdownInput 使用。
+  // 组件自带防抖与无限滚动，这里只负责把后端结果映射成 {value,label}。
+  const searchIndexes = useCallback(async (keyword: string, page: number) => {
+    const res = await indexMonitorApi.search(keyword, { page, pageSize: 15 });
+    const payload = res.data;
+    const items = payload?.data?.items ?? [];
+    return {
+      options: items.map((it) => ({ value: it.tsCode, label: it.name || it.tsCode })),
+      total: payload?.data?.total ?? 0,
+    };
+  }, []);
+
+  // 选中下拉项即加入 pending 关注列表（ts_code 来自 DB，天然合法，无需格式校验）。
+  // 选中后清除输入由 SearchDropdownInput 内部完成。
+  const handleSelectIndex = useCallback(
+    (option: SearchDropdownOption) => {
+      const code = option.value;
+      if (currentCodes.includes(code)) {
+        showToast('error', `${option.label}（${code}）已在关注列表`);
+        return;
+      }
+      setPendingCodes([...currentCodes, code]);
+      showToast('success', `已添加 ${option.label}（${code}），记得保存`);
+    },
+    [currentCodes, showToast]
+  );
 
   const removeCode = (code: string) => {
     setPendingCodes(currentCodes.filter((c) => c !== code));
@@ -347,7 +364,19 @@ export default function IndexSyncPanel() {
     try {
       setSavingWatchlist(true);
       setWatchlistError(null);
-      await indexMonitorApi.updateWatchlist(codesToSave);
+      const { data } = await indexMonitorApi.updateWatchlist(codesToSave);
+      if (!data) {
+        throw new Error('保存关注清单失败：服务端未返回数据');
+      }
+      // 后端 success=false 表示有 ts_code 在 index_basic 中不存在（静默不命中）
+      if (!data.success) {
+        const notFound = data.data.notFound ?? [];
+        const msg = `以下指数代码未识别，请先同步指数基础信息或核对代码：${notFound.join('、')}`;
+        setWatchlistError(msg);
+        showToast('error', msg);
+        // 不清 pendingCodes，保留让用户修正
+        return;
+      }
       setPendingCodes(null);
       await refreshWatchlist();
       showToast('success', `关注清单已更新（${codesToSave.length} 只）`);
@@ -605,36 +634,21 @@ export default function IndexSyncPanel() {
           <h3 className="text-lg font-semibold text-foreground">关注指数管理</h3>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          管理主页监控面板的关注指数列表。输入指数 ts_code（如 000300.SH）后点击添加，修改完成点击保存即全量更新。
+          管理主页监控面板的关注指数列表。在搜索框输入指数代码或名称，从下拉结果中选中添加，修改完成点击保存即全量更新。
         </p>
 
-        {!basicSynced && currentCodes.length === 0 ? (
-          <div className="text-sm text-muted-foreground bg-secondary/50 border border-border rounded-lg p-4">
-            请先同步指数清单后再管理关注列表。
-          </div>
-        ) : (
-          <>
-            {/* 添加输入 */}
-            <div className="flex items-center gap-2 mb-4">
-              <input
-                type="text"
-                value={newCode}
-                onChange={(e) => setNewCode(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addCode();
-                }}
-                placeholder="输入指数代码，如 000300.SH"
-                aria-label="指数代码"
-                className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+        {/* 添加输入区常驻：是否已同步指数基础信息不再用前端会话状态判断，
+            由后端 PUT /watchlist 校验 ts_code 是否存在并返回 notFound，避免"假成功"。 */}
+        <>
+            {/* 添加输入：按名称/代码模糊搜索，默认展示 15 条 */}
+            <div className="mb-4 max-w-md">
+              <SearchDropdownInput
+                placeholder="输入指数代码或名称搜索，如 000300 或 沪深300"
+                icon={<Search className="w-4 h-4" />}
+                onSearch={searchIndexes}
+                onSelect={handleSelectIndex}
+                pageSize={15}
               />
-              <button
-                onClick={addCode}
-                disabled={!newCode.trim()}
-                className="inline-flex items-center gap-1 px-3 py-2 text-sm border border-border rounded-lg text-foreground hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-4 h-4" />
-                添加
-              </button>
             </div>
 
             {/* 当前关注清单（tag 列表） */}
@@ -714,8 +728,7 @@ export default function IndexSyncPanel() {
                 {watchlistError}
               </div>
             )}
-          </>
-        )}
+        </>
       </div>
 
       {/* 同步记录表格 */}

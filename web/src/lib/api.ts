@@ -1393,6 +1393,7 @@ import type {
   IndexWeightData,
   IndexWatchlistData,
   IndexWatchlistUpdateData,
+  IndexSearchData,
 } from '@/types/indexMonitorTypes'
 
 export type {
@@ -1572,5 +1573,16 @@ export const indexMonitorApi = {
     apiClient.put<{ success: boolean; data: IndexWatchlistUpdateData }>(
       '/index-monitor/watchlist',
       { ts_codes: tsCodes }
+    ),
+
+  // 指数模糊搜索（关注管理输入框用，按 ts_code 前缀 / name 包含）
+  search: (keyword: string, params?: { page?: number; pageSize?: number }) =>
+    apiClient.get<{ success: boolean; data: IndexSearchData }>(
+      '/index-monitor/search',
+      {
+        keyword,
+        page: params?.page ?? 1,
+        page_size: params?.pageSize ?? 15,
+      }
     ),
 }
