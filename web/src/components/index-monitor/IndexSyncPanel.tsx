@@ -62,6 +62,29 @@ const INDEX_TASK_TYPES = 'sync_index_basic,sync_index_daily,backfill_index_histo
 /** SWR key：fetcher 拼 NEXT_PUBLIC_API_URL 前缀，包含 /api/v1 */
 const RECORDS_SWR_KEY = `/api/v1/admin/tasks?task_types=${INDEX_TASK_TYPES}&page=1&page_size=20`;
 
+/** 按本地时区格式化日期，避免 toISOString() 在 UTC 转换后产生日期偏移。 */
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** 回退日历月并将月末日期夹到目标月最后一天，如 3 月 31 日 → 2 月 28/29 日。 */
+function subtractCalendarMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  const originalDay = result.getDate();
+  result.setDate(1);
+  result.setMonth(result.getMonth() - months);
+  const lastDayOfTargetMonth = new Date(
+    result.getFullYear(),
+    result.getMonth() + 1,
+    0
+  ).getDate();
+  result.setDate(Math.min(originalDay, lastDayOfTargetMonth));
+  return result;
+}
+
 export default function IndexSyncPanel() {
   useRequireAdmin();
   const { isAdmin } = useAuth();
@@ -347,6 +370,13 @@ export default function IndexSyncPanel() {
     }
   };
 
+  const applyHistoryDateRange = (months: number) => {
+    const end = new Date();
+    const start = subtractCalendarMonths(end, months);
+    setStartDate(formatLocalDate(start));
+    setEndDate(formatLocalDate(end));
+  };
+
   // ---- 关注管理 ----
   // 模糊搜索指数（按 ts_code 前缀 / name 包含），供 SearchDropdownInput 使用。
   // 组件自带防抖与无限滚动，这里只负责把后端结果映射成 {value,label}。
@@ -569,6 +599,26 @@ export default function IndexSyncPanel() {
               aria-label="结束日期"
               className="px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
             />
+          </div>
+
+          <div className="flex items-center gap-2" aria-label="历史回填快捷日期范围">
+            <span className="text-xs text-muted-foreground">快捷选择</span>
+            <button
+              type="button"
+              onClick={() => applyHistoryDateRange(1)}
+              disabled={isAnySyncRunning}
+              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              近1个月
+            </button>
+            <button
+              type="button"
+              onClick={() => applyHistoryDateRange(12)}
+              disabled={isAnySyncRunning}
+              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              近1年
+            </button>
           </div>
 
           <button
