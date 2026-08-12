@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { Activity, ChevronLeft, LogOut } from 'lucide-react'
 
 export interface SidebarItem {
@@ -148,6 +149,14 @@ const Sidebar = ({ items, className, collapsed = false, onCollapse }: SidebarPro
       <nav className="custom-scrollbar flex-1 space-y-1 overflow-y-auto px-2 py-3 min-h-0" aria-label="主导航">
         {items.map(item => renderMenuItem(item))}
       </nav>
+
+      {/* Theme Section */}
+      <div className="flex flex-shrink-0 border-t border-border p-3">
+        <ThemeToggle
+          compact={collapsed}
+          className={collapsed ? 'mx-auto' : 'w-full justify-start'}
+        />
+      </div>
 
       {/* User Section */}
       {isAuthenticated && (

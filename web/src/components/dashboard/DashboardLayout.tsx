@@ -2,11 +2,10 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Settings, ScatterChart, LineChart, LandmarkIcon, Users, UsersRound, Star, ArrowDownUp, TrendingUp, Flame, Home, Menu, Activity } from 'lucide-react';
+import { Settings, ScatterChart, LineChart, LandmarkIcon, Users, UsersRound, Star, ArrowDownUp, TrendingUp, Flame, Home, Menu } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import Sidebar, { SidebarItem } from '@/components/layout/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 export interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -108,32 +107,23 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
   return (
     <Layout
-      header={
-        <div className="flex h-14 items-center justify-between gap-3 px-3 sm:px-4 md:px-5">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:hidden"
-              aria-label="打开导航"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground md:hidden">
-              <Activity className="h-4 w-4" />
-            </div>
-            <span className="truncate text-sm font-semibold tracking-tight text-foreground md:hidden">板块强度</span>
-            <span className="hidden text-xs font-medium text-muted-foreground md:inline">盘后复盘工作台</span>
-          </div>
-          <ThemeToggle compact />
-        </div>
-      }
       sidebar={sidebar}
       sidebarCollapsed={sidebarCollapsed}
       sidebarOpen={sidebarOpen}
       onSidebarClose={() => setSidebarOpen(false)}
       className={cn('animate-fade-in', className)}
     >
+      <button
+        type="button"
+        onClick={() => setSidebarOpen(true)}
+        className={cn(
+          'fixed left-3 top-3 z-30 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-subtle transition-colors hover:bg-secondary hover:text-foreground md:hidden',
+          sidebarOpen && 'hidden'
+        )}
+        aria-label="打开导航"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
       {children}
     </Layout>
   );

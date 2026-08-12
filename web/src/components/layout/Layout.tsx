@@ -23,7 +23,7 @@ const Layout = ({
   onSidebarClose
 }: LayoutProps) => {
   return (
-    <div className={cn('min-h-[100dvh] bg-background flex flex-col overflow-hidden', className)}>
+    <div className={cn('h-[100dvh] bg-background flex flex-col overflow-hidden', className)}>
       {header && (
         <header className="bg-card border-b border-border sticky top-0 z-30 flex-shrink-0">
           {header}
@@ -42,7 +42,7 @@ const Layout = ({
 
         {sidebar && (
           <aside className={cn(
-            'fixed inset-y-0 left-0 z-40 h-[100dvh] bg-card border-r border-border flex flex-col transition-transform duration-200 flex-shrink-0 md:static md:z-auto md:h-full md:translate-x-0 md:transition-[width]',
+            'fixed inset-y-0 left-0 z-40 h-[100dvh] bg-card border-r border-border flex flex-col transition-transform duration-200 flex-shrink-0 md:sticky md:top-0 md:z-auto md:translate-x-0 md:transition-[width]',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full',
             sidebarCollapsed ? 'w-16' : 'w-64'
           )}>
