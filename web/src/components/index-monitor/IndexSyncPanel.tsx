@@ -601,26 +601,6 @@ export default function IndexSyncPanel() {
             />
           </div>
 
-          <div className="flex items-center gap-2" aria-label="历史回填快捷日期范围">
-            <span className="text-xs text-muted-foreground">快捷选择</span>
-            <button
-              type="button"
-              onClick={() => applyHistoryDateRange(1)}
-              disabled={isAnySyncRunning}
-              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              近1个月
-            </button>
-            <button
-              type="button"
-              onClick={() => applyHistoryDateRange(12)}
-              disabled={isAnySyncRunning}
-              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              近1年
-            </button>
-          </div>
-
           <button
             onClick={startHistorySync}
             disabled={isAnySyncRunning || !startDate || !endDate}
@@ -637,6 +617,29 @@ export default function IndexSyncPanel() {
                 <span>开始回填</span>
               </>
             )}
+          </button>
+        </div>
+
+        <div
+          className="mt-3 flex flex-wrap items-center gap-2"
+          aria-label="历史回填快捷日期范围"
+        >
+          <span className="text-xs text-muted-foreground">快捷选择</span>
+          <button
+            type="button"
+            onClick={() => applyHistoryDateRange(1)}
+            disabled={isAnySyncRunning}
+            className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            近1个月
+          </button>
+          <button
+            type="button"
+            onClick={() => applyHistoryDateRange(12)}
+            disabled={isAnySyncRunning}
+            className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            近1年
           </button>
         </div>
 
