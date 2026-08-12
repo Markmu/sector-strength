@@ -5,7 +5,7 @@
  * - SWR 数组 key + fetcher 调 etfMonitorApi（经 apiClient，baseURL 已含 /api/v1）
  * - 不直接用 lib/fetcher.ts（其 API_BASE 不含 /api/v1，与 apiClient 是两套 baseURL 体系）
  *
- * 解包层级：fetcher 的 `.then(res => res.data)` 解一层 —— res 是 ApiResponse<T>
+ * 解包层级：fetcher 的 `.then(res => res.data)` 解一层 -- res 是 ApiResponse<T>
  * （{ data?: T }），.data 取其 body { success, data }。故 hook 返回的 data 是
  * 该 body，组件再读 data.data 取业务对象（camelCase）。
  *

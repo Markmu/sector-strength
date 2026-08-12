@@ -23,7 +23,7 @@ function TaskStatusBadge({ status }: { status: TaskStatus }) {
   const config = {
     pending: { color: 'bg-secondary text-foreground', label: '等待中', icon: Clock },
     running: { color: 'bg-primary-light text-primary', label: '运行中', icon: RefreshCw },
-    completed: { color: 'bg-green-100 text-green-700', label: '已完成', icon: CheckCircle2 },
+    completed: { color: 'bg-fall/10 text-fall', label: '已完成', icon: CheckCircle2 },
     failed: { color: 'bg-destructive/10 text-destructive', label: '失败', icon: XCircle },
     cancelled: { color: 'bg-secondary text-muted-foreground', label: '已取消', icon: XCircleIcon },
   };
@@ -53,7 +53,7 @@ function TaskProgressBar({ progress, total }: { progress: number; total: number 
       <div className="w-full bg-border rounded-full h-2 overflow-hidden">
         <div
           className={`h-2 rounded-full transition-all duration-500 ${
-            percent === 100 ? 'bg-green-600' : percent >= 50 ? 'bg-primary' : 'bg-primary'
+            percent === 100 ? 'bg-fall' : 'bg-primary'
           }`}
           style={{ width: `${percent}%` }}
         />
@@ -101,7 +101,7 @@ function TaskLogs({ taskId, onClose }: TaskLogsProps) {
   const getLevelColor = (level: string) => {
     switch (level) {
       case 'ERROR': return 'text-destructive bg-destructive/10';
-      case 'WARNING': return 'text-yellow-600 bg-yellow-50';
+      case 'WARNING': return 'text-warning bg-warning/10';
       default: return 'text-muted-foreground bg-secondary';
     }
   };
@@ -115,7 +115,7 @@ function TaskLogs({ taskId, onClose }: TaskLogsProps) {
         <div className="flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-muted-foreground" />
           <span className="font-medium text-sm">任务日志</span>
-          <span className="text-xs text-gray-500">({logs.length} 条)</span>
+          <span className="text-xs text-muted-foreground">({logs.length} 条)</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -327,7 +327,7 @@ function TaskStats({ stats }: TaskStatsProps) {
   const cards = [
     { label: '全部', value: stats.total, color: 'bg-secondary text-foreground' },
     { label: '运行中', value: stats.running, color: 'bg-primary-light text-primary' },
-    { label: '已完成', value: stats.completed, color: 'bg-green-100 text-green-700' },
+    { label: '已完成', value: stats.completed, color: 'bg-fall/10 text-fall' },
     { label: '失败', value: stats.failed, color: 'bg-destructive/10 text-destructive' },
   ];
 

@@ -100,7 +100,7 @@ function SectorScatterPlotComponent({
         emphasis: {
           itemStyle: {
             opacity: 1,
-            borderColor: '#fff',
+            borderColor: '#f7f9fa',
             borderWidth: 2,
             shadowBlur: 10,
             shadowColor: 'rgba(0, 0, 0, 0.3)',

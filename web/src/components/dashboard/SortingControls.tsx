@@ -57,7 +57,7 @@ export const SortingControls: React.FC<SortingControlsProps> = React.memo(({
           onClick={() => handleSortByChange('strength')}
           className={`px-3 py-1.5 text-sm rounded-lg ${
             sortBy === 'strength'
-              ? 'bg-cyan-500 text-white shadow-sm'
+              ? 'bg-primary text-on-signal shadow-sm'
               : 'bg-secondary text-foreground hover:bg-border'
           }`}
         >
@@ -67,7 +67,7 @@ export const SortingControls: React.FC<SortingControlsProps> = React.memo(({
           onClick={() => handleSortByChange('trend')}
           className={`px-3 py-1.5 text-sm rounded-lg ${
             sortBy === 'trend'
-              ? 'bg-cyan-500 text-white shadow-sm'
+              ? 'bg-primary text-on-signal shadow-sm'
               : 'bg-secondary text-foreground hover:bg-border'
           }`}
         >

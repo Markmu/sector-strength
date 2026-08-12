@@ -53,7 +53,7 @@ const typeConfig = {
   default: { icon: null, bgColor: 'bg-secondary', iconColor: 'text-muted-foreground' },
   info: { icon: Info, bgColor: 'bg-primary-light', iconColor: 'text-primary' },
   success: { icon: CheckCircle, bgColor: 'bg-rise/10', iconColor: 'text-rise' },
-  warning: { icon: AlertTriangle, bgColor: 'bg-amber-50', iconColor: 'text-amber-600' },
+  warning: { icon: AlertTriangle, bgColor: 'bg-warning/10', iconColor: 'text-warning' },
   danger: { icon: AlertCircle, bgColor: 'bg-destructive/10', iconColor: 'text-destructive' },
 };
 
@@ -104,7 +104,7 @@ export default function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/35 p-4"
       onClick={handleBackdropClick}
     >
       <div

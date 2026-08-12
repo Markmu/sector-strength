@@ -13,14 +13,14 @@ export interface FundInfoCardProps {
  * 基金基本信息卡片组件
  *
  * 展示：代码、名称、类型/投资风格、管理人、成立日期、跟踪标的
- * 跟踪标的：被动指数型展示指数名，无则显示"—"
+ * 跟踪标的：被动指数型展示指数名，无则显示"-"
  */
 export default function FundInfoCard({ fund, className }: FundInfoCardProps) {
   // 构建类型展示文本
-  const typeDisplay = [fund.fundType, fund.investType].filter(Boolean).join(' / ') || '—'
+  const typeDisplay = [fund.fundType, fund.investType].filter(Boolean).join(' / ') || '-'
 
-  // 跟踪标的展示：被动指数型展示指数名，无则显示"—"
-  const benchmarkDisplay = fund.benchmark || '—'
+  // 跟踪标的展示：被动指数型展示指数名，无则显示"-"
+  const benchmarkDisplay = fund.benchmark || '-'
 
   return (
     <div
@@ -60,7 +60,7 @@ export default function FundInfoCard({ fund, className }: FundInfoCardProps) {
           <div>
             <p className="text-xs text-muted-foreground">管理人</p>
             <p className="text-sm font-medium text-foreground">
-              {fund.management || '—'}
+              {fund.management || '-'}
             </p>
           </div>
         </div>
@@ -71,7 +71,7 @@ export default function FundInfoCard({ fund, className }: FundInfoCardProps) {
           <div>
             <p className="text-xs text-muted-foreground">成立日期</p>
             <p className="text-sm font-medium text-foreground">
-              {fund.foundDate || '—'}
+              {fund.foundDate || '-'}
             </p>
           </div>
         </div>

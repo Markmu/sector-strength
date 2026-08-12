@@ -11,6 +11,11 @@ jest.mock('echarts-for-react', () => ({
   default: () => null, // 返回 null 跳过渲染
 }))
 
+jest.mock('next/dynamic', () => () => {
+  const ECharts = require('echarts-for-react').default
+  return ECharts
+})
+
 // Mock SWR hook
 jest.mock('@/hooks/useMarketIndex', () => ({
   useMarketIndex: jest.fn(),
@@ -140,12 +145,10 @@ describe('MarketIndexDisplay', () => {
       fireEvent.click(detailButton)
 
       await waitFor(() => {
-        const modal = screen.getByText(/市场强度指数计算方法/i).closest('.bg-black\\/50')
-        expect(modal).toBeInTheDocument()
+        expect(screen.getByRole('dialog', { name: /市场强度指数计算方法/i })).toBeInTheDocument()
       })
 
-      const modal = screen.getByText(/市场强度指数计算方法/i).closest('.bg-black\\/50')
-      fireEvent.click(modal!)
+      fireEvent.click(screen.getByTestId('market-index-detail-backdrop'))
 
       await waitFor(() => {
         expect(screen.queryByText(/市场强度指数计算方法/i)).not.toBeInTheDocument()

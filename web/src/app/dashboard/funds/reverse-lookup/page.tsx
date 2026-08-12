@@ -311,7 +311,7 @@ function ReverseLookupContent() {
           {/* plan-03 / AC-05 双轨下钻口径差异提示：仅 from=fund-crowd 时渲染（ADR-4 + 架构 §7.6 + PRD §3.3） */}
           {fromFundCrowd && (
             <div
-              className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800"
+              className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning"
               data-testid="fund-crowd-drilldown-hint"
               role="note"
             >

@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { Home, RefreshCw, ChevronRight, Activity } from 'lucide-react';
+import { RefreshCw, ChevronRight } from 'lucide-react';
 
 export interface DashboardHeaderProps {
   title?: string;
@@ -35,17 +35,17 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   return (
     <header
       className={cn(
-        'w-full bg-card border-b border-border mb-6',
+        'w-full border-b border-border bg-card',
         className
       )}
     >
-      <div className="px-4 py-4 md:px-6 md:py-5">
-        <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-[1600px] px-4 py-4 md:px-6">
+        <div className="flex items-start justify-between gap-4">
           {/* Left Section - Navigation & Title */}
-          <div className="flex items-center gap-4 flex-1">
+          <div className="min-w-0 flex-1">
             {/* Breadcrumb Navigation */}
             {breadcrumbs && breadcrumbs.length > 0 && (
-              <nav className="hidden md:flex items-center gap-2 text-sm">
+              <nav className="mb-1.5 hidden items-center gap-1.5 text-xs md:flex" aria-label="面包屑">
                 {breadcrumbs.map((crumb, index) => (
                   <React.Fragment key={index}>
                     {index > 0 && (
@@ -66,45 +66,37 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               </nav>
             )}
 
-            {/* Icon */}
-            <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center shadow-sm">
-              <Home className="w-5 h-5 text-primary-foreground" />
-            </div>
-
             {/* Title Section */}
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground font-display">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
                 {title}
               </h1>
               {subtitle && (
-                <p className="text-sm md:text-base text-muted-foreground mt-1 font-medium flex items-center gap-2">
+                <p className="mt-1 max-w-[72ch] text-sm text-muted-foreground">
                   {subtitle}
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rise/10 text-rise text-xs font-semibold">
-                    <Activity className="w-3 h-3" />
-                  </span>
                 </p>
               )}
             </div>
           </div>
 
           {/* Right Section - Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-2 pt-0.5">
             {/* Refresh Button */}
             {onRefresh && (
               <button
                 onClick={handleRefresh}
                 disabled={isRefreshing}
                 className={cn(
-                  "inline-flex items-center justify-center rounded-xl text-sm font-semibold transition-colors",
-                  "px-4 py-2.5 border border-border",
+                  "inline-flex h-9 items-center justify-center rounded-lg text-sm font-medium transition-colors",
+                  "px-3 border border-border",
                   "bg-card hover:bg-secondary text-foreground",
                   "disabled:opacity-50 disabled:cursor-not-allowed",
-                  isRefreshing && "animate-pulse"
+                  isRefreshing && "text-primary"
                 )}
                 aria-label="刷新"
               >
-                <RefreshCw className={cn("w-4 h-4 mr-2", isRefreshing && "animate-spin")} />
-                刷新
+                <RefreshCw className={cn("h-4 w-4 sm:mr-2", isRefreshing && "animate-spin")} />
+                <span className="hidden sm:inline">刷新</span>
               </button>
             )}
 

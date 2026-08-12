@@ -23,11 +23,11 @@ export function getChangeColor(pctChg: number | null | undefined): string {
 
 /**
  * 成交额格式化（后端 amount 已是亿元，无需再 ÷10000）。
- * - null/undefined：返回 '—'
+ * - null/undefined：返回 '-'
  * - 否则：X.XX 亿元
  */
 export function formatAmount(amount: number | null | undefined): string {
-  if (amount === null || amount === undefined) return '—'
+  if (amount === null || amount === undefined) return '-'
   return `${amount.toLocaleString('zh-CN', { maximumFractionDigits: 2 })} 亿元`
 }
 
@@ -41,19 +41,19 @@ export function formatPe(peTtm: number | null | undefined): string {
 
 /**
  * 涨跌幅百分比格式化（后端数值即百分比，如 0.85 → "+0.85%"）。
- * 正值补 '+' 号，null → '—'。
+ * 正值补 '+' 号，null → '-'。
  */
 export function formatPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   const sign = value > 0 ? '+' : ''
   return `${sign}${value.toFixed(2)}%`
 }
 
 /**
- * 收盘价格式化（指数点位，保留两位小数），null → '—'。
+ * 收盘价格式化（指数点位，保留两位小数），null → '-'。
  */
 export function formatClose(close: number | null | undefined): string {
-  if (close === null || close === undefined) return '—'
+  if (close === null || close === undefined) return '-'
   return close.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 }
 
@@ -61,6 +61,6 @@ export function formatClose(close: number | null | undefined): string {
  * 权重百分比格式化（后端数值即百分比，如 5.23 → "5.23%"）。
  */
 export function formatWeight(weight: number | null | undefined): string {
-  if (weight === null || weight === undefined) return '—'
+  if (weight === null || weight === undefined) return '-'
   return `${weight.toFixed(2)}%`
 }

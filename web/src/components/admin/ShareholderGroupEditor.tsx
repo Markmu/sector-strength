@@ -369,7 +369,7 @@ export default function ShareholderGroupEditor({ mode, groupId }: ShareholderGro
   if (isEdit && loadError) {
     return (
       <div className="space-y-4">
-        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-destructive">
+        <div className="flex items-start gap-2 p-3 bg-rise/10 border border-rise/30 rounded-lg text-sm text-destructive">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span>加载失败：{loadError}</span>
         </div>
@@ -396,14 +396,14 @@ export default function ShareholderGroupEditor({ mode, groupId }: ShareholderGro
       </button>
 
       {formError && (
-        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-destructive">
+        <div className="flex items-start gap-2 p-3 bg-rise/10 border border-rise/30 rounded-lg text-sm text-destructive">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span>{formError}</span>
         </div>
       )}
 
       <div className="space-y-4">
-        {/* 组名 — 原始 input（无 type 属性），保证：
+        {/* 组名 - 原始 input（无 type 属性），保证：
             - getByLabel(/组名/) 通过 <label htmlFor> 命中
             - locator('input').first() 命中组名（DOM 中首个 input）
             - input[type="text"] 不命中组名（无 type 属性），让关键词输入框成为首个 type=text input */}
@@ -420,7 +420,7 @@ export default function ShareholderGroupEditor({ mode, groupId }: ShareholderGro
           onChange={(v) => setDescription(v)}
         />
 
-        {/* 匹配关键词 — 使用 Input 组件（type="text"），成为页面内首批 input[type="text"] */}
+        {/* 匹配关键词 - 使用 Input 组件（type="text"），成为页面内首批 input[type="text"] */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="block text-sm font-medium text-foreground">匹配关键词</label>

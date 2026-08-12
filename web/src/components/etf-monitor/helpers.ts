@@ -10,32 +10,32 @@
  * - unitNav：元（单位净值）
  *
  * 首版 change_percent 可能因数据源 fund_daily 不可用而为 null（plan-01 §6 风险），
- * formatPercent 对 null 容错（显示 "—"）。
+ * formatPercent 对 null 容错（显示 "-"）。
  */
 
 /**
  * 份额格式化（单位已是亿份，正值展示）。
- * - null/undefined：返回 '—'
+ * - null/undefined：返回 '-'
  * - 否则：X.XX 亿份（带千分位整数部分）
  */
 export function formatShare(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   return `${value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}亿份`
 }
 
 /**
  * 正数金额格式化（规模「亿元」等存量指标，不带正负号）。
- * - null/undefined：返回 '—'
+ * - null/undefined：返回 '-'
  * - 否则：X.XX 亿元（带千分位整数部分）
  */
 export function formatAmount(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   return `${value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}亿元`
 }
 
 /**
  * 带正负号格式化（净流入额「亿元」/ 份额变化「亿份」共用，均带正负色标）。
- * - null/undefined：返回 '—'
+ * - null/undefined：返回 '-'
  * - isPositive=true 时强制加 '+' 号（用于明确正负语义的场景）
  *
  * 默认按 value 自身符号决定正负（value>0 自动补 '+'）。
@@ -44,24 +44,24 @@ export function formatSignedAmount(
   value: number | null | undefined,
   unit: '亿元' | '亿份' = '亿元'
 ): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   const sign = value > 0 ? '+' : ''
   return `${sign}${value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}${unit}`
 }
 
 /**
  * 百分比格式化（后端数值即百分比，如 0.85 → "0.85%"）。
- * null/undefined → '—'（首版 change_percent 可能 null，容错）。
+ * null/undefined → '-'（首版 change_percent 可能 null，容错）。
  */
 export function formatPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   const sign = value > 0 ? '+' : ''
   return `${sign}${value.toFixed(2)}%`
 }
 
-/** 净值格式化（元），保留三位小数，null → '—' */
+/** 净值格式化（元），保留三位小数，null → '-' */
 export function formatPrice(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   return value.toFixed(3)
 }
 

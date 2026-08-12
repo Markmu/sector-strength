@@ -44,11 +44,11 @@ export default function DataStatusPanel() {
             className="border rounded-lg p-4 space-y-3 animate-pulse"
           >
             <div className="flex items-center justify-between">
-              <div className="h-4 bg-gray-200 rounded w-24" />
-              <div className="h-5 bg-gray-200 rounded-full w-12" />
+              <div className="h-4 bg-border rounded w-24" />
+              <div className="h-5 bg-border rounded-full w-12" />
             </div>
-            <div className="h-3 bg-gray-200 rounded w-32" />
-            <div className="h-3 bg-gray-200 rounded w-20" />
+            <div className="h-3 bg-border rounded w-32" />
+            <div className="h-3 bg-border rounded w-20" />
           </div>
         ))}
       </div>
@@ -63,14 +63,14 @@ export default function DataStatusPanel() {
           data-testid="error-state"
           className="border rounded-lg p-6 text-center space-y-3"
         >
-          <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
-          <p className="text-sm text-red-600">
+          <AlertCircle className="w-8 h-8 text-rise mx-auto" />
+          <p className="text-sm text-rise">
             加载数据状态失败：{(error as Error).message || '未知错误'}
           </p>
           <button
             data-testid="retry-button"
             onClick={() => mutate()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-primary-light rounded-md hover:bg-primary-light transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             重试

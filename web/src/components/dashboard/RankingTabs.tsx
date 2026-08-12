@@ -28,7 +28,7 @@ export const RankingTabs: React.FC = React.memo(() => {
           onClick={() => setActiveTab('sectors')}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             activeTab === 'sectors'
-              ? 'text-cyan-500 border-b-2 border-cyan-500'
+              ? 'text-primary border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -38,7 +38,7 @@ export const RankingTabs: React.FC = React.memo(() => {
           onClick={() => setActiveTab('stocks')}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             activeTab === 'stocks'
-              ? 'text-cyan-500 border-b-2 border-cyan-500'
+              ? 'text-primary border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >

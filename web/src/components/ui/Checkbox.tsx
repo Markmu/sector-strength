@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { cn } from '@/lib/utils'
+import { Check } from 'lucide-react'
 
 export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
   label?: string
@@ -10,7 +11,8 @@ export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputE
 
 const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
   ({ className, label, id, checked, defaultChecked, onCheckedChange, ...props }, ref) => {
-    const checkboxId = id || `checkbox-${React.useId()}`
+    const generatedId = React.useId()
+    const checkboxId = id || `checkbox-${generatedId}`
 
     // 处理受控和非受控模式
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,19 +44,15 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             {...props}
           />
           {/* 自定义复选标记 */}
-          <svg
+          <Check
             className={cn(
               'pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
-              'h-3 w-3 text-white opacity-0 transition-opacity duration-200',
+              'h-3 w-3 text-on-signal opacity-0 transition-opacity duration-200',
               'peer-checked:opacity-100'
             )}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
             strokeWidth={3}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-          </svg>
+            aria-hidden="true"
+          />
         </div>
         {label && (
           <label

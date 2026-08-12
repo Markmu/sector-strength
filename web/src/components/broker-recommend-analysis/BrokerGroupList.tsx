@@ -169,7 +169,7 @@ function BrokerGroupCard({ item, month, expanded, onToggle }: BrokerGroupCardPro
                 >
                   <span className="font-mono text-foreground">{d.symbol}</span>
                   <span className="text-muted-foreground">
-                    {d.name ?? '—'}
+                    {d.name ?? '-'}
                   </span>
                 </div>
               ))}

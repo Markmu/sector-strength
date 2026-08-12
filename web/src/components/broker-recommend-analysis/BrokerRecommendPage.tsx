@@ -210,7 +210,7 @@ export default function BrokerRecommendPage() {
         </div>
       </header>
 
-      {/* 板块分布排行榜（行业/概念/地域，各 Top5）—— 趋势视图不展示（跨月聚合不依赖单月板块分布） */}
+      {/* 板块分布排行榜（行业/概念/地域，各 Top5）-- 趋势视图不展示（跨月聚合不依赖单月板块分布） */}
       {view !== 'trend' && (
         <BrokerSectorRankings
           rankings={sectorRankings.rankings}

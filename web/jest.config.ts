@@ -25,6 +25,11 @@ const config: Config = {
     '<rootDir>/tests/**/*.{test,spec}.{js,jsx,ts,tsx}',
   ],
 
+  // Playwright specifications have their own runner and browser lifecycle.
+  // Letting Jest collect them makes Playwright load inside jsdom and fail before
+  // any product assertion runs.
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/tests/e2e/'],
+
   // Transform
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', { presets: ['next/babel'] }],

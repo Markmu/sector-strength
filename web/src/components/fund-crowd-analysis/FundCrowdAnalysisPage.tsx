@@ -142,7 +142,7 @@ export default function FundCrowdAnalysisPage() {
   // AC-05 scroll 恢复触发（plan-03 Task 5）：
   // 监听 rankings 加载完成（!isLoading 且有数据），DOM 高度恢复后再恢复滚动位置。
   // 配合 rAF + setTimeout(0) 双重保障浏览器布局/绘制完成。恢复后清空 ref 避免重复滚动。
-  // 注意：DashboardLayout 的根容器是 h-screen overflow-hidden，实际滚动发生在 <main>
+  // 注意：DashboardLayout 的根容器是动态视口高度且 overflow-hidden，实际滚动发生在 <main>
   // （flex-1 overflow-y-auto，见 components/layout/Layout.tsx:39-44）。window.scrollY 始终为 0，
   // 因此恢复目标是 document.querySelector('main').scrollTop，而非 window.scrollTo。
   useEffect(() => {
@@ -199,7 +199,7 @@ export default function FundCrowdAnalysisPage() {
   // AC-05 反查跳转（plan-03 Task 4）：记录当前口径/页码/搜索词/滚动位置到 sessionStorage，
   // 跳转 04 反查页并带 from=fund-crowd 标识。返回扎堆页时从 sessionStorage 恢复（含 scroll 恢复）。
   // from=fund-crowd 是前端路由层标识，不传给 04 API（api.ts:fundsApi.reverseLookup 不接收 from）。
-  // 滚动位置：实际滚动发生在 <main>（DashboardLayout 根 h-screen overflow-hidden），
+  // 滚动位置：实际滚动发生在 <main>（DashboardLayout 根容器固定为动态视口高度），
   // 故记录 main.scrollTop；window.scrollX/Y 在本布局下始终为 0。
   const handleReverseLookup = (stockSymbol: string) => {
     if (typeof window === 'undefined') return

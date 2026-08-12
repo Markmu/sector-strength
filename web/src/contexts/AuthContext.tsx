@@ -58,11 +58,52 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('tokenType');
     localStorage.removeItem('expiresIn');
+    localStorage.removeItem('expiresAt');
     localStorage.removeItem('user');
   }, []);
 
+  const persistTokenExpiry = useCallback((expiresIn: number) => {
+    localStorage.setItem('expiresIn', expiresIn.toString());
+    localStorage.setItem('expiresAt', (Date.now() + expiresIn * 1000).toString());
+  }, []);
+
+  // 刷新访问令牌。刷新令牌从持久化存储读取，避免初始化阶段的状态闭包拿到 null。
+  const refreshAccessToken = useCallback(async () => {
+    const storedRefreshToken = localStorage.getItem('refreshToken');
+    if (!storedRefreshToken) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          refresh_token: storedRefreshToken
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Token refresh failed');
+      }
+
+      const data = await response.json();
+      setAccessToken(data.access_token);
+      setRefreshToken(data.refresh_token);
+      localStorage.setItem('accessToken', data.access_token);
+      localStorage.setItem('refreshToken', data.refresh_token);
+      persistTokenExpiry(data.expires_in);
+    } catch (error) {
+      console.error('Failed to refresh access token:', error);
+      clearAuth();
+      throw error;
+    }
+  }, [clearAuth, persistTokenExpiry]);
+
   // 从localStorage初始化认证状态
   useEffect(() => {
+    let active = true;
+
     const initializeAuth = async () => {
       try {
         const savedAccessToken = localStorage.getItem('accessToken');
@@ -70,20 +111,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const savedTokenType = localStorage.getItem('tokenType');
         const savedUser = localStorage.getItem('user');
         const savedExpiresIn = localStorage.getItem('expiresIn');
+        const savedExpiresAt = localStorage.getItem('expiresAt');
 
         if (savedAccessToken && savedRefreshToken && savedTokenType && savedUser) {
-          setAccessToken(savedAccessToken);
-          setRefreshToken(savedRefreshToken);
-          setTokenType(savedTokenType);
-          setUser(JSON.parse(savedUser));
+          if (active) {
+            setAccessToken(savedAccessToken);
+            setRefreshToken(savedRefreshToken);
+            setTokenType(savedTokenType);
+            setUser(JSON.parse(savedUser));
+          }
 
-          // 检查token是否过期
           if (savedExpiresIn) {
             const expiresIn = parseInt(savedExpiresIn);
             const now = Date.now();
-            const tokenExpiry = now + expiresIn * 1000;
+            const parsedExpiresAt = savedExpiresAt ? parseInt(savedExpiresAt) : NaN;
+            const tokenExpiry = Number.isFinite(parsedExpiresAt)
+              ? parsedExpiresAt
+              : now + expiresIn * 1000;
 
-            // 如果token将在5分钟内过期，尝试刷新
+            if (!Number.isFinite(parsedExpiresAt)) {
+              localStorage.setItem('expiresAt', tokenExpiry.toString());
+            }
+
             if (tokenExpiry - now < 5 * 60 * 1000) {
               await refreshAccessToken();
             }
@@ -93,12 +142,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.error('Failed to initialize auth:', error);
         clearAuth();
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
 
-    initializeAuth();
-  }, []);
+    void initializeAuth();
+
+    return () => {
+      active = false;
+    };
+  }, [clearAuth, refreshAccessToken]);
 
   useEffect(() => {
     const handleAuthExpired = () => {
@@ -109,39 +162,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   }, [clearAuth]);
 
-  // 刷新访问令牌
-  const refreshAccessToken = useCallback(async () => {
-    if (!refreshToken) return;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          refresh_token: refreshToken
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAccessToken(data.access_token);
-        setRefreshToken(data.refresh_token);
-        localStorage.setItem('accessToken', data.access_token);
-        localStorage.setItem('refreshToken', data.refresh_token);
-        localStorage.setItem('expiresIn', data.expires_in.toString());
-      } else {
-        // 刷新失败，需要重新登录
-        throw new Error('Token refresh failed');
-      }
-    } catch (error) {
-      console.error('Failed to refresh access token:', error);
-      clearAuth();
-      throw error;
-    }
-  }, [refreshToken]);
-
   // 检查token是否过期并刷新
   useEffect(() => {
     if (!accessToken || !refreshToken) return;
@@ -149,11 +169,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const interval = setInterval(async () => {
       try {
         const now = Date.now();
-        const savedExpiresIn = localStorage.getItem('expiresIn');
+        const savedExpiresAt = localStorage.getItem('expiresAt');
 
-        if (savedExpiresIn) {
-          const expiresIn = parseInt(savedExpiresIn);
-          const tokenExpiry = now + expiresIn * 1000;
+        if (savedExpiresAt) {
+          const tokenExpiry = parseInt(savedExpiresAt);
 
           // 如果token将在10分钟内过期，刷新它
           if (tokenExpiry - now < 10 * 60 * 1000) {
@@ -201,7 +220,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       localStorage.setItem('accessToken', data.access_token);
       localStorage.setItem('refreshToken', data.refresh_token);
       localStorage.setItem('tokenType', data.token_type);
-      localStorage.setItem('expiresIn', data.expires_in.toString());
+      persistTokenExpiry(data.expires_in);
       localStorage.setItem('user', JSON.stringify(data.user));
 
       router.push('/');

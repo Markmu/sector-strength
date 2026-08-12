@@ -113,7 +113,7 @@ export default function AdminSidebar({ className = '' }: AdminSidebarProps) {
     <aside
       className={`
         flex flex-col bg-card border-r border-border
-        transition-all duration-300
+        h-full transition-[width] duration-200
         ${collapsed ? 'w-16' : 'w-64'}
         ${className}
       `}
@@ -131,7 +131,7 @@ export default function AdminSidebar({ className = '' }: AdminSidebarProps) {
           aria-label="返回主仪表板"
         >
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
-            <Activity className="w-5 h-5 text-white" />
+            <Activity className="w-5 h-5 text-primary-foreground" />
           </div>
           {!collapsed && (
             <>
@@ -167,7 +167,7 @@ export default function AdminSidebar({ className = '' }: AdminSidebarProps) {
               key={item.id}
               href={item.href}
               className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
+                flex items-center gap-3 px-3 py-2 rounded-md transition-colors
                 ${isActive
                   ? 'bg-primary-light text-primary'
                   : 'text-foreground hover:bg-secondary'
@@ -195,7 +195,7 @@ export default function AdminSidebar({ className = '' }: AdminSidebarProps) {
         <button
           onClick={logout}
           className={`
-            w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
+            w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors
             ${collapsed ? 'justify-center' : ''}
             text-destructive hover:bg-destructive/10
           `}

@@ -84,11 +84,11 @@ interface TasksListData {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  completed: 'bg-green-100 text-green-800',
-  failed: 'bg-red-100 text-red-800',
-  running: 'bg-blue-100 text-blue-800',
-  pending: 'bg-yellow-100 text-yellow-800',
-  cancelled: 'bg-gray-100 text-gray-700',
+  completed: 'bg-fall/10 text-fall',
+  failed: 'bg-rise/10 text-rise',
+  running: 'bg-primary-light text-primary',
+  pending: 'bg-warning/10 text-warning',
+  cancelled: 'bg-secondary text-foreground',
 }
 const STATUS_LABELS: Record<string, string> = {
   completed: '成功',
@@ -102,7 +102,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={`inline-block px-2 py-0.5 text-xs rounded ${
-        STATUS_STYLES[status] ?? 'bg-gray-100 text-gray-700'
+        STATUS_STYLES[status] ?? 'bg-secondary text-foreground'
       }`}
     >
       {STATUS_LABELS[status] ?? status}
@@ -187,15 +187,15 @@ export default function BrokerRecommendSyncPanel() {
         <div
           className={`fixed top-4 right-4 z-50 max-w-md px-4 py-3 rounded-lg shadow-lg border ${
             toast.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-800'
-              : 'bg-red-50 border-red-200 text-red-800'
+              ? 'bg-fall/10 border-fall/30 text-fall'
+              : 'bg-rise/10 border-rise/30 text-rise'
           }`}
         >
           <div className="flex items-center gap-2">
             {toast.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              <CheckCircle2 className="w-5 h-5 text-fall" />
             ) : (
-              <XCircle className="w-5 h-5 text-red-600" />
+              <XCircle className="w-5 h-5 text-rise" />
             )}
             <span className="text-sm font-medium">{toast.message}</span>
             <button

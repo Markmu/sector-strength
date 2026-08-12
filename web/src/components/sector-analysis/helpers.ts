@@ -32,9 +32,9 @@ export function getTrendDisplay(trendDirection: number | null): TrendDisplay {
  */
 export function formatMarketCap(value: number | null): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return '—'
+    return '-'
   }
-  if (value <= 0) return '—'
+  if (value <= 0) return '-'
   if (value >= 1e12) {
     return `${(value / 1e12).toFixed(2)}万亿`
   }
@@ -50,7 +50,7 @@ export function formatMarketCap(value: number | null): string {
 /** 最新价两位小数。null 返回占位符。 */
 export function formatPrice(value: number | null): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return '—'
+    return '-'
   }
   return value.toFixed(2)
 }
@@ -58,7 +58,7 @@ export function formatPrice(value: number | null): string {
 /** 强度分取整数。null 返回占位符。 */
 export function formatScore(value: number | null): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return '—'
+    return '-'
   }
   return Math.round(value).toString()
 }

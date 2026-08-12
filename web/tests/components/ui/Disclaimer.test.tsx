@@ -15,10 +15,10 @@ describe('Disclaimer', () => {
   })
 
   it('应该应用正确的样式类', () => {
-    const { container } = render(<Disclaimer />)
+    render(<Disclaimer />)
 
     const text = screen.getByText(/数据仅供参考/)
-    expect(text).toHaveClass('text-xs', 'text-gray-500')
+    expect(text).toHaveClass('text-xs', 'text-muted-foreground')
   })
 
   it('应该显示自定义文本', () => {
@@ -33,7 +33,7 @@ describe('Disclaimer', () => {
 
     const separator = container.querySelector('[role="separator"]')
     expect(separator).toBeInTheDocument()
-    expect(separator).toHaveClass('border-t', 'border-gray-200')
+    expect(separator).toHaveClass('border-t', 'border-border')
   })
 
   it('应该不显示分隔线当 showSeparator 为 false', () => {
@@ -52,11 +52,10 @@ describe('Disclaimer', () => {
   })
 
   it('文本颜色对比度应该符合可访问性标准', () => {
-    const { container } = render(<Disclaimer />)
+    render(<Disclaimer />)
 
     const text = screen.getByText(/数据仅供参考/)
-    expect(text).toHaveClass('text-gray-500')
-    // text-gray-500 (rgb(107, 114, 128)) on white background has contrast ratio ~7:1 (AA compliant)
+    expect(text).toHaveClass('text-muted-foreground')
   })
 
   it('应该支持自定义类名', () => {

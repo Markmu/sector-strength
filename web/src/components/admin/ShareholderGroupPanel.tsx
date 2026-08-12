@@ -103,7 +103,7 @@ export default function ShareholderGroupPanel() {
 
       {/* 列表加载失败提示（TC-1.11） */}
       {listError && (
-        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-destructive">
+        <div className="flex items-start gap-2 p-3 bg-rise/10 border border-rise/30 rounded-lg text-sm text-destructive">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span>加载失败：{listError}</span>
         </div>
@@ -207,7 +207,7 @@ export default function ShareholderGroupPanel() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteError && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-destructive">
+            <div className="flex items-start gap-2 p-3 bg-rise/10 border border-rise/30 rounded-lg text-sm text-destructive">
               <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <span>{deleteError}</span>
             </div>
@@ -219,7 +219,7 @@ export default function ShareholderGroupPanel() {
                 e.preventDefault(); // 不让 Radix 自动关闭，由 handleConfirmDelete 控制关闭时机
                 handleConfirmDelete();
               }}
-              className="bg-red-500 hover:bg-red-600"
+              className="bg-destructive hover:bg-destructive/90"
             >
               确认删除
             </AlertDialogAction>

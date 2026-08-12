@@ -245,10 +245,10 @@ export default function FundFlowRankingTable({
                       {formatSignedAmount(item.netInflow)}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                      {item.companyCount ?? '—'}
+                      {item.companyCount ?? '-'}
                     </td>
                     <td className="px-4 py-3 text-foreground min-w-[6rem] whitespace-nowrap">
-                      {item.leadingStock ?? '—'}
+                      {item.leadingStock ?? '-'}
                     </td>
                     <td className={`px-4 py-3 text-right tabular-nums ${leadingChangeColor}`}>
                       {formatPercent(item.leadingStockChange)}

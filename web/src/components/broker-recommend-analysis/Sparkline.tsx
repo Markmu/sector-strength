@@ -3,7 +3,7 @@
 /**
  * 迷你折线图（10 期 plan-02，ADR-6 / AC-05/07/11）
  *
- * 轻量 SVG 自绘——**不复用 echarts**（趋势榜每页 20 行 × 20 echarts 实例渲染开销过大；
+ * 轻量 SVG 自绘--**不复用 echarts**（趋势榜每页 20 行 × 20 echarts 实例渲染开销过大；
  * sparkline 无交互、无坐标轴，SVG polyline 最轻量）。
  *
  * - 横轴旧→新（values 已按月份升序传入）

@@ -348,7 +348,6 @@ describe('SectorHeatmap', () => {
 
       // 验证渲染时间小于1秒（1000ms）
       expect(renderTime).toBeLessThan(1000)
-      console.log(`100个板块渲染时间: ${renderTime.toFixed(2)}ms`)
     })
   })
 })

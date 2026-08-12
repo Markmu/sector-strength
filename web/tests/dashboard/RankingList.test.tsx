@@ -66,13 +66,13 @@ describe('RankingItem', () => {
   it('应该正确应用颜色编码', () => {
     const { container } = render(<RankingItemComponent data={mockSectorData} type="sector" />)
 
-    // 高强度 (>= 80) 应该是绿色
+    // 高强度 (>= 80) 使用中国市场的上涨色
     const scoreElement = screen.getByText('85.5')
-    expect(scoreElement).toHaveClass('text-green-600')
+    expect(scoreElement).toHaveClass('text-rise')
 
-    // 上升趋势应该是绿色
+    // 上升趋势同样使用上涨色
     const trendIcon = screen.getByText('↑')
-    expect(trendIcon).toHaveClass('text-green-600')
+    expect(trendIcon).toHaveClass('text-rise')
   })
 })
 
@@ -277,7 +277,7 @@ describe('RankingTabs', () => {
     fireEvent.click(stocksTab)
 
     await waitFor(() => {
-      expect(screen.getByText('个股排名')).toHaveClass('text-blue-600')
+      expect(screen.getByText('个股排名')).toHaveClass('text-primary', 'border-primary')
     })
   })
 })

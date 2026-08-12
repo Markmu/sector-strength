@@ -226,10 +226,10 @@ export default function SectorMACalculationPanel() {
   const getStatusBadge = (status: string) => {
     const styles = {
       pending: 'bg-secondary text-foreground',
-      running: 'bg-blue-100 text-blue-700',
-      completed: 'bg-green-100 text-green-700',
-      failed: 'bg-red-100 text-red-700',
-      cancelled: 'bg-yellow-100 text-yellow-700'
+      running: 'bg-primary-light text-primary',
+      completed: 'bg-fall/10 text-fall',
+      failed: 'bg-rise/10 text-rise',
+      cancelled: 'bg-warning/10 text-warning'
     };
 
     const labels = {
@@ -455,8 +455,8 @@ export default function SectorMACalculationPanel() {
       )}
 
       {/* 覆盖选项 */}
-      <div className={`bg-white rounded-lg shadow-sm border p-6 ${
-        overwrite ? 'border-orange-200 bg-orange-50' : 'border-border'
+      <div className={`bg-card rounded-lg shadow-sm border p-6 ${
+        overwrite ? 'border-warning/30 bg-warning/10' : 'border-border'
       }`}>
         <div className="flex items-start gap-3">
           <input
@@ -474,7 +474,7 @@ export default function SectorMACalculationPanel() {
           />
           <div className="flex-1">
             <label htmlFor="overwrite-ma" className="flex items-center gap-2 text-sm font-medium text-foreground cursor-pointer">
-              <AlertTriangle className={`w-4 h-4 ${overwrite ? 'text-orange-600' : 'text-faint'}`} />
+              <AlertTriangle className={`w-4 h-4 ${overwrite ? 'text-warning' : 'text-faint'}`} />
               覆盖已有均线数据
             </label>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -490,9 +490,9 @@ export default function SectorMACalculationPanel() {
                     checked={confirmOverwrite}
                     onChange={(e) => setConfirmOverwrite(e.target.checked)}
                     disabled={loading}
-                    className="text-orange-600"
+                    className="text-warning"
                   />
-                  <span className="text-orange-700 font-medium">
+                  <span className="text-warning font-medium">
                     我确认要覆盖已有均线数据
                   </span>
                 </label>

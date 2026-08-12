@@ -65,7 +65,7 @@ function SectorHeatmapComponent({ sectorType, className = '' }: SectorHeatmapPro
       backgroundColor: 'rgba(0, 0, 0, 0.8)',
       borderColor: '#333',
       textStyle: {
-        color: '#fff',
+        color: '#f7f9fa',
       },
     },
     series: [
@@ -79,18 +79,18 @@ function SectorHeatmapComponent({ sectorType, className = '' }: SectorHeatmapPro
             const sector = sectors.find((s) => s.name === params.name)
             return `${params.name}\n${sector?.value.toFixed(1) || 'N/A'}`
           },
-          color: '#fff',
+          color: '#f7f9fa',
           fontSize: 14,
           fontWeight: 'bold',
         },
         itemStyle: {
-          borderColor: '#fff',
+          borderColor: '#f7f9fa',
           borderWidth: 2,
           gapWidth: 2,
         },
         emphasis: {
           itemStyle: {
-            borderColor: '#fff',
+            borderColor: '#f7f9fa',
             borderWidth: 3,
             shadowBlur: 10,
             shadowColor: 'rgba(0, 0, 0, 0.3)',

@@ -50,13 +50,9 @@ const Header = ({
                     {subtitle}
                     {showMarketStatus && (
                       <>
-                        <span className="text-border">•</span>
-                        <span className="flex items-center gap-1.5 text-rise">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rise opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-rise"></span>
-                          </span>
-                          市场交易中
+                        <span className="text-border">/</span>
+                        <span className="text-rise">
+                          市场状态
                         </span>
                       </>
                     )}

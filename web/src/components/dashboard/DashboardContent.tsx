@@ -15,18 +15,17 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
   className,
 }) => {
   return (
-    <main
+    <div
       className={cn(
         'flex-1',
-        'px-4 py-6 md:px-6 md:py-8',
-        'animate-slide-up',
+        'px-4 py-4 md:px-6 md:py-5',
         className
       )}
     >
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="mx-auto max-w-7xl space-y-5">
         {children}
       </div>
-    </main>
+    </div>
   );
 };
 

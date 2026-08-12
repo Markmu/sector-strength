@@ -7,7 +7,7 @@
  * 顶部筛选栏：行业下拉（全部 + 各行业） | 变动方向下拉（全部/增持/减持/新进/退出）
  * 分页：复用 ui/Pagination 组件
  *
- * 变动方向渲染：↑增持(绿) | ↓减持(红) | ★新进(蓝) | ✕退出(灰) | —无数据（无上期或 unchanged 也归为 —）
+ * 变动方向渲染：↑增持(绿) | ↓减持(红) | ★新进(蓝) | ✕退出(灰) | -无数据（无上期或 unchanged 也归为 -）
  *
  * spec 选择器兼容：
  * - 表格用 <table>，表头列文案严格匹配 spec 的 getByText('股票代码'/'名称'/'持股数量'/'占流通比')
@@ -70,21 +70,21 @@ function ChangeDirectionCell({
   hasPrevPeriod: boolean
 }) {
   if (!hasPrevPeriod) {
-    return <span className="text-gray-400">—</span>
+    return <span className="text-faint">-</span>
   }
   switch (direction) {
     case 'increase':
-      return <span className="text-emerald-600 font-medium">↑增持</span>
+      return <span className="text-rise font-medium">↑增持</span>
     case 'decrease':
-      return <span className="text-red-600 font-medium">↓减持</span>
+      return <span className="text-rise font-medium">↓减持</span>
     case 'new':
-      return <span className="text-blue-600 font-medium">★新进</span>
+      return <span className="text-primary font-medium">★新进</span>
     case 'exit':
-      return <span className="text-gray-500 font-medium">✕退出</span>
+      return <span className="text-muted-foreground font-medium">✕退出</span>
     case 'unchanged':
     case null:
     default:
-      return <span className="text-gray-400">—</span>
+      return <span className="text-faint">-</span>
   }
 }
 
@@ -196,7 +196,7 @@ export default function HoldingsTable({
                       )}
                       title={h.industries.join(', ') || undefined}
                     >
-                      {h.industries.length > 0 ? h.industries.join(', ') : '—'}
+                      {h.industries.length > 0 ? h.industries.join(', ') : '-'}
                     </td>
                   </tr>
                 ))

@@ -135,7 +135,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
   )
 
   // 加载状态
-  if (strengthLoading || maLoading) {
+  if (!sectorId || strengthLoading || maLoading) {
     return (
       <DashboardLayout>
         <DashboardHeader
@@ -150,7 +150,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
   }
 
   // 错误状态
-  if (strengthError || maError || !sectorId) {
+  if (strengthError || maError) {
     const handleRetry = () => {
       // SWR mutate 会重新触发数据获取
       strengthMutate()
@@ -208,7 +208,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
               </button>
 
               {/* 面包屑导航 */}
-              <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600">
+              <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
                 <span className="hover:text-foreground cursor-pointer" onClick={() => router.push('/dashboard')}>
                   仪表盘
                 </span>
@@ -260,7 +260,7 @@ export default function SectorAnalysisPage({ params }: PageParams) {
           </div>
 
           {/* 移动端面包屑 */}
-          <div className="sm:hidden flex items-center gap-2 text-sm text-gray-600">
+          <div className="sm:hidden flex items-center gap-2 text-sm text-muted-foreground">
             <span className="hover:text-foreground cursor-pointer" onClick={() => router.push('/dashboard')}>
               仪表盘
             </span>

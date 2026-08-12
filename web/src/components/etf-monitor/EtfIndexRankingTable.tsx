@@ -16,7 +16,7 @@
  *   **展开标记与趋势入口分离**：点展开只展开（不跳视图），点趋势才跳视图。
  *
  * 涨跌幅容错（plan-05 §3）：明细列 changePercent 首版可能 null（数据源 fund_daily 不可用），
- * 列对 null 容错显示 "—"，E2E 不要求该列有值。
+ * 列对 null 容错显示 "-"，E2E 不要求该列有值。
  *
  * data-testid 约定（spec 选择器依赖，命名必须与 etf-monitor.spec.ts 一致）：
  * - 表格根容器：etf-index-ranking-table
@@ -467,7 +467,7 @@ function DetailPanel({
                 <td className={`px-3 py-2 text-right tabular-nums font-medium ${inflowColor}`}>
                   {formatSignedAmount(d.netInflow, '亿元')}
                 </td>
-                {/* 涨跌幅容错：changePercent 首版可能 null → 显示 "—" */}
+                {/* 涨跌幅容错：changePercent 首版可能 null → 显示 "-" */}
                 <td className={`px-3 py-2 text-right tabular-nums ${changeColor}`}>
                   {formatPercent(d.changePercent)}
                 </td>

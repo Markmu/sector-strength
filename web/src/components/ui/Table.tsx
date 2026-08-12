@@ -1,16 +1,17 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
+import { ArrowDown, ArrowUp, LoaderCircle } from 'lucide-react'
 
-export interface TableColumn<T = any> {
+export interface TableColumn<T extends object = object> {
   key: keyof T | string
   title: string
   width?: string | number
   align?: 'left' | 'center' | 'right'
   sortable?: boolean
-  render?: (value: any, record: T, index: number) => React.ReactNode
+  render?: (value: unknown, record: T, index: number) => React.ReactNode
 }
 
-export interface TableProps<T = any> {
+export interface TableProps<T extends object = object> {
   columns: TableColumn<T>[]
   data: T[]
   loading?: boolean
@@ -18,14 +19,14 @@ export interface TableProps<T = any> {
   className?: string
   onRowClick?: (record: T, index: number) => void
   onSort?: (column: TableColumn<T>, direction: 'asc' | 'desc') => void
-  rowKey?: keyof T | ((record: T) => string)
+  rowKey?: keyof T | string | ((record: T) => string)
   striped?: boolean
   bordered?: boolean
   hoverable?: boolean
   compact?: boolean
 }
 
-function Table<T extends Record<string, any>>({
+function Table<T extends object>({
   columns,
   data,
   loading = false,
@@ -62,8 +63,8 @@ function Table<T extends Record<string, any>>({
     if (!sortConfig.key) return data
 
     return [...data].sort((a, b) => {
-      const aValue = a[sortConfig.key as keyof T]
-      const bValue = b[sortConfig.key as keyof T]
+      const aValue = (a as Record<string, unknown>)[sortConfig.key!]
+      const bValue = (b as Record<string, unknown>)[sortConfig.key!]
 
       if (aValue === null || aValue === undefined) return 1
       if (bValue === null || bValue === undefined) return -1
@@ -85,26 +86,26 @@ function Table<T extends Record<string, any>>({
     if (typeof rowKey === 'function') {
       return rowKey(record)
     }
-    return String(record[rowKey as keyof T] ?? index)
+    return String((record as Record<string, unknown>)[String(rowKey)] ?? index)
   }
 
   const sortedData = getSortedData()
 
   return (
-    <div className={cn('w-full overflow-auto rounded-xl border border-border bg-card', className)}>
+    <div className={cn('custom-scrollbar w-full overflow-auto rounded-xl border border-border bg-card shadow-subtle', className)}>
       <table className={cn(
-        'w-full',
-        compact ? 'text-sm' : 'text-base'
+        'w-full border-collapse tabular-nums',
+        compact ? 'text-xs' : 'text-sm'
       )}>
         <thead className={cn(
-          'bg-background border-b border-border'
+          'sticky top-0 z-10 bg-muted border-b border-border'
         )}>
           <tr>
             {columns.map((column) => (
               <th
                 key={String(column.key)}
                 className={cn(
-                  'px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider',
+                  'whitespace-nowrap px-3 py-2.5 font-semibold text-muted-foreground text-xs tracking-wide',
                   column.align === 'center' && 'text-center',
                   column.align === 'right' && 'text-right',
                   column.sortable && 'cursor-pointer hover:bg-secondary transition-colors',
@@ -116,28 +117,11 @@ function Table<T extends Record<string, any>>({
                 <div className="flex items-center gap-2">
                   <span>{column.title}</span>
                   {column.sortable && sortConfig.key === String(column.key) && (
-                    <svg
-                      className="w-4 h-4 text-primary"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      {sortConfig.direction === 'asc' ? (
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 15l7-7 7 7"
-                        />
-                      ) : (
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      )}
-                    </svg>
+                    sortConfig.direction === 'asc' ? (
+                      <ArrowUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                    ) : (
+                      <ArrowDown className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                    )
                   )}
                 </div>
               </th>
@@ -145,8 +129,8 @@ function Table<T extends Record<string, any>>({
           </tr>
         </thead>
         <tbody className={cn(
-          'divide-y divide-secondary',
-          striped && 'bg-card even:bg-background'
+          'divide-y divide-border/70',
+          striped && '[&_tr:nth-child(even)]:bg-muted/40'
         )}>
           {loading ? (
             <tr>
@@ -155,25 +139,7 @@ function Table<T extends Record<string, any>>({
                 className="px-4 py-8 text-center text-muted-foreground"
               >
                 <div className="flex items-center justify-center">
-                  <svg
-                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-primary"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
+                  <LoaderCircle className="-ml-1 mr-3 h-5 w-5 animate-spin text-primary" aria-hidden="true" />
                   加载中...
                 </div>
               </td>
@@ -192,8 +158,8 @@ function Table<T extends Record<string, any>>({
               <tr
                 key={getRowKey(record, index)}
                 className={cn(
-                  hoverable && 'hover:bg-background/80 transition-colors',
-                  onRowClick && 'cursor-pointer'
+                  hoverable && 'hover:bg-secondary/65 transition-colors',
+                  onRowClick && 'cursor-pointer focus-within:bg-secondary/65'
                 )}
                 onClick={() => onRowClick?.(record, index)}
               >
@@ -201,19 +167,19 @@ function Table<T extends Record<string, any>>({
                   <td
                     key={String(column.key)}
                     className={cn(
-                      'px-4 py-3 text-foreground',
+                      'px-3 py-2.5 text-foreground',
                       column.align === 'center' && 'text-center',
                       column.align === 'right' && 'text-right',
-                      bordered && 'border-r border-secondary last:border-r-0'
+                      bordered && 'border-r border-border/60 last:border-r-0'
                     )}
                   >
                     {column.render
                       ? column.render(
-                          record[column.key as keyof T],
+                          (record as Record<string, unknown>)[String(column.key)],
                           record,
                           index
                         )
-                      : String(record[column.key as keyof T] ?? '-')}
+                      : String((record as Record<string, unknown>)[String(column.key)] ?? '-')}
                   </td>
                 ))}
               </tr>

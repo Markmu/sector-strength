@@ -9,7 +9,7 @@
  * - 选中后调 onHolderSelect(holderName)；父组件用受控 value 实现与监控组的互斥切换
  *
  * 参照 components/funds/FundSearchBar.tsx 的命令式搜索写法（onSearch 内直接调 API，
- * 不走 SWR——下拉是临时查询，无需缓存）。
+ * 不走 SWR--下拉是临时查询，无需缓存）。
  */
 import React, { useCallback } from 'react'
 import { SearchIcon, XIcon } from 'lucide-react'

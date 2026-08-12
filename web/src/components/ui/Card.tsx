@@ -6,27 +6,27 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   padding?: 'none' | 'sm' | 'md' | 'lg'
 }
 
-export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type CardHeaderProps = React.HTMLAttributes<HTMLDivElement>
 
-export interface CardBodyProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type CardBodyProps = React.HTMLAttributes<HTMLDivElement>
 
-export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type CardFooterProps = React.HTMLAttributes<HTMLDivElement>
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant = 'default', padding = 'md', children, ...props }, ref) => {
-    const baseStyles = 'rounded-xl'
+    const baseStyles = 'rounded-xl text-card-foreground'
 
     const variants = {
-      default: 'bg-card border border-border shadow-sm',
-      outlined: 'bg-card border-2 border-border',
-      elevated: 'bg-card shadow-md border border-border hover:shadow-lg transition-shadow duration-200',
+      default: 'bg-card border border-border shadow-subtle',
+      outlined: 'bg-card border border-border',
+      elevated: 'bg-card shadow-medium border border-border hover:border-primary/30 transition-[border-color,box-shadow] duration-200',
     }
 
     const paddings = {
       none: '',
-      sm: 'p-4',
-      md: 'p-6',
-      lg: 'p-8',
+      sm: 'p-3',
+      md: 'p-4 md:p-5',
+      lg: 'p-5 md:p-6',
     }
 
     return (

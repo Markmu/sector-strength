@@ -85,7 +85,7 @@ export default function FundListTable({
           className || ''
         }`}
       >
-        <AlertTriangleIcon className="w-12 h-12 mx-auto mb-3 text-amber-500" />
+        <AlertTriangleIcon className="w-12 h-12 mx-auto mb-3 text-warning" />
         <p className="text-lg font-medium text-foreground mb-2">加载失败，请重试</p>
         <p className="text-sm text-muted-foreground">
           网络请求异常，请检查网络连接后刷新页面
@@ -175,7 +175,7 @@ export default function FundListTable({
                 <td className="px-4 py-3 text-foreground">
                   <span className="font-medium">{fund.name}</span>
                   {fund.hasPortfolio === false && (
-                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-xs bg-amber-100 text-amber-700 rounded">
+                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-xs bg-warning/10 text-warning rounded">
                       暂无数据
                     </span>
                   )}

@@ -40,6 +40,20 @@ jest.mock('@/stores/useChartState', () => ({
   useChartState: jest.fn(),
 }))
 
+jest.mock('@/lib/api', () => ({
+  sectorsApi: {
+    getSectors: jest.fn().mockResolvedValue({ data: { items: [] } }),
+    searchSectors: jest.fn().mockResolvedValue({ data: { data: [] } }),
+  },
+}))
+
+jest.mock('@/components/sector-analysis/SectorStocksTable', () => ({
+  __esModule: true,
+  default: ({ sectorId }: { sectorId: number }) => (
+    <div data-testid="sector-stocks-table">{sectorId}</div>
+  ),
+}))
+
 // Mock DashboardLayout
 jest.mock('@/components/dashboard', () => ({
   DashboardLayout: ({ children }: { children: React.ReactNode }) => (
@@ -92,6 +106,7 @@ jest.mock('@/components/dashboard', () => ({
   ErrorState: ({ message }: { message: string }) => (
     <div data-testid="error-state">{message}</div>
   ),
+  SearchableSelect: () => <div data-testid="searchable-select" />,
 }))
 
 // 动态导入页面
@@ -167,6 +182,7 @@ describe('板块分析页面', () => {
         ma240: false,
       },
       setTimeRange: jest.fn(),
+      setCustomDateRange: jest.fn(),
       toggleMA: jest.fn(),
     })
   })
@@ -191,9 +207,9 @@ describe('板块分析页面', () => {
 
     render(<SectorAnalysisPage params={Promise.resolve({ sectorId: '1' })} />)
 
-    // 等待页面加载
+    // 等待异步 params 解析并完成页面加载
     await waitFor(() => {
-      expect(screen.getByTestId('dashboard-header')).toBeInTheDocument()
+      expect(screen.getByText('测试板块 - 板块分析')).toBeInTheDocument()
     })
 
     // 验证标题
@@ -278,6 +294,7 @@ describe('板块分析页面', () => {
         ma240: false,
       },
       setTimeRange: mockSetTimeRange,
+      setCustomDateRange: jest.fn(),
       toggleMA: jest.fn(),
     })
 
@@ -326,6 +343,7 @@ describe('板块分析页面', () => {
         ma240: false,
       },
       setTimeRange: jest.fn(),
+      setCustomDateRange: jest.fn(),
       toggleMA: mockToggleMA,
     })
 
@@ -420,6 +438,6 @@ describe('板块分析页面', () => {
     })
 
     // 验证显示空数据提示
-    expect(screen.getByText('数据点: 0')).toBeInTheDocument()
+    expect(screen.getAllByText('数据点: 0')).toHaveLength(2)
   })
 })

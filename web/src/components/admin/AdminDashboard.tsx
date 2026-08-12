@@ -200,9 +200,9 @@ export default function AdminDashboard() {
   // 任务状态映射
   const statusConfig: Record<TaskStatus, { label: string; color: string; bg: string }> = {
     pending: { label: "等待中", color: "text-foreground", bg: "bg-secondary" },
-    running: { label: '运行中', color: 'text-yellow-700', bg: 'bg-yellow-100' },
-    completed: { label: '已完成', color: 'text-green-700', bg: 'bg-green-100' },
-    failed: { label: '失败', color: 'text-red-700', bg: 'bg-red-100' },
+    running: { label: '运行中', color: 'text-warning', bg: 'bg-warning/10' },
+    completed: { label: '已完成', color: 'text-fall', bg: 'bg-fall/10' },
+    failed: { label: '失败', color: 'text-rise', bg: 'bg-rise/10' },
     cancelled: { label: "已取消", color: "text-foreground", bg: "bg-secondary" },
   };
 
@@ -364,8 +364,8 @@ export default function AdminDashboard() {
                   className="rounded-lg bg-card p-4 text-left shadow-sm transition-shadow hover:shadow-md"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-yellow-100 p-2">
-                      <Clock className="h-5 w-5 text-yellow-600" />
+                    <div className="rounded-lg bg-warning/10 p-2">
+                      <Clock className="h-5 w-5 text-warning" />
                     </div>
                     <div>
                       <div className="font-medium text-foreground">任务监控</div>

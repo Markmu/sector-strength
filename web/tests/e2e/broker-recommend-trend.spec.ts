@@ -248,13 +248,13 @@ userTest.describe('plan-02：前端推荐趋势视图（red 阶段）', () => {
       await expect(row0505).toBeVisible()
       await expect(row0404).toBeVisible()
 
-      // AC-06：2026-05 家数 0，券商列显示"—"（按月作用域断言，避免与历史月"—"冲突）
+      // AC-06：2026-05 家数 0，券商列显示占位符
       await expect(row0505).toContainText('0 家')
-      await expect(row0505.getByText('—', { exact: true })).toBeVisible()
+      await expect(row0505.getByText('-', { exact: true })).toBeVisible()
 
       // 对比：有推荐月份不应显示"—"
       await expect(row0606.getByText('中信证券')).toBeVisible()
-      await expect(row0606.getByText('—')).toHaveCount(0)
+      await expect(row0606.getByText('-', { exact: true })).toHaveCount(0)
     })
   })
 

@@ -212,7 +212,7 @@ export default function SectorStrengthCalculationPanel() {
     const styles = {
       pending: 'bg-secondary text-foreground',
       running: 'bg-primary-light text-primary',
-      completed: 'bg-green-100 text-green-700',
+      completed: 'bg-fall/10 text-fall',
       failed: 'bg-destructive/10 text-destructive',
       cancelled: 'bg-secondary text-muted-foreground'
     };
@@ -389,8 +389,8 @@ export default function SectorStrengthCalculationPanel() {
       </div>
 
       {/* 覆盖选项 */}
-      <div className={`bg-white rounded-lg shadow-sm border p-6 ${
-        overwrite ? 'border-orange-200 bg-orange-50' : 'border-border'
+      <div className={`bg-card rounded-lg shadow-sm border p-6 ${
+        overwrite ? 'border-warning/30 bg-warning/10' : 'border-border'
       }`}>
         <div className="flex items-start gap-3">
           <input
@@ -408,7 +408,7 @@ export default function SectorStrengthCalculationPanel() {
           />
           <div className="flex-1">
             <label htmlFor="overwrite-strength" className="flex items-center gap-2 text-sm font-medium text-foreground cursor-pointer">
-              <AlertTriangle className={`w-4 h-4 ${overwrite ? 'text-orange-600' : 'text-faint'}`} />
+              <AlertTriangle className={`w-4 h-4 ${overwrite ? 'text-warning' : 'text-faint'}`} />
               覆盖已有强度数据
             </label>
             <p className="mt-1 text-sm text-muted-foreground">{overwrite
@@ -423,9 +423,9 @@ export default function SectorStrengthCalculationPanel() {
                     checked={confirmOverwrite}
                     onChange={(e) => setConfirmOverwrite(e.target.checked)}
                     disabled={loading}
-                    className="text-orange-600"
+                    className="text-warning"
                   />
-                  <span className="text-orange-700 font-medium">
+                  <span className="text-warning font-medium">
                     我确认要覆盖已有强度数据
                   </span>
                 </label>
@@ -457,7 +457,7 @@ export default function SectorStrengthCalculationPanel() {
         <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
           <div className="flex">
             <div className="flex-shrink-0">
-              <AlertCircle className="w-5 h-5 text-red-600" />
+              <AlertCircle className="w-5 h-5 text-rise" />
             </div>
             <div className="ml-3 flex-1">
               <h4 className="text-sm font-medium text-destructive">操作失败</h4>

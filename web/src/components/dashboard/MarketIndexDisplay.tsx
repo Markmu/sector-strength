@@ -56,9 +56,9 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
         lineStyle: {
           width: 20,
           color: [
-            [0.4, '#EF4444'],   // 0-40: 弱（红色）
+            [0.4, '#4A8B6F'],   // 0-40: 弱（绿色）
             [0.7, '#FBBF24'],   // 40-70: 中（黄色）
-            [1, '#10B981']      // 70-100: 强（绿色）
+            [1, '#C04E42']      // 70-100: 强（红色）
           ]
         }
       },
@@ -127,8 +127,8 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
     }],
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
-        const point = trend[params[0].dataIndex]
+      formatter: (params: Array<{ dataIndex: number }>) => {
+        const point = trend[params[0]?.dataIndex]
         if (!point) return ''
         const date = new Date(point.timestamp)
         return `${date.toLocaleDateString('zh-CN')}<br/>指数: ${point.value.toFixed(2)}`
@@ -224,14 +224,18 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
       {/* 详情弹窗（简化版本） */}
       {showDetail && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-foreground/35 flex items-center justify-center z-50 p-4"
           onClick={() => setShowDetail(false)}
+          data-testid="market-index-detail-backdrop"
         >
           <div
             className="bg-card rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="market-index-detail-title"
           >
-            <h3 className="text-lg font-bold mb-4">市场强度指数计算方法</h3>
+            <h3 id="market-index-detail-title" className="text-lg font-bold mb-4">市场强度指数计算方法</h3>
             <div className="text-sm text-foreground space-y-3">
               <p>
                 <strong>指数定义：</strong>
@@ -247,9 +251,9 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
               <p>
                 <strong>指数解读：</strong>
                 <br />
-                <span className="text-rise">●</span> 70-100：市场强势<br />
-                <span className="text-yellow-600">●</span> 40-70：市场中性<br />
-                <span className="text-fall">●</span> 0-40：市场弱势
+                <span className="font-semibold text-rise">70-100</span>：市场强势<br />
+                <span className="font-semibold text-warning">40-70</span>：市场中性<br />
+                <span className="font-semibold text-fall">0-40</span>：市场弱势
               </p>
               <p>
                 <strong>板块统计：</strong>
@@ -261,7 +265,7 @@ export const MarketIndexDisplay = memo(function MarketIndexDisplay() {
             </div>
             <button
               onClick={() => setShowDetail(false)}
-              className="mt-4 w-full bg-primary text-white py-2 rounded hover:bg-primary/90"
+              className="mt-4 w-full bg-primary text-on-signal py-2 rounded hover:bg-primary/90"
             >
               关闭
             </button>

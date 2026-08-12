@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Card, CardBody } from '@/components/ui/Card';
-import Loading from '@/components/ui/Loading';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { CheckCircle2, LoaderCircle } from 'lucide-react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -137,134 +137,103 @@ export default function RegisterPage() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Card className="w-full max-w-md p-8 text-center">
-          <h2 className="text-2xl font-bold text-rise mb-4">注册成功！</h2>
-          <p className="text-muted-foreground mb-6">
+      <AuthShell title="注册成功" description="账户已创建，请完成邮箱验证。">
+        <div className="rounded-xl border border-fall/30 bg-fall/8 p-5 text-center">
+          <CheckCircle2 className="mx-auto mb-3 h-7 w-7 text-fall" aria-hidden="true" />
+          <p className="text-sm leading-6 text-muted-foreground">
             验证邮件已发送到您的邮箱，请查收并点击验证链接激活账户。
           </p>
-          <Loading text="正在跳转到登录页面..." />
-        </Card>
-      </div>
+          <div className="mt-4 flex items-center justify-center gap-2 text-xs font-medium text-muted-foreground">
+            <LoaderCircle className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
+            正在跳转到登录页面...
+          </div>
+        </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">注册账户</h1>
-          <p className="text-muted-foreground">创建 Sector Strength 账户开始使用</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
+    <AuthShell
+      title="注册账户"
+      description="创建账户，保存你的复盘入口。"
+      footer={
+        <p>
+          已有账户？{' '}
+          <Link href="/login" className="font-medium text-primary transition-colors hover:text-primary-hover">
+            立即登录
+          </Link>
+        </p>
+      }
+    >
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {errors.general && (
-            <div className="p-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-md text-sm">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/8 p-3 text-sm text-destructive" role="alert">
               {errors.general}
             </div>
           )}
 
-          <div>
-            <label htmlFor="username" className="block text-sm font-medium text-foreground mb-1">
-              用户名（可选）
-            </label>
-            <Input
-              id="username"
-              name="username"
-              type="text"
-              value={formData.username}
-              onChange={handleInputChange}
-              placeholder="输入用户名"
-              className={errors.username ? 'border-destructive' : ''}
-            />
-            {errors.username && (
-              <p className="mt-1 text-sm text-destructive">{errors.username}</p>
-            )}
-          </div>
+          <Input
+            id="username"
+            name="username"
+            type="text"
+            label="用户名（可选）"
+            value={formData.username}
+            onChange={handleInputChange}
+            placeholder="输入用户名"
+            error={errors.username}
+            autoComplete="username"
+          />
 
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1">
-              邮箱地址 <span className="text-red-500">*</span>
-            </label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="your@email.com"
-              className={errors.email ? 'border-destructive' : ''}
-              required
-            />
-            {errors.email && (
-              <p className="mt-1 text-sm text-destructive">{errors.email}</p>
-            )}
-          </div>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            label="邮箱地址"
+            value={formData.email}
+            onChange={handleInputChange}
+            placeholder="your@email.com"
+            error={errors.email}
+            autoComplete="email"
+            required
+          />
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1">
-              密码 <span className="text-red-500">*</span>
-            </label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              value={formData.password}
-              onChange={handleInputChange}
-              placeholder="••••••••"
-              className={errors.password ? 'border-destructive' : ''}
-              required
-            />
-            {errors.password && (
-              <p className="mt-1 text-sm text-destructive">{errors.password}</p>
-            )}
-          </div>
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            label="密码"
+            value={formData.password}
+            onChange={handleInputChange}
+            placeholder="••••••••"
+            error={errors.password}
+            helperText="至少 8 位，包含大小写字母、数字和特殊字符。"
+            autoComplete="new-password"
+            required
+          />
 
-          <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-foreground mb-1">
-              确认密码 <span className="text-red-500">*</span>
-            </label>
-            <Input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              value={formData.confirmPassword}
-              onChange={handleInputChange}
-              placeholder="••••••••"
-              className={errors.confirmPassword ? 'border-destructive' : ''}
-              required
-            />
-            {errors.confirmPassword && (
-              <p className="mt-1 text-sm text-destructive">{errors.confirmPassword}</p>
-            )}
-          </div>
+          <Input
+            id="confirmPassword"
+            name="confirmPassword"
+            type="password"
+            label="确认密码"
+            value={formData.confirmPassword}
+            onChange={handleInputChange}
+            placeholder="••••••••"
+            error={errors.confirmPassword}
+            autoComplete="new-password"
+            required
+          />
 
           <Button
             type="submit"
             disabled={isLoading}
-            variant="secondary"
-            className="w-full bg-primary hover:bg-primary-hover text-primary-foreground font-semibold py-3"
+            variant="primary"
+            className="mt-2 w-full"
+            loading={isLoading}
           >
-            {isLoading ? (
-              <>
-                <Loading className="mr-2" />
-                注册中...
-              </>
-            ) : (
-              '注册账户'
-            )}
+            {isLoading ? '注册中...' : '注册账户'}
           </Button>
         </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            已有账户？{' '}
-            <Link href="/login" className="font-medium text-primary-600 hover:text-primary-500">
-              立即登录
-            </Link>
-          </p>
-        </div>
-      </Card>
-    </div>
+    </AuthShell>
   );
 }

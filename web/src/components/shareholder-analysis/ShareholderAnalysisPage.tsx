@@ -107,8 +107,8 @@ export default function ShareholderAnalysisPage() {
 
       {/* 错误态 */}
       {isError && (
-        <div className="bg-card rounded-xl border border-amber-200 p-8 text-center">
-          <p className="text-base font-medium text-amber-700 mb-1">
+        <div className="bg-card rounded-xl border border-warning/30 p-8 text-center">
+          <p className="text-base font-medium text-warning mb-1">
             加载失败，请重试
           </p>
           <p className="text-sm text-muted-foreground">

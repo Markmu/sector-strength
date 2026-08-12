@@ -47,12 +47,12 @@ function levelLabel(times: number): string {
 
 /** 连板层颜色（高度越高越深红） */
 function levelColorClass(times: number): string {
-  if (times >= 7) return "bg-red-600 text-white";
-  if (times >= 5) return "bg-red-500 text-white";
-  if (times >= 4) return "bg-red-400 text-white";
-  if (times >= 3) return "bg-orange-500 text-white";
-  if (times >= 2) return "bg-orange-400 text-white";
-  return "bg-orange-300 text-orange-900";
+  if (times >= 7) return "bg-red-600 text-on-signal";
+  if (times >= 5) return "bg-red-500 text-on-signal";
+  if (times >= 4) return "bg-red-400 text-on-signal";
+  if (times >= 3) return "bg-orange-500 text-on-signal";
+  if (times >= 2) return "bg-orange-400 text-on-signal";
+  return "bg-orange-300 text-warning";
 }
 
 /** 个股形态标记（从 first_time / open_times 推断一字/T字等） */
@@ -115,7 +115,7 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-gray-400">
+      <div className="flex items-center justify-center py-16 text-faint">
         <Loader2 className="animate-spin" size={24} />
       </div>
     );
@@ -123,7 +123,7 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
 
   if (isError) {
     return (
-      <div className="flex items-center justify-center py-16 text-red-500">
+      <div className="flex items-center justify-center py-16 text-rise">
         <AlertCircle className="mr-2" size={20} />
         加载失败，请稍后重试
       </div>
@@ -132,7 +132,7 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
 
   if (!ladder || !ladder.hasData) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-16 text-faint">
         <Flame size={40} className="mb-3 opacity-30" />
         <p>该交易日暂无涨停数据</p>
         <p className="text-sm mt-1">请先在管理后台同步涨停专题数据</p>
@@ -145,11 +145,11 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
       {/* 板块筛选条（涨停最强板块统计 + 可点击筛选） */}
       {industryOptions.length > 0 && (
         <div>
-          <h3 className="mb-2 text-sm font-medium text-gray-500">
+          <h3 className="mb-2 text-sm font-medium text-muted-foreground">
             按板块筛选{selectedIndustry && (
               <button
                 onClick={() => setSelectedIndustry(null)}
-                className="ml-2 text-xs text-blue-500 hover:underline"
+                className="ml-2 text-xs text-primary hover:underline"
               >
                 显示全部
               </button>
@@ -161,12 +161,12 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
               onClick={() => setSelectedIndustry(null)}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${
                 selectedIndustry === null
-                  ? "border-blue-500 bg-blue-50 text-blue-600"
-                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                  ? "border-primary bg-primary-light text-primary"
+                  : "border-border bg-card text-foreground hover:border-border"
               }`}
             >
               <span className="font-medium">全部</span>
-              <span className="rounded-full bg-gray-100 px-1.5 text-xs font-semibold text-gray-500">
+              <span className="rounded-full bg-secondary px-1.5 text-xs font-semibold text-muted-foreground">
                 {allStocks.length}
               </span>
             </button>
@@ -179,16 +179,16 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
                   onClick={() => setSelectedIndustry(opt.name)}
                   className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${
                     active
-                      ? "border-orange-500 bg-orange-50 text-orange-600"
-                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                      ? "border-orange-500 bg-warning/10 text-warning"
+                      : "border-border bg-card text-foreground hover:border-border"
                   }`}
                 >
                   <span className="font-medium">{opt.name}</span>
                   <span
                     className={`rounded-full px-1.5 text-xs font-semibold ${
                       active
-                        ? "bg-orange-200 text-orange-700"
-                        : "bg-red-100 text-red-600"
+                        ? "bg-orange-200 text-warning"
+                        : "bg-rise/10 text-rise"
                     }`}
                   >
                     {opt.count}
@@ -203,7 +203,7 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
       {/* 连板天梯分层（按板块筛选后） */}
       <div className="space-y-4">
         {filteredLevels.map((level) => (
-          <div key={level.limitTimes} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div key={level.limitTimes} className="rounded-xl border border-border bg-card p-4 shadow-sm">
             {/* 层标题 */}
             <div className="mb-3 flex items-center gap-2">
               <span
@@ -213,10 +213,10 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
               >
                 {level.limitTimes}
               </span>
-              <span className="font-semibold text-gray-800">
+              <span className="font-semibold text-foreground">
                 {levelLabel(level.limitTimes)}
               </span>
-              <span className="text-sm text-gray-400">({level.count})</span>
+              <span className="text-sm text-faint">({level.count})</span>
             </div>
 
             {/* 个股卡片网格 */}
@@ -224,31 +224,31 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
               {level.stocks.map((stock) => (
                 <div
                   key={stock.tsCode}
-                  className="flex flex-col rounded-lg border border-gray-100 bg-gray-50 p-2.5 transition hover:border-orange-300 hover:bg-orange-50"
+                  className="flex flex-col rounded-lg border border-border bg-muted p-2.5 transition hover:border-warning/30 hover:bg-warning/10"
                 >
                   {/* 股票名 + 代码 + 首封时间 */}
                   <div className="flex items-center justify-between">
                     <span className="flex items-baseline gap-1 truncate">
-                      <span className="font-medium text-gray-900">
+                      <span className="font-medium text-foreground">
                         {stock.name}
                       </span>
-                      <span className="text-[10px] text-gray-400">
+                      <span className="text-[10px] text-faint">
                         {stock.tsCode}
                       </span>
                     </span>
-                    <span className="ml-1 shrink-0 text-xs text-gray-400">
+                    <span className="ml-1 shrink-0 text-xs text-faint">
                       {formatTime(stock.firstTime)}
                     </span>
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5">
-                    <span className="text-xs text-blue-500">
+                    <span className="text-xs text-primary">
                       {stock.industry ?? "-"}
                     </span>
                     {/* 形态标记 */}
                     {stockTags(stock).map((tag, idx) => (
                       <span
                         key={idx}
-                        className="rounded bg-red-100 px-1 text-[10px] font-medium text-red-600"
+                        className="rounded bg-rise/10 px-1 text-[10px] font-medium text-rise"
                       >
                         {tag}
                       </span>
@@ -256,16 +256,16 @@ function LadderView({ tradeDate }: { tradeDate: string | null }) {
                   </div>
                   {/* 涨幅 + 封单 */}
                   <div className="mt-1 flex items-center justify-between text-xs">
-                    <span className="font-semibold text-red-600">
+                    <span className="font-semibold text-rise">
                       +{(stock.pctChg ?? 0).toFixed(2)}%
                     </span>
-                    <span className="text-gray-400">
+                    <span className="text-faint">
                       封单 {formatFdAmount(stock.fdAmount)}
                     </span>
                   </div>
                   {/* up_stat（如 7天4板） */}
                   {stock.upStat && (
-                    <div className="mt-0.5 text-[10px] text-gray-400">
+                    <div className="mt-0.5 text-[10px] text-faint">
                       {stock.upStat}
                     </div>
                   )}
@@ -295,7 +295,7 @@ function MultiDaysView({ endDate }: { endDate: string | null }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-gray-400">
+      <div className="flex items-center justify-center py-16 text-faint">
         <Loader2 className="animate-spin" size={24} />
       </div>
     );
@@ -303,7 +303,7 @@ function MultiDaysView({ endDate }: { endDate: string | null }) {
 
   if (isError) {
     return (
-      <div className="flex items-center justify-center py-16 text-red-500">
+      <div className="flex items-center justify-center py-16 text-rise">
         <AlertCircle className="mr-2" size={20} />
         加载失败
       </div>
@@ -312,7 +312,7 @@ function MultiDaysView({ endDate }: { endDate: string | null }) {
 
   if (!multiDays || !multiDays.hasData || multiDays.items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-16 text-faint">
         <Table size={40} className="mb-3 opacity-30" />
         <p>暂无多日统计数据</p>
       </div>
@@ -322,10 +322,10 @@ function MultiDaysView({ endDate }: { endDate: string | null }) {
   const cols = Array.from({ length: Math.max(maxCol - 1, 0) }, (_, i) => i + 2);
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-gray-200 bg-gray-50 text-gray-600">
+          <tr className="border-b border-border bg-muted text-muted-foreground">
             <th className="px-4 py-3 text-left font-medium">交易日</th>
             <th className="px-4 py-3 text-right font-medium">涨停总数</th>
             <th className="px-4 py-3 text-right font-medium">最高连板</th>
@@ -338,14 +338,14 @@ function MultiDaysView({ endDate }: { endDate: string | null }) {
         </thead>
         <tbody>
           {multiDays.items.map((item) => (
-            <tr key={item.tradeDate} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="px-4 py-3 text-gray-800">{item.tradeDate}</td>
-              <td className="px-4 py-3 text-right font-semibold text-red-600">
+            <tr key={item.tradeDate} className="border-b border-border hover:bg-muted">
+              <td className="px-4 py-3 text-foreground">{item.tradeDate}</td>
+              <td className="px-4 py-3 text-right font-semibold text-rise">
                 {item.totalUp}
               </td>
               <td className="px-4 py-3 text-right">
                 {item.maxTimes > 0 ? (
-                  <span className="font-bold text-red-600">{item.maxTimes}板</span>
+                  <span className="font-bold text-rise">{item.maxTimes}板</span>
                 ) : (
                   "-"
                 )}
@@ -353,7 +353,7 @@ function MultiDaysView({ endDate }: { endDate: string | null }) {
               {cols.map((c) => {
                 const val = (item[`limitUp${c}`] as number) ?? 0;
                 return (
-                  <td key={c} className="px-4 py-3 text-right text-gray-600">
+                  <td key={c} className="px-4 py-3 text-right text-muted-foreground">
                     {val > 0 ? val : "-"}
                   </td>
                 );
@@ -381,7 +381,7 @@ function ListView({ tradeDate }: { tradeDate: string | null }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-gray-400">
+      <div className="flex items-center justify-center py-16 text-faint">
         <Loader2 className="animate-spin" size={24} />
       </div>
     );
@@ -389,7 +389,7 @@ function ListView({ tradeDate }: { tradeDate: string | null }) {
 
   if (isError) {
     return (
-      <div className="flex items-center justify-center py-16 text-red-500">
+      <div className="flex items-center justify-center py-16 text-rise">
         <AlertCircle className="mr-2" size={20} />
         加载失败
       </div>
@@ -398,7 +398,7 @@ function ListView({ tradeDate }: { tradeDate: string | null }) {
 
   if (!list || !list.hasData || list.items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-16 text-faint">
         <List size={40} className="mb-3 opacity-30" />
         <p>暂无数据</p>
       </div>
@@ -425,21 +425,21 @@ function ListView({ tradeDate }: { tradeDate: string | null }) {
             }}
             className={`rounded-lg px-3 py-1 text-sm transition ${
               filterType === opt.v
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                ? "bg-primary text-on-signal"
+                : "bg-secondary text-muted-foreground hover:bg-border"
             }`}
           >
             {opt.label}
           </button>
         ))}
-        <span className="ml-auto text-sm text-gray-400">共 {list.total} 条</span>
+        <span className="ml-auto text-sm text-faint">共 {list.total} 条</span>
       </div>
 
       {/* 表格 */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 bg-gray-50 text-gray-600">
+            <tr className="border-b border-border bg-muted text-muted-foreground">
               <th className="px-3 py-2.5 text-left font-medium">代码</th>
               <th className="px-3 py-2.5 text-left font-medium">名称</th>
               <th className="px-3 py-2.5 text-left font-medium">板块</th>
@@ -453,39 +453,39 @@ function ListView({ tradeDate }: { tradeDate: string | null }) {
           </thead>
           <tbody>
             {list.items.map((s) => (
-              <tr key={s.tsCode} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="px-3 py-2 text-gray-500">{s.tsCode}</td>
-                <td className="px-3 py-2 font-medium text-gray-900">{s.name}</td>
-                <td className="px-3 py-2 text-blue-500">{s.industry ?? "-"}</td>
+              <tr key={s.tsCode} className="border-b border-border hover:bg-muted">
+                <td className="px-3 py-2 text-muted-foreground">{s.tsCode}</td>
+                <td className="px-3 py-2 font-medium text-foreground">{s.name}</td>
+                <td className="px-3 py-2 text-primary">{s.industry ?? "-"}</td>
                 <td className="px-3 py-2 text-right">
                   {s.limitTimes && s.limitTimes > 1 ? (
-                    <span className="font-bold text-red-600">{s.limitTimes}</span>
+                    <span className="font-bold text-rise">{s.limitTimes}</span>
                   ) : (
-                    <span className="text-gray-400">首板</span>
+                    <span className="text-faint">首板</span>
                   )}
                 </td>
                 <td
                   className={`px-3 py-2 text-right font-semibold ${
-                    s.limitType === "D" ? "text-green-600" : "text-red-600"
+                    s.limitType === "D" ? "text-fall" : "text-rise"
                   }`}
                 >
                   {(s.pctChg ?? 0) > 0 ? "+" : ""}
                   {(s.pctChg ?? 0).toFixed(2)}%
                 </td>
-                <td className="px-3 py-2 text-right text-gray-500">
+                <td className="px-3 py-2 text-right text-muted-foreground">
                   {formatFdAmount(s.fdAmount)}
                 </td>
-                <td className="px-3 py-2 text-center text-gray-500">
+                <td className="px-3 py-2 text-center text-muted-foreground">
                   {s.firstTime ?? "-"}
                 </td>
                 <td className="px-3 py-2 text-center">
                   {(s.openTimes ?? 0) > 0 ? (
-                    <span className="text-orange-500">{s.openTimes}</span>
+                    <span className="text-warning">{s.openTimes}</span>
                   ) : (
-                    <span className="text-gray-300">0</span>
+                    <span className="text-faint">0</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-xs text-gray-400">
+                <td className="px-3 py-2 text-xs text-faint">
                   {s.upStat ?? "-"}
                 </td>
               </tr>
@@ -500,17 +500,17 @@ function ListView({ tradeDate }: { tradeDate: string | null }) {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="rounded-lg border border-gray-200 px-3 py-1 text-sm disabled:opacity-40"
+            className="rounded-lg border border-border px-3 py-1 text-sm disabled:opacity-40"
           >
             上一页
           </button>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-muted-foreground">
             {page} / {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            className="rounded-lg border border-gray-200 px-3 py-1 text-sm disabled:opacity-40"
+            className="rounded-lg border border-border px-3 py-1 text-sm disabled:opacity-40"
           >
             下一页
           </button>
@@ -536,12 +536,12 @@ export default function LimitLadderPage() {
       {/* 页头 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100">
-            <Flame className="text-orange-600" size={24} />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+            <Flame className="text-warning" size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">连板天梯</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl font-bold text-foreground">连板天梯</h1>
+            <p className="text-sm text-muted-foreground">
               涨停个股分层 · 连板晋级 · 最强板块
             </p>
           </div>
@@ -550,17 +550,17 @@ export default function LimitLadderPage() {
         <div className="flex items-center gap-3">
           {/* 日期选择器 */}
           <div className="flex items-center gap-1.5">
-            <Calendar size={16} className="text-gray-400" />
+            <Calendar size={16} className="text-faint" />
             <input
               type="date"
               value={tradeDateInput}
               onChange={(e) => setTradeDateInput(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
 
           {/* 视图切换 */}
-          <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted p-0.5">
             {([
               { v: "ladder", label: "单日", Icon: AppWindow },
               { v: "multi-days", label: "多日", Icon: Table },
@@ -574,8 +574,8 @@ export default function LimitLadderPage() {
                     onClick={() => setViewMode(opt.v)}
                     className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
                       active
-                        ? "bg-white text-gray-900 shadow-sm"
-                        : "text-gray-500 hover:text-gray-700"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <opt.Icon size={14} />
@@ -590,7 +590,7 @@ export default function LimitLadderPage() {
 
       {/* 数据日期提示 */}
       {!tradeDateInput && (
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-faint">
           {isLatestLoading
             ? "加载最新交易日..."
             : latestDate

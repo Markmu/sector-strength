@@ -399,7 +399,7 @@ export default function SectorAnalysisListPage() {
                       value={tempMinScore}
                       onChange={(e) => handleMinScoreChange(Number(e.target.value))}
                       onBlur={handleMinScoreBlur}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
                       style={{
                         background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(tempMinScore / 100) * 100}%, #e5e7eb ${(tempMinScore / 100) * 100}%, #e5e7eb 100%)`
                       }}
@@ -426,7 +426,7 @@ export default function SectorAnalysisListPage() {
                       value={tempMaxScore}
                       onChange={(e) => handleMaxScoreChange(Number(e.target.value))}
                       onBlur={handleMaxScoreBlur}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
                       style={{
                         background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(tempMaxScore / 100) * 100}%, #e5e7eb ${(tempMaxScore / 100) * 100}%, #e5e7eb 100%)`
                       }}
@@ -435,7 +435,7 @@ export default function SectorAnalysisListPage() {
                 </div>
 
                 {/* 视觉化范围条 */}
-                <div className="mt-3 h-2 bg-gray-200 rounded-full relative overflow-hidden">
+                <div className="mt-3 h-2 bg-border rounded-full relative overflow-hidden">
                   <div
                     className="h-full bg-primary rounded-full transition-all duration-200"
                     style={{
@@ -448,7 +448,7 @@ export default function SectorAnalysisListPage() {
 
                 {/* 提示信息 */}
                 {tempMinScore !== minScore || tempMaxScore !== maxScore ? (
-                  <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                  <p className="text-xs text-warning mt-2 flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                     </svg>
@@ -468,7 +468,7 @@ export default function SectorAnalysisListPage() {
 
           {/* 筛选结果统计 */}
           <div className="mt-4 pt-4 border-t border-border">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               当前页: <span className="font-semibold text-foreground">{sectors.length}</span> 个板块 | 总计: {totalCount} 个
             </p>
           </div>
@@ -538,7 +538,7 @@ export default function SectorAnalysisListPage() {
               {/* 分页控制 */}
               {totalPages > 1 && (
                 <div className="px-6 py-4 border-t border-border flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-muted-foreground">
                     第 {currentPage} / {totalPages} 页，共 {totalCount} 条
                   </div>
 
@@ -572,7 +572,7 @@ export default function SectorAnalysisListPage() {
                             className={`min-w-[40px] px-3 py-2 text-sm font-medium rounded-lg border ${
                               currentPage === pageNum
                                 ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                : 'bg-card text-foreground border-border hover:bg-muted'
                             }`}
                           >
                             {pageNum}
@@ -603,7 +603,7 @@ export default function SectorAnalysisListPage() {
         </div>
 
         {/* 使用提示 */}
-        <div className="bg-amber-50 rounded-lg border border-amber-200 p-4 text-sm text-amber-800">
+        <div className="bg-warning/10 rounded-lg border border-warning/30 p-4 text-sm text-warning">
           <div className="font-semibold mb-2">💡 使用提示</div>
           <ul className="space-y-1 list-disc list-inside">
             <li>点击板块名称查看详细的历史趋势和均线分析</li>

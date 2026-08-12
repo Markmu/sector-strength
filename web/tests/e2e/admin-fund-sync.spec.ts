@@ -7,6 +7,7 @@ import {
   mockTaskStatusCompleted,
   mockTaskStatusFailed,
   mockTaskStatusRunning,
+  mockFundSyncRecords,
 } from './helpers/mock-fund-api'
 
 const ADMIN_FUND_PAGE = '/dashboard/admin/fund-init'
@@ -35,6 +36,7 @@ const test = base.extend<{ authedPage: void }>({
         role: 'admin',
       }))
     })
+    await mockFundSyncRecords(page)
     await use()
   }, { auto: true }],
 })
@@ -189,12 +191,9 @@ test.describe('AC-06/07：管理员基金同步面板', () => {
 
       // 选择报告期 — 限定到 main 区域
       const periodSelect = main.locator('select')
-      // 选择第一个非空选项
-      const options = periodSelect.locator('option')
-      const optionCount = await options.count()
-      if (optionCount > 1) {
-        await periodSelect.selectOption({ index: 1 })
-      }
+      await expect(periodSelect).toBeVisible()
+      await expect(periodSelect.locator('option')).toHaveCount(9)
+      await periodSelect.selectOption({ index: 1 })
 
       // 点击同步指定报告期
       const syncButton = main.getByRole('button', { name: '同步指定报告期' })
@@ -240,11 +239,9 @@ test.describe('AC-06/07：管理员基金同步面板', () => {
 
       // 选择报告期
       const periodSelect = main.locator('select')
-      const options = periodSelect.locator('option')
-      const optionCount = await options.count()
-      if (optionCount > 1) {
-        await periodSelect.selectOption({ index: 1 })
-      }
+      await expect(periodSelect).toBeVisible()
+      await expect(periodSelect.locator('option')).toHaveCount(9)
+      await periodSelect.selectOption({ index: 1 })
 
       // 点击同步
       const syncButton = main.getByRole('button', { name: '同步指定报告期' })
@@ -272,7 +269,7 @@ test.describe('AC-06/07：管理员基金同步面板', () => {
       await expect(table.getByText('时间')).toBeVisible()
       await expect(table.getByText('任务')).toBeVisible()
       await expect(table.getByText('报告期')).toBeVisible()
-      await expect(table.getByText('结果')).toBeVisible()
+      await expect(table.getByText('状态')).toBeVisible()
       await expect(table.getByText('详情')).toBeVisible()
 
       // 断言：记录行存在 — 同步流程会添加 running + completed 两条记录，取 first

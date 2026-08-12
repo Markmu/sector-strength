@@ -227,7 +227,7 @@ export default function SectorStocksTable({ sectorId }: SectorStocksTableProps) 
                     >
                       <td className="px-4 py-3 font-mono text-foreground">{item.symbol}</td>
                       <td className="px-4 py-3 text-foreground min-w-[7rem] whitespace-nowrap">
-                        {item.name ?? '—'}
+                        {item.name ?? '-'}
                       </td>
                       <td className="px-4 py-3 text-foreground">
                         {formatScore(item.strength_score)}

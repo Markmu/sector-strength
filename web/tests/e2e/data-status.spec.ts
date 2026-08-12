@@ -53,7 +53,7 @@ test.describe('plan-03：前端数据状态标签页', () => {
       // 断言：数据状态标签按钮可见且处于激活态
       const dataStatusTab = page.getByTestId('tab-data-status')
       await expect(dataStatusTab).toBeVisible()
-      await expect(dataStatusTab).toHaveClass(/border-blue-600/)
+      await expect(dataStatusTab).toHaveClass(/border-primary/)
 
       // 断言：数据状态面板可见
       await expect(page.getByTestId('data-status-panel')).toBeVisible()

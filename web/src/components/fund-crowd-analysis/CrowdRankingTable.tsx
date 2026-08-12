@@ -6,7 +6,7 @@
  * 列：排名 / 代码 / 名称 / 行业 / 持有基金数 / 环比变化 / 操作（反查）
  *
  * 环比列三态渲染（AC-03 + AC-06，先 hasPrevPeriod 再 isNew 再数值）：
- * 1. hasPrevPeriod=false → 统一 "—"
+ * 1. hasPrevPeriod=false → 统一 "-"
  * 2. isNew=true → "★ 新进"
  * 3. 正常 → 基金 ±N（含方向箭头）
  *
@@ -31,7 +31,7 @@ export interface CrowdRankingTableProps {
   pageSize: number
   isLoading: boolean
   isError: boolean
-  /** AC-06：false 时环比列统一 "—" */
+  /** AC-06：false 时环比列统一 "-" */
   hasPrevPeriod: boolean
   search: string
   /** 板块分类列标题（随 sector_type 切换：行业/概念/地域） */
@@ -55,15 +55,15 @@ function renderChangeColumn(
   item: CrowdRankingItem,
   hasPrevPeriod: boolean
 ): React.ReactNode {
-  // AC-06：上期完全缺失 → 统一 "—"
+  // AC-06：上期完全缺失 → 统一 "-"
   if (!hasPrevPeriod) {
-    return <span className="text-muted-foreground">—</span>
+    return <span className="text-muted-foreground">-</span>
   }
   // AC-03：新进（is_new=true，上期无记录）→ "新进" 标识
   if (item.isNew === true) {
     return (
       <span
-        className="inline-flex items-center gap-1 text-blue-600"
+        className="inline-flex items-center gap-1 text-primary"
         data-testid={`crowd-new-badge-${item.stockSymbol}`}
       >
         ★ 新进
@@ -81,16 +81,16 @@ function renderChangeColumn(
   const arrow = direction === 'up' ? '↑' : direction === 'down' ? '↓' : '→'
   const colorClass =
     direction === 'up'
-      ? 'text-green-600'
+      ? 'text-fall'
       : direction === 'down'
-        ? 'text-red-600'
+        ? 'text-rise'
         : 'text-muted-foreground'
   const countText =
     countChange !== null
       ? countChange > 0
         ? `+${countChange}`
         : `${countChange}`
-      : '—'
+      : '-'
   return (
     <span className={`inline-flex items-center gap-2 text-sm ${colorClass}`}>
       <span>
@@ -254,12 +254,12 @@ export default function CrowdRankingTable({
                           {item.stockSymbol}
                         </td>
                         <td className="px-4 py-3 text-foreground min-w-[7rem] whitespace-nowrap">
-                          {item.stockName ?? '—'}
+                          {item.stockName ?? '-'}
                         </td>
                         <td className="px-4 py-3 text-foreground">
                           {item.industries.length > 0
                             ? item.industries.join('、')
-                            : '—'}
+                            : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-foreground">
                           {item.fundCount}

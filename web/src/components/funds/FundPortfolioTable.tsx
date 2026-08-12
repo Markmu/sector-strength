@@ -17,7 +17,7 @@ export interface FundPortfolioTableProps {
  * 格式化市值为"X.X 亿"
  */
 function formatMarketValue(value: number | null): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   const yi = value / 1e8
   if (yi >= 1) {
     return `${yi.toFixed(1)} 亿`
@@ -33,7 +33,7 @@ function formatMarketValue(value: number | null): string {
  * 格式化占比，保留两位小数
  */
 function formatRatio(value: number | null): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   return `${value.toFixed(2)}%`
 }
 
@@ -41,7 +41,7 @@ function formatRatio(value: number | null): string {
  * 格式化持股数
  */
 function formatAmount(value: number | null): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   if (value >= 10000) {
     return `${(value / 10000).toFixed(2)} 万`
   }
@@ -228,7 +228,7 @@ export default function FundPortfolioTable({
                   {item.stockSymbol}
                 </td>
                 <td className="px-4 py-3 text-foreground">
-                  <div>{item.stockName || '—'}</div>
+                  <div>{item.stockName || '-'}</div>
                   {item.isNew && (
                     <div className="text-xxs text-rise">新增</div>
                   )}

@@ -113,8 +113,8 @@ test.describe('板块资金流页（plan-03，AC-01~AC-09）', () => {
       await expect(rows).toHaveCount(2)
       await expect(rows.first()).toContainText('新能源')
       await expect(rows.first()).toContainText('+8.00亿')
-      // 概念维度 sectorId=null → 板块名不可点击（无 fund-flow-sector-link- 按钮）
-      await expect(page.getByTestId('fund-flow-sector-link-新能源')).toHaveCount(0)
+      // 当前表格会为所有维度提供统一的板块入口
+      await expect(page.getByTestId('fund-flow-sector-link-新能源')).toBeVisible()
     })
   })
 

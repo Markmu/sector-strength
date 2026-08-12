@@ -157,7 +157,7 @@ export default function EtfTrendChart({
           const val = arr[0].data
           const valText =
             val === null || val === undefined
-              ? '—'
+              ? '-'
               : isNetInflow
                 ? formatSignedAmount(val, '亿元')
                 : `${val.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}亿份`

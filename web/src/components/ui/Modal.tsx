@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import Button from './Button'
+import { X } from 'lucide-react'
 
 export interface ModalProps {
   open: boolean
@@ -77,19 +78,19 @@ const Modal = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 overflow-auto bg-foreground/35 flex items-center justify-center p-4">
       <div
         ref={modalRef}
         className={cn(
-          'relative bg-white rounded-lg shadow-xl w-full',
+          'relative w-full rounded-xl border border-border bg-card text-card-foreground shadow-elevated',
           sizeClasses[size],
           className
         )}
       >
         {(title || showCloseButton) && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
             {title && (
-              <h3 className="text-lg font-medium text-gray-900">
+              <h3 className="text-base font-semibold text-foreground">
                 {title}
               </h3>
             )}
@@ -98,11 +99,8 @@ const Modal = ({
                 variant="ghost"
                 size="sm"
                 onClick={onClose}
-                icon={
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                }
+                icon={<X className="h-4 w-4" />}
+                aria-label="关闭"
               />
             )}
           </div>
@@ -113,7 +111,7 @@ const Modal = ({
         </div>
 
         {footer && (
-          <div className="px-6 py-4 border-t border-gray-200">
+          <div className="px-5 py-4 border-t border-border">
             {footer}
           </div>
         )}

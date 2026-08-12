@@ -72,9 +72,6 @@ describe('AuthContext', () => {
       </AuthWrapper>
     );
 
-    // 初始状态应该是加载中
-    expect(screen.getByTestId('is-authenticated')).toHaveTextContent('false');
-
     // 等待认证状态初始化
     await waitFor(() => {
       expect(screen.getByTestId('user-email')).toHaveTextContent('test@example.com');
@@ -209,6 +206,7 @@ describe('AuthContext', () => {
 
     localStorage.setItem('accessToken', 'mock-access-token');
     localStorage.setItem('refreshToken', 'mock-refresh-token');
+    localStorage.setItem('tokenType', 'bearer');
     localStorage.setItem('user', JSON.stringify(mockUserData));
 
     // 模拟注销API响应
@@ -260,7 +258,7 @@ describe('AuthContext', () => {
     expect(localStorage.getItem('user')).toBeNull();
   });
 
-  test('应该自动刷新即将过期的token', async () => {
+  test('初始化时应该自动刷新即将过期的token', async () => {
     // 设置即将过期的token（1分钟后过期）
     const mockUserData = {
       id: '1',
@@ -270,6 +268,7 @@ describe('AuthContext', () => {
 
     localStorage.setItem('accessToken', 'mock-access-token');
     localStorage.setItem('refreshToken', 'mock-refresh-token');
+    localStorage.setItem('tokenType', 'bearer');
     localStorage.setItem('user', JSON.stringify(mockUserData));
     localStorage.setItem('expiresIn', '60'); // 1分钟
 
@@ -304,9 +303,9 @@ describe('AuthContext', () => {
       </AuthWrapper>
     );
 
-    // 快进时间到token过期前5分钟
-    act(() => {
-      jest.advanceTimersByTime(55 * 1000); // 55秒
+    // 等待初始化 effect 和刷新请求完整结束。
+    await act(async () => {
+      await Promise.resolve();
     });
 
     // 等待自动刷新
@@ -347,6 +346,8 @@ describe('ProtectedRoute', () => {
     };
 
     localStorage.setItem('accessToken', 'mock-access-token');
+    localStorage.setItem('refreshToken', 'mock-refresh-token');
+    localStorage.setItem('tokenType', 'bearer');
     localStorage.setItem('user', JSON.stringify(mockUserData));
 
     const TestComponent = () => (
@@ -484,7 +485,7 @@ describe('LoginPage', () => {
       </AuthWrapper>
     );
 
-    const rememberMeCheckbox = screen.getByLabelText('记住我');
+    const rememberMeCheckbox = screen.getByLabelText('记住密码');
 
     // 切换记住我选项
     fireEvent.click(rememberMeCheckbox);

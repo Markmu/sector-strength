@@ -40,7 +40,7 @@ describe('SortingControls', () => {
       render(<SortingControls {...mockProps} sortBy="strength" />)
 
       const strengthButton = screen.getByText('强度')
-      expect(strengthButton).toHaveClass('bg-blue-500', 'text-white')
+      expect(strengthButton).toHaveClass('bg-primary', 'text-on-signal')
     })
 
     it('应该正确显示排序方向', () => {

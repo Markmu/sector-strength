@@ -253,13 +253,13 @@ test.describe('plan-05：指数明细（AC-04）', () => {
     await page.goto(ETF_MONITOR_PAGE)
 
     // 沪深300 行的展开标记可见（▶ 展开标记，与趋势入口分离）
-    await expect(page.getByTestId('etf-expand-沪深300')).toBeVisible()
+    await expect(page.getByTestId('etf-expand-000300.SH')).toBeVisible()
 
     // 展开前：无明细行
     await expect(page.getByTestId('etf-detail-row-510300.SH')).toHaveCount(0)
 
     // 点击展开标记 → 渲染该指数下 ETF 明细
-    await page.getByTestId('etf-expand-沪深300').click()
+    await page.getByTestId('etf-expand-000300.SH').click()
 
     // 明细按 netInflow desc：510300.SH(6亿) > 510310.SH(2亿)
     const detailRows = page.locator('[data-testid^="etf-detail-row-"]')
@@ -269,7 +269,7 @@ test.describe('plan-05：指数明细（AC-04）', () => {
     await expect(detailRows.last()).toContainText('510310.SH')
 
     // 再次点击展开标记 → 收起，明细行消失（视图不跳转）
-    await page.getByTestId('etf-expand-沪深300').click()
+    await page.getByTestId('etf-expand-000300.SH').click()
     await expect(page.getByTestId('etf-detail-row-510300.SH')).toHaveCount(0)
   })
 })
@@ -359,7 +359,7 @@ test.describe('plan-05：历史趋势视图（AC-06/07/08/09/11）', () => {
     await page.goto(ETF_MONITOR_PAGE)
 
     // 排行视图：点沪深300 行的「趋势」入口
-    await page.getByTestId('etf-trend-entry-沪深300').click()
+    await page.getByTestId('etf-trend-entry-000300.SH').click()
 
     // 视图切到趋势，对象自动定位到沪深300（index 类型）
     await expect(page.getByTestId('etf-view-trend')).toBeVisible()
@@ -367,7 +367,7 @@ test.describe('plan-05：历史趋势视图（AC-06/07/08/09/11）', () => {
 
     // 回到排行视图验证：展开标记点击不跳转（仅展开/收起）
     await page.getByTestId('etf-view-ranking').click()
-    await page.getByTestId('etf-expand-沪深300').click()
+    await page.getByTestId('etf-expand-000300.SH').click()
     // 仍在排行视图（展开标记不触发视图跳转）
     await expect(page.getByTestId('etf-index-ranking-table')).toBeVisible()
     await expect(page.getByTestId('etf-detail-row-510300.SH')).toBeVisible()

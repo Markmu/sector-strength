@@ -104,7 +104,7 @@ export default function FundFlowTimeseriesChart({
   const [ready, setReady] = useState(false)
 
   // 横轴时间：固定为完整交易日连续竞价时段（9:30-11:30 / 13:00-15:00，跳过午休）。
-  // 与采样进度无关——盘中只采到 10:00 时横轴也延伸到 15:00，保证横轴始终是完整交易日。
+  // 与采样进度无关--盘中只采到 10:00 时横轴也延伸到 15:00，保证横轴始终是完整交易日。
   const axisTimes = useMemo(() => TRADING_DAY_AXIS_TIMES, [])
 
   // 每条线的预处理：按 axisTimes 对齐的真实值序列 + 颜色 + 末端真实净额。
@@ -314,7 +314,7 @@ export default function FundFlowTimeseriesChart({
           // 防重叠 + 边界适配（自适应间距，保证所有标签可见）：
           // 用 placeLabels 纯函数放置。gap 自适应选择：
           // 1. 先用目标间距 GOAL_GAP 放置；
-          // 2. 若目标放不下（触发了线性压缩）但下限间距能放下，降级 FLOOR_GAP 重放——
+          // 2. 若目标放不下（触发了线性压缩）但下限间距能放下，降级 FLOOR_GAP 重放--
           //    避免不必要的压缩、尽量保持可读间距；
           // 3. 仍放不下（极拥挤）则接受线性压缩，全部可见。
           const { finalY, effGap } = (() => {
@@ -359,7 +359,7 @@ export default function FundFlowTimeseriesChart({
             x: p0x,
             y: p0y,
             children: [
-              // 末端锚点（当前曲线末端点）——相对原点 (0,0)
+              // 末端锚点（当前曲线末端点）--相对原点 (0,0)
               { type: 'circle', shape: { cx: 0, cy: 0, r: 3 }, style: { fill: meta.color } },
               // 末端(0,0) → 文字左边缘：水平分量 LEADER_PX + 防重叠垂直错开
               {
@@ -431,7 +431,7 @@ export default function FundFlowTimeseriesChart({
               html += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
                 <span style="display:inline-block;width:10px;height:10px;background:${p.color};border-radius:50%;"></span>
                 <span>${p.seriesName}：</span>
-                <span style="font-weight:600;">${val === null || val === undefined ? '—' : formatSignedAmount(val)}</span>
+                <span style="font-weight:600;">${val === null || val === undefined ? '-' : formatSignedAmount(val)}</span>
               </div>`
             })
             html += '</div>'

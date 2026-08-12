@@ -69,7 +69,7 @@ export default function StockInfoCard({ stock, isLoading, isError }: StockInfoCa
           </div>
           <div className="space-y-1">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">名称</div>
-            <div className="text-lg font-semibold text-foreground">{stock.name ?? '—'}</div>
+            <div className="text-lg font-semibold text-foreground">{stock.name ?? '-'}</div>
           </div>
           <div className="space-y-1">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">强度分</div>

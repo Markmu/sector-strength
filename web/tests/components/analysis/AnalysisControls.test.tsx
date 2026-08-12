@@ -149,10 +149,10 @@ describe('AnalysisControls', () => {
     // 行业板块按钮应该是激活状态（找到按钮元素）
     const buttons = screen.getAllByText(/行业板块/i)
     const industryButton = buttons.find(el => el.closest('button'))?.closest('button')
-    expect(industryButton).toHaveClass('bg-cyan-500')
+    expect(industryButton).toHaveClass('bg-primary', 'text-primary-foreground')
 
     // 概念板块按钮不应该激活
     const conceptButton = screen.getByText(/概念板块/i).closest('button')
-    expect(conceptButton).not.toHaveClass('bg-cyan-500')
+    expect(conceptButton).not.toHaveClass('bg-primary')
   })
 })

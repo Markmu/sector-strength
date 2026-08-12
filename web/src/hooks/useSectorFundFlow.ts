@@ -5,7 +5,7 @@
  * - SWR 数组 key + fetcher 调 sectorFundFlowApi（经 apiClient，baseURL 已含 /api/v1）
  * - 不直接用 lib/fetcher.ts（其 API_BASE 不含 /api/v1，与 apiClient 是两套 baseURL 体系）
  *
- * 解包层级：fetcher 的 `.then(res => res.data)` 解一层 —— res 是 ApiResponse<T>
+ * 解包层级：fetcher 的 `.then(res => res.data)` 解一层 -- res 是 ApiResponse<T>
  * （{ data?: T }），.data 取其 body { success, data }。故 hook 返回的 data 是
  * 该 body，组件再读 data.data 取业务对象（camelCase）。
  */
@@ -72,7 +72,7 @@ export function useFundFlowRankings(params: UseFundFlowRankingsParams) {
 /**
  * 变化曲线视图的板块选择候选：拉取当前维度下全部板块排行项。
  * 返回完整 FundFlowRankingItem[]（含 netInflow），供页面计算默认选中（流入/流出前十）
- * 及搜索过滤。与排行视图的分页解耦——用足够大的 page_size 一次取全，保证用户最多可叠加 50 个。
+ * 及搜索过滤。与排行视图的分页解耦--用足够大的 page_size 一次取全，保证用户最多可叠加 50 个。
  */
 export function useFundFlowSectorCandidates(
   sectorType: SectorType | undefined,

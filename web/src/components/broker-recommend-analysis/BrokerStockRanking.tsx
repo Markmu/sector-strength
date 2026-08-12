@@ -114,12 +114,12 @@ export default function BrokerStockRanking({
                           {item.symbol}
                         </td>
                         <td className="px-4 py-3 text-foreground min-w-[9rem] whitespace-nowrap">
-                          {item.name ?? '—'}
+                          {item.name ?? '-'}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {item.industries.length > 0
                             ? item.industries.join('、')
-                            : '—'}
+                            : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-foreground">
                           {item.brokerCount}

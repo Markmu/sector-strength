@@ -2,8 +2,17 @@ import { test as base, expect } from '@playwright/test'
 import {
   mockReverseLookup,
   mockReverseLookupEmpty,
+  mockFundList,
+  mockFundDetail,
+  mockFundPortfolio,
   createTestReverseLookup,
+  createTestFunds,
+  createTestPortfolio,
 } from './helpers/mock-fund-api'
+import {
+  mockCrowdRankings,
+  mockCrowdIndustryDistribution,
+} from './helpers/mock-fund-crowd-api'
 
 const REVERSE_LOOKUP_PAGE = '/dashboard/funds/reverse-lookup'
 
@@ -98,12 +107,15 @@ test.describe('AC-04：反查页', () => {
       await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519`)
 
       // 断言：统计信息 — 限定到内容区域 div 避免匹配 DashboardHeader subtitle
-      await expect(page.locator('main .max-w-7xl').getByText('共 3 只基金重仓持有')).toBeVisible()
+      await expect(page.locator('main').getByText(/共 3 只基金重仓持有/).last()).toBeVisible()
     })
 
     test('展示完整的持仓数据列', async ({ page }) => {
       const lookupData = createTestReverseLookup()
       await mockReverseLookup(page, lookupData)
+      const targetFund = createTestFunds().find((fund) => fund.tsCode === '110011.OF')!
+      await mockFundDetail(page, targetFund)
+      await mockFundPortfolio(page, targetFund.tsCode, createTestPortfolio(targetFund.tsCode))
       await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519`)
 
       const main = page.locator('main')
@@ -135,6 +147,9 @@ test.describe('AC-04：反查页', () => {
     test('点击反查结果中的基金行跳转详情页', async ({ page }) => {
       const lookupData = createTestReverseLookup()
       await mockReverseLookup(page, lookupData)
+      const targetFund = createTestFunds().find((fund) => fund.tsCode === '110011.OF')!
+      await mockFundDetail(page, targetFund)
+      await mockFundPortfolio(page, targetFund.tsCode, createTestPortfolio(targetFund.tsCode))
       await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519`)
 
       const main = page.locator('main')
@@ -156,10 +171,10 @@ test.describe('AC-04：反查页', () => {
       // 断言：引导文案 — 限定到 main 区域
       const main = page.locator('main')
       await expect(main.getByText('请输入股票代码', { exact: true }).first()).toBeVisible()
-      await expect(main.getByText('请在基金分析页面输入股票代码进行反查')).toBeVisible()
+      await expect(main.getByText('在上方搜索框输入股票代码或名称，查看重仓该股票的基金列表')).toBeVisible()
 
-      // 断言：返回列表按钮（是 button 元素）
-      await expect(main.getByRole('button', { name: '返回列表' })).toBeVisible()
+      // 断言：保留返回基金分析入口
+      await expect(main.getByRole('button', { name: '返回基金分析' })).toBeVisible()
     })
 
     test('空 symbol 参数等同于无参数', async ({ page }) => {
@@ -174,6 +189,8 @@ test.describe('AC-04：反查页', () => {
     test('点击"返回基金分析"按钮回到列表页', async ({ page }) => {
       const lookupData = createTestReverseLookup()
       await mockReverseLookup(page, lookupData)
+      const funds = createTestFunds()
+      await mockFundList(page, funds, funds.length)
       await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519`)
 
       // 断言：返回按钮（是 button 元素，不是 link）— 限定到 main 区域
@@ -189,6 +206,8 @@ test.describe('AC-04：反查页', () => {
 
     test('无结果时返回按钮也可用', async ({ page }) => {
       await mockReverseLookupEmpty(page)
+      const funds = createTestFunds()
+      await mockFundList(page, funds, funds.length)
       await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=999999`)
 
       // 断言：返回基金分析按钮 — 限定到 main 区域
@@ -227,6 +246,9 @@ test.describe('AC-05：从扎堆分析下钻（from=fund-crowd）', () => {
   test('TC-3.1 from=fund-crowd 时顶部展示差异提示与返回扎堆分析入口', async ({ page }) => {
     const lookupData = createTestReverseLookup()
     await mockReverseLookup(page, lookupData)
+    // 目标页 API 使用同源 mock，避免客户端导航后命中真实后端导致 401。
+    await mockCrowdRankings(page)
+    await mockCrowdIndustryDistribution(page)
     // 带 from=fund-crowd query 进入（plan-03 handleReverseLookup 跳转的目标 URL）
     await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519&from=fund-crowd`)
 
@@ -268,6 +290,8 @@ test.describe('AC-05：从扎堆分析下钻（from=fund-crowd）', () => {
   test('TC-3.3 点击返回扎堆分析跳转到扎堆分析页', async ({ page }) => {
     const lookupData = createTestReverseLookup()
     await mockReverseLookup(page, lookupData)
+    await mockCrowdRankings(page)
+    await mockCrowdIndustryDistribution(page)
     await page.goto(`${REVERSE_LOOKUP_PAGE}?symbol=600519&from=fund-crowd`)
 
     const main = page.locator('main')

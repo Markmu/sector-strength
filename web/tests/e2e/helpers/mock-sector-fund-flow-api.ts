@@ -103,15 +103,13 @@ export interface FundFlowLatestDateData {
  * - 证券：净额 -3.5亿（净流出，绿色）
  * - 银行：净额 +0.8亿
  *
- * 金额单位为元（后端原始口径），前端会换算成亿/万展示。
+ * 金额单位为亿元，与后端 SectorFundFlow 模型及 API 契约一致。
  * industry 行的 sectorId 非 null（可跳转强度页）；concept 行全部 null（验证不可跳转）。
  */
 export function createTestFundFlowRankings(
   opts?: { sectorType?: SectorTypeKey }
 ): FundFlowRankingsData {
   const sectorType = opts?.sectorType ?? 'industry'
-  const YI = 1e8
-
   const itemsByType: Record<SectorTypeKey, FundFlowRankingItemData[]> = {
     industry: [
       {
@@ -119,9 +117,9 @@ export function createTestFundFlowRankings(
         sectorName: '半导体',
         sectorId: 101,
         changePercent: 3.21,
-        inflow: 15 * YI,
-        outflow: 3 * YI,
-        netInflow: 12 * YI,
+        inflow: 15,
+        outflow: 3,
+        netInflow: 12,
         companyCount: 120,
         leadingStock: '中芯国际',
         leadingStockChange: 5.4,
@@ -132,9 +130,9 @@ export function createTestFundFlowRankings(
         sectorName: '证券',
         sectorId: 102,
         changePercent: -1.05,
-        inflow: 4 * YI,
-        outflow: 7.5 * YI,
-        netInflow: -3.5 * YI,
+        inflow: 4,
+        outflow: 7.5,
+        netInflow: -3.5,
         companyCount: 50,
         leadingStock: '中信证券',
         leadingStockChange: -2.1,
@@ -145,9 +143,9 @@ export function createTestFundFlowRankings(
         sectorName: '银行',
         sectorId: 103,
         changePercent: 0.32,
-        inflow: 5 * YI,
-        outflow: 4.2 * YI,
-        netInflow: 0.8 * YI,
+        inflow: 5,
+        outflow: 4.2,
+        netInflow: 0.8,
         companyCount: 42,
         leadingStock: '招商银行',
         leadingStockChange: 0.85,
@@ -160,9 +158,9 @@ export function createTestFundFlowRankings(
         sectorName: '新能源',
         sectorId: null, // 概念板块未匹配 sectors 表 → 不可跳转
         changePercent: 2.1,
-        inflow: 10 * YI,
-        outflow: 2 * YI,
-        netInflow: 8 * YI,
+        inflow: 10,
+        outflow: 2,
+        netInflow: 8,
         companyCount: 80,
         leadingStock: '宁德时代',
         leadingStockChange: 4.2,
@@ -173,9 +171,9 @@ export function createTestFundFlowRankings(
         sectorName: '芯片',
         sectorId: null,
         changePercent: -0.8,
-        inflow: 3 * YI,
-        outflow: 6 * YI,
-        netInflow: -3 * YI,
+        inflow: 3,
+        outflow: 6,
+        netInflow: -3,
         companyCount: 60,
         leadingStock: '韦尔股份',
         leadingStockChange: -1.5,
@@ -188,9 +186,9 @@ export function createTestFundFlowRankings(
         sectorName: '贵州',
         sectorId: null,
         changePercent: 1.2,
-        inflow: 8 * YI,
-        outflow: 2 * YI,
-        netInflow: 6 * YI,
+        inflow: 8,
+        outflow: 2,
+        netInflow: 6,
         companyCount: 30,
         leadingStock: '贵州茅台',
         leadingStockChange: 1.8,
@@ -233,32 +231,30 @@ export function createTestFundFlowTimeseries(
   opts?: { sectorNames?: string[]; sectorType?: SectorTypeKey }
 ): FundFlowTimeseriesData {
   const sectorType = opts?.sectorType ?? 'industry'
-  const YI = 1e8
-
   const fullSeriesByType: Record<SectorTypeKey, FundFlowSeriesItemData[]> = {
     industry: [
       {
         sectorName: '半导体',
         data: [
-          { sampleTime: '2026-07-24T09:30:00', netInflow: 3 * YI },
-          { sampleTime: '2026-07-24T10:30:00', netInflow: 7 * YI },
-          { sampleTime: '2026-07-24T14:00:00', netInflow: 12 * YI },
+          { sampleTime: '2026-07-24T09:30:00', netInflow: 3 },
+          { sampleTime: '2026-07-24T10:30:00', netInflow: 7 },
+          { sampleTime: '2026-07-24T14:00:00', netInflow: 12 },
         ],
       },
       {
         sectorName: '证券',
         data: [
-          { sampleTime: '2026-07-24T09:30:00', netInflow: -1 * YI },
-          { sampleTime: '2026-07-24T10:30:00', netInflow: -2.5 * YI },
-          { sampleTime: '2026-07-24T14:00:00', netInflow: -3.5 * YI },
+          { sampleTime: '2026-07-24T09:30:00', netInflow: -1 },
+          { sampleTime: '2026-07-24T10:30:00', netInflow: -2.5 },
+          { sampleTime: '2026-07-24T14:00:00', netInflow: -3.5 },
         ],
       },
       {
         sectorName: '银行',
         data: [
-          { sampleTime: '2026-07-24T09:30:00', netInflow: 0.2 * YI },
-          { sampleTime: '2026-07-24T10:30:00', netInflow: 0.5 * YI },
-          { sampleTime: '2026-07-24T14:00:00', netInflow: 0.8 * YI },
+          { sampleTime: '2026-07-24T09:30:00', netInflow: 0.2 },
+          { sampleTime: '2026-07-24T10:30:00', netInflow: 0.5 },
+          { sampleTime: '2026-07-24T14:00:00', netInflow: 0.8 },
         ],
       },
     ],
@@ -266,15 +262,15 @@ export function createTestFundFlowTimeseries(
       {
         sectorName: '新能源',
         data: [
-          { sampleTime: '2026-07-24T09:30:00', netInflow: 2 * YI },
-          { sampleTime: '2026-07-24T14:00:00', netInflow: 8 * YI },
+          { sampleTime: '2026-07-24T09:30:00', netInflow: 2 },
+          { sampleTime: '2026-07-24T14:00:00', netInflow: 8 },
         ],
       },
       {
         sectorName: '芯片',
         data: [
-          { sampleTime: '2026-07-24T09:30:00', netInflow: -0.5 * YI },
-          { sampleTime: '2026-07-24T14:00:00', netInflow: -3 * YI },
+          { sampleTime: '2026-07-24T09:30:00', netInflow: -0.5 },
+          { sampleTime: '2026-07-24T14:00:00', netInflow: -3 },
         ],
       },
     ],
@@ -282,8 +278,8 @@ export function createTestFundFlowTimeseries(
       {
         sectorName: '贵州',
         data: [
-          { sampleTime: '2026-07-24T09:30:00', netInflow: 1.5 * YI },
-          { sampleTime: '2026-07-24T14:00:00', netInflow: 6 * YI },
+          { sampleTime: '2026-07-24T09:30:00', netInflow: 1.5 },
+          { sampleTime: '2026-07-24T14:00:00', netInflow: 6 },
         ],
       },
     ],

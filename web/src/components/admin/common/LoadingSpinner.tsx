@@ -48,7 +48,7 @@ const colorClasses: Record<SpinnerColor, {
     borderTop: 'border-t-muted-foreground',
   },
   white: {
-    border: 'border-white/30',
+    border: 'border-on-signal/30',
     borderTop: 'border-t-white',
   },
 };

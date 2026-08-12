@@ -3,7 +3,12 @@ import {
   mockFundList,
   mockFundListEmpty,
   mockFundListError,
+  mockFundDetail,
+  mockFundPortfolio,
+  mockReverseLookup,
   createTestFunds,
+  createTestPortfolio,
+  createTestReverseLookup,
   type FundItem,
 } from './helpers/mock-fund-api'
 
@@ -55,7 +60,7 @@ test.describe('AC-01/02：基金列表页', () => {
 
       // 断言：过滤面板可见（市场 + 基金类型两个分区标题）— 限定到 main 区域
       await expect(main.getByText('市场', { exact: true })).toBeVisible()
-      await expect(main.getByText('基金类型', { exact: true })).toBeVisible()
+      await expect(main.getByText('类型', { exact: true }).first()).toBeVisible()
 
       // 断言：表格可见，包含表头
       const table = main.locator('table').first()
@@ -70,6 +75,8 @@ test.describe('AC-01/02：基金列表页', () => {
     test('输入关键字搜索基金，列表筛选结果', async ({ page }) => {
       const funds = createTestFunds()
       await mockFundList(page, funds, funds.length)
+      await mockFundDetail(page, funds[0])
+      await mockFundPortfolio(page, funds[0].tsCode, createTestPortfolio(funds[0].tsCode))
       await page.goto(FUND_LIST_PAGE)
 
       // 等待表格加载
@@ -88,6 +95,8 @@ test.describe('AC-01/02：基金列表页', () => {
     test('搜索无结果展示空态文案', async ({ page }) => {
       const funds = createTestFunds()
       await mockFundList(page, funds, funds.length)
+      await mockFundDetail(page, funds[0])
+      await mockFundPortfolio(page, funds[0].tsCode, createTestPortfolio(funds[0].tsCode))
       await page.goto(FUND_LIST_PAGE)
 
       // 等待加载完成
@@ -107,6 +116,7 @@ test.describe('AC-01/02：基金列表页', () => {
     test('勾选场内 ETF 过滤', async ({ page }) => {
       const funds = createTestFunds()
       await mockFundList(page, funds, funds.length)
+      await mockReverseLookup(page, createTestReverseLookup())
       await page.goto(FUND_LIST_PAGE)
 
       await expect(page.locator('main tbody tr')).toHaveCount(funds.length)
@@ -200,6 +210,9 @@ test.describe('AC-01/02：基金列表页', () => {
       await searchInput.fill('易方达')
       await expect(page.locator('main tbody tr')).toHaveCount(2)
 
+      // 搜索建议层会覆盖后方筛选项，键盘关闭后再操作筛选。
+      await searchInput.press('Escape')
+
       // 再勾选"场内 ETF"
       await page.getByLabel('场内 ETF').check()
 
@@ -244,6 +257,8 @@ test.describe('AC-01/02：基金列表页', () => {
     test('点击基金行跳转详情页', async ({ page }) => {
       const funds = createTestFunds()
       await mockFundList(page, funds, funds.length)
+      await mockFundDetail(page, funds[0])
+      await mockFundPortfolio(page, funds[0].tsCode, createTestPortfolio(funds[0].tsCode))
       await page.goto(FUND_LIST_PAGE)
 
       await expect(page.locator('main tbody tr')).toHaveCount(funds.length)
@@ -259,6 +274,8 @@ test.describe('AC-01/02：基金列表页', () => {
     test('点击详情按钮跳转详情页', async ({ page }) => {
       const funds = createTestFunds()
       await mockFundList(page, funds, funds.length)
+      await mockFundDetail(page, funds[0])
+      await mockFundPortfolio(page, funds[0].tsCode, createTestPortfolio(funds[0].tsCode))
       await page.goto(FUND_LIST_PAGE)
 
       await expect(page.locator('main tbody tr')).toHaveCount(funds.length)
@@ -276,6 +293,21 @@ test.describe('AC-01/02：基金列表页', () => {
     test('在反查输入框中输入股票代码并回车，跳转反查页', async ({ page }) => {
       const funds = createTestFunds()
       await mockFundList(page, funds, funds.length)
+      await mockReverseLookup(page, createTestReverseLookup())
+      await page.route('**/api/v1/stocks/search**', (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            items: [{ symbol: '600519', name: '贵州茅台' }],
+            total: 1,
+            page: 1,
+            page_size: 10,
+            total_pages: 1,
+          },
+        }),
+      }))
       await page.goto(FUND_LIST_PAGE)
 
       // 等待页面加载 — 限定到 main 区域
@@ -285,11 +317,12 @@ test.describe('AC-01/02：基金列表页', () => {
       const reverseInput = page.locator('main').getByPlaceholder('按股票反查')
       await reverseInput.fill('600519')
 
-      // 按回车
+      // 回车立即搜索，再从建议列表确认目标股票。
       await reverseInput.press('Enter')
+      await page.getByRole('button', { name: /600519.*贵州茅台/ }).click()
 
-      // 断言：跳转到反查页
-      await expect(page).toHaveURL(/\/dashboard\/funds\/reverse-lookup\?symbol=600519/)
+      // 当前列表页以内嵌反查模式承载结果。
+      await expect(page).toHaveURL(/\/dashboard\/funds\?symbol=600519/)
     })
   })
 

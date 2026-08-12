@@ -192,7 +192,7 @@ export default function LimitSyncPanel() {
 
   if (!isAdmin) {
     return (
-      <div className="flex items-center justify-center py-12 text-gray-500">
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
         <AlertCircle className="mr-2" size={20} />
         需要管理员权限
       </div>
@@ -201,11 +201,11 @@ export default function LimitSyncPanel() {
 
   const statusBadge = (status: SyncRecord['status']) => {
     const map: Record<SyncRecord['status'], { color: string; label: string; Icon: React.ComponentType<{ size?: number; className?: string }> }> = {
-      completed: { color: 'text-green-600', label: '完成', Icon: CheckCircle2 },
-      running: { color: 'text-blue-600', label: '运行中', Icon: Loader2 },
-      pending: { color: 'text-gray-500', label: '等待中', Icon: Loader2 },
-      failed: { color: 'text-red-600', label: '失败', Icon: XCircle },
-      cancelled: { color: 'text-gray-400', label: '已取消', Icon: XCircle },
+      completed: { color: 'text-fall', label: '完成', Icon: CheckCircle2 },
+      running: { color: 'text-primary', label: '运行中', Icon: Loader2 },
+      pending: { color: 'text-muted-foreground', label: '等待中', Icon: Loader2 },
+      failed: { color: 'text-rise', label: '失败', Icon: XCircle },
+      cancelled: { color: 'text-faint', label: '已取消', Icon: XCircle },
     };
     const { color, label, Icon } = map[status] ?? map.pending;
     const spin = status === 'running' || status === 'pending';
@@ -223,43 +223,43 @@ export default function LimitSyncPanel() {
       {toast && (
         <div
           className={`fixed top-6 right-6 z-50 rounded-lg px-4 py-3 shadow-lg ${
-            toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
-          } text-white`}
+            toast.type === 'success' ? 'bg-fall' : 'bg-destructive'
+          } text-on-signal`}
         >
           {toast.message}
         </div>
       )}
 
       {/* 同步卡片 */}
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100">
-            <Flame className="text-orange-600" size={22} />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+            <Flame className="text-warning" size={22} />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">涨停专题数据同步</h3>
-            <p className="text-sm text-gray-500">
+            <h3 className="text-lg font-semibold text-foreground">涨停专题数据同步</h3>
+            <p className="text-sm text-muted-foreground">
               同步涨跌停明细（limit_list_d）、连板天梯（limit_step）、涨停最强板块（limit_cpt_list）三张表
             </p>
           </div>
         </div>
 
         {/* 最新数据日期 */}
-        <div className="mb-4 flex items-center gap-2 rounded-lg bg-gray-50 px-4 py-2 text-sm">
-          <Calendar size={15} className="text-gray-400" />
-          <span className="text-gray-500">最新数据日期：</span>
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-muted px-4 py-2 text-sm">
+          <Calendar size={15} className="text-faint" />
+          <span className="text-muted-foreground">最新数据日期：</span>
           {latestDateLoading ? (
-            <Loader2 size={14} className="animate-spin text-gray-400" />
+            <Loader2 size={14} className="animate-spin text-faint" />
           ) : latestDataDate ? (
-            <span className="font-medium text-gray-900">{latestDataDate}</span>
+            <span className="font-medium text-foreground">{latestDataDate}</span>
           ) : (
-            <span className="text-gray-400">暂无数据</span>
+            <span className="text-faint">暂无数据</span>
           )}
         </div>
 
         {/* 日期选择 */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <Calendar size={16} />
             时间范围（可选）
           </label>
@@ -269,18 +269,18 @@ export default function LimitSyncPanel() {
             onChange={(e) => setStartDate(e.target.value)}
             disabled={loading}
             aria-label="开始日期"
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+            className="rounded-lg border border-border px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring disabled:bg-secondary"
           />
-          <span className="text-sm text-gray-500">至</span>
+          <span className="text-sm text-muted-foreground">至</span>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             disabled={loading}
             aria-label="结束日期"
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+            className="rounded-lg border border-border px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring disabled:bg-secondary"
           />
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-faint">
             都留空则同步最新交易日；都填则按范围逐交易日同步
           </span>
         </div>
@@ -289,7 +289,7 @@ export default function LimitSyncPanel() {
         <button
           onClick={startSync}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-border"
         >
           {loading ? (
             <>
@@ -307,15 +307,15 @@ export default function LimitSyncPanel() {
         {/* 进度 */}
         {loading && total > 0 && (
           <div className="mt-4">
-            <div className="mb-1 flex justify-between text-xs text-gray-500">
+            <div className="mb-1 flex justify-between text-xs text-muted-foreground">
               <span>进度</span>
               <span>
                 {progress} / {total}
               </span>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-border">
               <div
-                className="h-full rounded-full bg-orange-500 transition-all"
+                className="h-full rounded-full bg-primary transition-all"
                 style={{ width: `${total > 0 ? (progress / total) * 100 : 0}%` }}
               />
             </div>
@@ -324,7 +324,7 @@ export default function LimitSyncPanel() {
 
         {/* 错误 */}
         {error && (
-          <div className="mt-4 flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <div className="mt-4 flex items-start gap-2 rounded-lg bg-rise/10 p-3 text-sm text-rise">
             <AlertCircle size={16} className="mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
@@ -332,19 +332,19 @@ export default function LimitSyncPanel() {
       </div>
 
       {/* 历史记录表 */}
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h3 className="mb-4 text-base font-semibold text-gray-900">同步记录</h3>
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+        <h3 className="mb-4 text-base font-semibold text-foreground">同步记录</h3>
         {recordsLoading ? (
-          <div className="flex items-center justify-center py-8 text-gray-400">
+          <div className="flex items-center justify-center py-8 text-faint">
             <Loader2 className="animate-spin" size={20} />
           </div>
         ) : syncRecords.length === 0 ? (
-          <div className="py-8 text-center text-sm text-gray-400">暂无同步记录</div>
+          <div className="py-8 text-center text-sm text-faint">暂无同步记录</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-gray-500">
+                <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="pb-2 pr-4 font-medium">时间</th>
                   <th className="pb-2 pr-4 font-medium">类型</th>
                   <th className="pb-2 pr-4 font-medium">状态</th>
@@ -354,22 +354,22 @@ export default function LimitSyncPanel() {
               </thead>
               <tbody>
                 {syncRecords.map((r) => (
-                  <tr key={r.taskId} className="border-b border-gray-100">
-                    <td className="py-2 pr-4 text-gray-600">
+                  <tr key={r.taskId} className="border-b border-border">
+                    <td className="py-2 pr-4 text-muted-foreground">
                       {new Date(r.createdAt).toLocaleString('zh-CN')}
                     </td>
-                    <td className="py-2 pr-4 text-gray-600">
+                    <td className="py-2 pr-4 text-muted-foreground">
                       {TASK_TYPE_LABELS[r.taskType] || r.taskType}
                     </td>
                     <td className="py-2 pr-4">{statusBadge(r.status)}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap text-gray-500">
+                    <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
                       {r.params?.start_date && r.params?.end_date
                         ? `${r.params.start_date} ~ ${r.params.end_date}`
                         : r.params?.trade_date
                           ? `trade_date=${r.params.trade_date}`
                           : '最新交易日'}
                     </td>
-                    <td className="py-2 text-red-500">
+                    <td className="py-2 text-rise">
                       {r.errorMessage || '-'}
                     </td>
                   </tr>

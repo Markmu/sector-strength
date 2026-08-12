@@ -22,7 +22,7 @@ export interface DisclaimerProps {
  * 默认免责声明文本
  * 包含主声明和风险提示
  */
-const DEFAULT_TEXT = '数据仅供参考，不构成投资建议。投资有风险，入市需谨慎。'
+const DEFAULT_TEXT = '数据仅供参考，不构成投资建议。板块强弱分类基于缠中说禅理论，仅用于辅助分析。投资有风险，入市需谨慎。'
 
 /**
  * 免责声明组件
@@ -54,13 +54,13 @@ export function Disclaimer({
     >
       {showSeparator && (
         <div
-          className="border-t border-gray-200 my-4"
+          className="border-t border-border my-4"
           role="separator"
           aria-orientation="horizontal"
         />
       )}
       <div className="text-center py-4 px-6">
-        <p className="text-xs text-gray-500 leading-relaxed">
+        <p className="text-xs text-muted-foreground leading-relaxed">
           <span className="font-medium">免责声明：</span>
           {text}
         </p>

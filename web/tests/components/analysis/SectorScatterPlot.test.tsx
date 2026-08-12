@@ -20,6 +20,11 @@ jest.mock('echarts-for-react', () => {
   }
 })
 
+jest.mock('next/dynamic', () => () => {
+  const ECharts = require('echarts-for-react').default
+  return ECharts
+})
+
 // Mock LoadingState and ErrorState to simplify testing
 jest.mock('@/components/dashboard/LoadingState', () => ({
   LoadingState: ({ message }: { message: string }) => (
@@ -35,7 +40,8 @@ jest.mock('@/components/dashboard/ErrorState', () => ({
 
 describe('SectorScatterPlot', () => {
   const mockData: ScatterDataset = {
-    industry: [
+    items: {
+      industry: [
       {
         symbol: 'IND001',
         name: '新能源',
@@ -58,8 +64,8 @@ describe('SectorScatterPlot', () => {
           strength_grade: 'A',
         },
       },
-    ],
-    concept: [
+      ],
+      concept: [
       {
         symbol: 'CON001',
         name: '人工智能',
@@ -82,7 +88,8 @@ describe('SectorScatterPlot', () => {
           strength_grade: 'B+',
         },
       },
-    ],
+      ],
+    },
   }
 
   const defaultProps: ScatterPlotProps = {
@@ -133,7 +140,7 @@ describe('SectorScatterPlot', () => {
     render(
       <SectorScatterPlot
         {...defaultProps}
-        data={{ industry: [], concept: [] }}
+        data={{ items: { industry: [], concept: [] } }}
       />
     )
 

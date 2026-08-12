@@ -73,6 +73,41 @@ export interface ReverseLookupData {
   reportPeriod: string | null
 }
 
+export interface FundSyncRecord {
+  taskId: string
+  taskType: 'sync_fund_basic' | 'sync_fund_portfolio'
+  createdAt: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  params?: Record<string, unknown> | null
+  errorMessage?: string | null
+}
+
+const fundSyncRecordsByPage = new WeakMap<Page, FundSyncRecord[]>()
+
+function syncTaskType(taskId: string): FundSyncRecord['taskType'] {
+  return taskId.includes('portfolio') ? 'sync_fund_portfolio' : 'sync_fund_basic'
+}
+
+function setFundSyncRecord(
+  page: Page,
+  taskId: string,
+  status: FundSyncRecord['status'],
+  errorMessage?: string
+): void {
+  const existing = fundSyncRecordsByPage.get(page) ?? []
+  const previous = existing.find((record) => record.taskId === taskId)
+  const taskType = syncTaskType(taskId)
+  const record: FundSyncRecord = {
+    taskId,
+    taskType,
+    createdAt: previous?.createdAt ?? new Date().toISOString(),
+    status,
+    params: taskType === 'sync_fund_portfolio' ? { period: '20251231' } : {},
+    errorMessage: errorMessage ?? null,
+  }
+  fundSyncRecordsByPage.set(page, [record, ...existing.filter((item) => item.taskId !== taskId)])
+}
+
 // ---------- URL Matching Helpers ----------
 
 /**
@@ -103,6 +138,35 @@ function matchApiPathPrefix(requestUrl: URL | string, expectedPrefix: string): b
 }
 
 // ---------- Test Data Factories ----------
+
+/** Mock 基金同步记录列表，隔离页面初始化时的管理员 API 请求。 */
+export async function mockFundSyncRecords(
+  page: Page,
+  tasks: FundSyncRecord[] = []
+): Promise<void> {
+  fundSyncRecordsByPage.set(page, tasks)
+  await page.route(
+    (url) => matchApiPath(url, '/api/v1/admin/tasks'),
+    async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              tasks: fundSyncRecordsByPage.get(page) ?? [],
+              total: (fundSyncRecordsByPage.get(page) ?? []).length,
+              page: 1,
+            },
+          }),
+        })
+      } else {
+        await route.continue()
+      }
+    }
+  )
+}
 
 /** 创建测试用基金列表数据 */
 export function createTestFunds(): FundItem[] {
@@ -608,6 +672,7 @@ export async function mockFundSyncSuccess(page: Page): Promise<void> {
     (url) => matchApiPath(url, '/api/v1/admin/init/funds'),
     async (route) => {
       if (route.request().method() === 'POST') {
+        setFundSyncRecord(page, 'task-fund-basic-001', 'running')
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -651,6 +716,7 @@ export async function mockFundPortfolioSyncSuccess(page: Page): Promise<void> {
     (url) => matchApiPath(url, '/api/v1/admin/init/fund-portfolio'),
     async (route) => {
       if (route.request().method() === 'POST') {
+        setFundSyncRecord(page, 'task-fund-portfolio-001', 'running')
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -699,6 +765,7 @@ export async function mockTaskStatusCompleted(
     (url) => matchApiPath(url, expectedPath),
     async (route) => {
       if (route.request().method() === 'GET') {
+        setFundSyncRecord(page, taskId, 'completed')
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -741,6 +808,7 @@ export async function mockTaskStatusFailed(
     (url) => matchApiPath(url, expectedPath),
     async (route) => {
       if (route.request().method() === 'GET') {
+        setFundSyncRecord(page, taskId, 'failed', errorMessage)
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -782,6 +850,7 @@ export async function mockTaskStatusRunning(
     (url) => matchApiPath(url, expectedPath),
     async (route) => {
       if (route.request().method() === 'GET') {
+        setFundSyncRecord(page, taskId, 'running')
         await route.fulfill({
           status: 200,
           contentType: 'application/json',

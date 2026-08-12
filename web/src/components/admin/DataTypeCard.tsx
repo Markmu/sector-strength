@@ -50,7 +50,7 @@ export default function DataTypeCard({ data, onBackfill, backfilling }: DataType
         {status === 'no_data' && (
           <span
             data-testid="status-badge"
-            className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500"
+            className="px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-muted-foreground"
           >
             暂无数据
           </span>
@@ -58,7 +58,7 @@ export default function DataTypeCard({ data, onBackfill, backfilling }: DataType
         {status === 'normal' && (
           <span
             data-testid="status-badge"
-            className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-700 text-white"
+            className="px-2 py-0.5 rounded-full text-xs font-medium bg-foreground text-on-signal"
           >
             正常
           </span>
@@ -66,7 +66,7 @@ export default function DataTypeCard({ data, onBackfill, backfilling }: DataType
         {status === 'missing' && (
           <span
             data-testid="status-badge"
-            className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700"
+            className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning"
           >
             缺失
           </span>
@@ -82,7 +82,7 @@ export default function DataTypeCard({ data, onBackfill, backfilling }: DataType
 
       {/* 缺失范围 */}
       {status === 'missing' && missing_range && (
-        <div data-testid="missing-range" className="text-sm text-amber-600">
+        <div data-testid="missing-range" className="text-sm text-warning">
           缺失范围：{missing_range.start} ~ {missing_range.end}
         </div>
       )}
@@ -92,10 +92,10 @@ export default function DataTypeCard({ data, onBackfill, backfilling }: DataType
         <div className="space-y-1">
           <div
             data-testid="progress-bar"
-            className="w-full bg-blue-100 rounded-full h-2"
+            className="w-full bg-primary-light rounded-full h-2"
           >
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-primary h-2 rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -110,7 +110,7 @@ export default function DataTypeCard({ data, onBackfill, backfilling }: DataType
         <div className="space-y-2">
           <div
             data-testid="task-error-message"
-            className="text-sm text-red-600"
+            className="text-sm text-rise"
           >
             {active_task!.error_message || '补齐任务失败'}
           </div>
@@ -118,7 +118,7 @@ export default function DataTypeCard({ data, onBackfill, backfilling }: DataType
             data-testid="retry-backfill-button"
             onClick={() => onBackfill(type)}
             disabled={backfilling}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-primary-light rounded-md hover:bg-primary-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {backfilling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             重新补齐
@@ -132,7 +132,7 @@ export default function DataTypeCard({ data, onBackfill, backfilling }: DataType
           data-testid="backfill-button"
           onClick={() => onBackfill(type)}
           disabled={backfilling}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-on-signal bg-primary rounded-md hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {backfilling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           补齐缺失数据

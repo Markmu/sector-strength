@@ -3,7 +3,7 @@
  */
 
 import { renderHook } from '@testing-library/react'
-import { useSectorScatterData } from '../useSectorScatterData'
+import { useSectorScatterData } from '@/hooks/useSectorScatterData'
 import type { SectorScatterResponse } from '@/types/scatter'
 
 // Mock fetch
@@ -20,7 +20,8 @@ const mockUseSWR = require('swr').default
 describe('useSectorScatterData', () => {
   const mockData: SectorScatterResponse = {
     scatter_data: {
-      industry: [
+      items: {
+        industry: [
         {
           symbol: 'IND001',
           name: '新能源',
@@ -43,8 +44,9 @@ describe('useSectorScatterData', () => {
             strength_grade: 'A',
           },
         },
-      ],
-      concept: [],
+        ],
+        concept: [],
+      },
     },
     total_count: 1,
     returned_count: 1,

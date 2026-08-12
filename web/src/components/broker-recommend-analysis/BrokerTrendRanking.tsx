@@ -9,7 +9,7 @@
  * - 排序由后端完成（连续月数↓→累计家数↓→最新月家数↓→代码↑），本组件只渲染
  * - 行展开（预加载，无 loading，AC-06）：monthlyBrokers 按月降序（新→旧），每月均展示
  *   月份 + 家数 + 券商（topBrokers 前 3，超 3 显示 "+X 家"，符合 AC-06"每月"要求）；
- *   某月 brokerCount=0 显示家数 0、券商"—"。跨月同名券商通过 data-testid 按月作用域定位，规避 strict mode 冲突
+ *   某月 brokerCount=0 显示家数 0、券商"-"。跨月同名券商通过 data-testid 按月作用域定位，规避 strict mode 冲突
  * - 分页器：total > pageSize 显示，≤ pageSize 隐藏（AC-08）
  *
  * data-testid 清单（spec 依赖）：
@@ -129,12 +129,12 @@ export default function BrokerTrendRanking({
                           {item.symbol}
                         </td>
                         <td className="px-4 py-3 text-foreground min-w-[9rem] whitespace-nowrap">
-                          {item.name ?? '—'}
+                          {item.name ?? '-'}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {item.industries.length > 0
                             ? item.industries.join('、')
-                            : '—'}
+                            : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-foreground">
                           {item.consecutiveMonths}
@@ -184,7 +184,7 @@ export default function BrokerTrendRanking({
                                     mb.topBrokers.length - VISIBLE_BROKERS
                                   const hasBrokers = mb.topBrokers.length > 0
                                   // AC-06：每月都展示券商（topBrokers 前 3，超 3 显示 "+X 家"）；
-                                  // 某月 brokerCount=0 显示家数 0、券商"—"。
+                                  // 某月 brokerCount=0 显示家数 0、券商"-"。
                                   // 测试按 broker-trend-month-row-{symbol}-{month} 作用域断言，
                                   // 避免跨月同名券商在全局 getByText 上触发 strict mode 冲突。
                                   return (
@@ -217,7 +217,7 @@ export default function BrokerTrendRanking({
                                             )}
                                           </span>
                                         ) : (
-                                          '—'
+                                          '-'
                                         )}
                                       </span>
                                     </div>

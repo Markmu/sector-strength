@@ -6,8 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Card, CardBody } from '@/components/ui/Card';
-import Loading from '@/components/ui/Loading';
+import { AuthShell } from '@/components/auth/AuthShell';
 
 interface LoginFormData {
   email: string;
@@ -88,8 +87,9 @@ export default function LoginPage() {
       const urlParams = new URLSearchParams(window.location.search);
       const redirect = urlParams.get('redirect');
       router.push(redirect || '/dashboard');
-    } catch (error: any) {
-      setErrors({ general: error.message || '登录失败，请检查邮箱和密码' });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '登录失败，请检查邮箱和密码';
+      setErrors({ general: message });
       console.error('Login error:', error);
     } finally {
       setIsLoading(false);
@@ -113,57 +113,50 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">登录账户</h1>
-          <p className="text-muted-foreground">欢迎回到 Sector Strength</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
+    <AuthShell
+      title="登录账户"
+      description="继续查看板块强度、趋势与资金信号。"
+      footer={
+        <p>
+          还没有账户？{' '}
+          <Link href="/register" className="font-medium text-primary transition-colors hover:text-primary-hover">
+            立即注册
+          </Link>
+        </p>
+      }
+    >
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {errors.general && (
-            <div className="p-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-md text-sm">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/8 p-3 text-sm text-destructive" role="alert">
               {errors.general}
             </div>
           )}
 
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1">
-              邮箱地址 <span className="text-red-500">*</span>
-            </label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="your@email.com"
-              className={errors.email ? 'border-destructive' : ''}
-              required
-            />
-            {errors.email && (
-              <p className="mt-1 text-sm text-destructive">{errors.email}</p>
-            )}
-          </div>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            label="邮箱地址"
+            value={formData.email}
+            onChange={handleInputChange}
+            placeholder="your@email.com"
+            error={errors.email}
+            autoComplete="email"
+            required
+          />
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1">
-              密码 <span className="text-red-500">*</span>
-            </label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              value={formData.password}
-              onChange={handleInputChange}
-              placeholder="••••••••"
-              className={errors.password ? 'border-destructive' : ''}
-              required
-            />
-            {errors.password && (
-              <p className="mt-1 text-sm text-destructive">{errors.password}</p>
-            )}
-          </div>
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            label="密码"
+            value={formData.password}
+            onChange={handleInputChange}
+            placeholder="••••••••"
+            error={errors.password}
+            autoComplete="current-password"
+            required
+          />
 
           <div className="flex items-center justify-between">
             <div className="flex items-center">
@@ -173,7 +166,7 @@ export default function LoginPage() {
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-border rounded"
+                className="h-4 w-4 rounded border-input accent-primary"
               />
               <label htmlFor="remember-me" className="ml-2 block text-sm text-foreground">
                 记住密码
@@ -181,7 +174,7 @@ export default function LoginPage() {
             </div>
 
             <div className="text-sm">
-              <Link href="/forgot-password" className="font-medium text-primary-600 hover:text-primary-500">
+              <Link href="/forgot-password" className="font-medium text-primary transition-colors hover:text-primary-hover">
                 忘记密码？
               </Link>
             </div>
@@ -190,29 +183,13 @@ export default function LoginPage() {
           <Button
             type="submit"
             disabled={isLoading}
-            variant="secondary"
-            className="w-full bg-primary hover:bg-primary-hover text-primary-foreground font-semibold py-3"
+            variant="primary"
+            className="mt-2 w-full"
+            loading={isLoading}
           >
-            {isLoading ? (
-              <>
-                <Loading className="mr-2" />
-                登录中...
-              </>
-            ) : (
-              '登录'
-            )}
+            {isLoading ? '登录中...' : '登录'}
           </Button>
         </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            还没有账户？{' '}
-            <Link href="/register" className="font-medium text-primary-600 hover:text-primary-500">
-              立即注册
-            </Link>
-          </p>
-        </div>
-      </Card>
-    </div>
+    </AuthShell>
   );
 }

@@ -192,7 +192,7 @@ export default function HoldingsDetail({
           持仓汇总
         </h3>
         {summaryError ? (
-          <div className="flex items-center gap-2 text-sm text-amber-600">
+          <div className="flex items-center gap-2 text-sm text-warning">
             <AlertTriangleIcon className="w-4 h-4" />
             加载失败，请重试
           </div>
@@ -235,34 +235,34 @@ export default function HoldingsDetail({
           变动趋势
         </h3>
         {trendUnavailable ? (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+          <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning">
             上期数据不完整，变动趋势暂不可用
           </div>
         ) : summaryError ? (
-          <div className="text-sm text-amber-600">加载失败，请重试</div>
+          <div className="text-sm text-warning">加载失败，请重试</div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-background rounded-lg border border-border p-3">
-              <div className="text-xs text-emerald-600 mb-1">↑增持</div>
-              <div className="text-lg font-semibold text-emerald-600">
+              <div className="text-xs text-rise mb-1">↑增持</div>
+              <div className="text-lg font-semibold text-rise">
                 {trend?.increaseCount ?? 0}
               </div>
             </div>
             <div className="bg-background rounded-lg border border-border p-3">
-              <div className="text-xs text-red-600 mb-1">↓减持</div>
-              <div className="text-lg font-semibold text-red-600">
+              <div className="text-xs text-rise mb-1">↓减持</div>
+              <div className="text-lg font-semibold text-rise">
                 {trend?.decreaseCount ?? 0}
               </div>
             </div>
             <div className="bg-background rounded-lg border border-border p-3">
-              <div className="text-xs text-blue-600 mb-1">★新进</div>
-              <div className="text-lg font-semibold text-blue-600">
+              <div className="text-xs text-primary mb-1">★新进</div>
+              <div className="text-lg font-semibold text-primary">
                 {trend?.newCount ?? 0}
               </div>
             </div>
             <div className="bg-background rounded-lg border border-border p-3">
-              <div className="text-xs text-gray-500 mb-1">✕退出</div>
-              <div className="text-lg font-semibold text-gray-500">
+              <div className="text-xs text-muted-foreground mb-1">✕退出</div>
+              <div className="text-lg font-semibold text-muted-foreground">
                 {trend?.exitCount ?? 0}
               </div>
             </div>
@@ -277,7 +277,7 @@ export default function HoldingsDetail({
           行业占比
         </h3>
         {distError ? (
-          <div className="text-sm text-amber-600">加载失败，请重试</div>
+          <div className="text-sm text-warning">加载失败，请重试</div>
         ) : distLoading ? (
           <div className="h-48 bg-secondary/30 rounded-lg animate-pulse" />
         ) : (
@@ -295,7 +295,7 @@ export default function HoldingsDetail({
           持仓股票
         </h3>
         {holdingsError ? (
-          <div className="text-sm text-amber-600">加载失败，请重试</div>
+          <div className="text-sm text-warning">加载失败，请重试</div>
         ) : (
           <HoldingsTable
             holdings={holdings}

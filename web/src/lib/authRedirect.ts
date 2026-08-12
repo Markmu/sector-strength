@@ -1,4 +1,4 @@
-const AUTH_KEYS = ['accessToken', 'refreshToken', 'tokenType', 'expiresIn', 'user'] as const
+const AUTH_KEYS = ['accessToken', 'refreshToken', 'tokenType', 'expiresIn', 'expiresAt', 'user'] as const
 
 export const AUTH_EXPIRED_EVENT = 'auth:expired'
 

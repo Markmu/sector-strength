@@ -82,7 +82,7 @@ export default function DashboardPage() {
                   板块强度热力图
                 </h3>
                 <p className="text-sm text-muted-foreground mb-6">
-                  通过热力图直观查看各板块的强度分布，颜色越绿表示越强势，越红表示越弱势。
+                  通过热力图直观查看各板块的强度分布，红色表示强势，绿色表示弱势。
                 </p>
                 <SectorHeatmap />
               </CardBody>

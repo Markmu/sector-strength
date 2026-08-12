@@ -487,15 +487,15 @@ export default function IndexSyncPanel() {
         <div
           className={`fixed top-4 right-4 z-50 max-w-md px-4 py-3 rounded-lg shadow-lg border ${
             toast.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-800'
-              : 'bg-red-50 border-red-200 text-red-800'
+              ? 'bg-fall/10 border-fall/30 text-fall'
+              : 'bg-rise/10 border-rise/30 text-rise'
           }`}
         >
           <div className="flex items-center gap-2">
             {toast.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              <CheckCircle2 className="w-5 h-5 text-fall" />
             ) : (
-              <XCircle className="w-5 h-5 text-red-600" />
+              <XCircle className="w-5 h-5 text-rise" />
             )}
             <span className="text-sm font-medium">{toast.message}</span>
             <button
@@ -537,7 +537,7 @@ export default function IndexSyncPanel() {
             )}
           </button>
           {basicSynced && !basicLoading && (
-            <span className="inline-flex items-center gap-1 text-sm text-green-600">
+            <span className="inline-flex items-center gap-1 text-sm text-fall">
               <CheckCircle2 className="w-4 h-4" />
               已同步
             </span>
@@ -972,7 +972,7 @@ function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { color: string; label: string }> = {
     pending: { color: 'bg-secondary text-foreground', label: '等待中' },
     running: { color: 'bg-primary-light text-primary', label: '运行中' },
-    completed: { color: 'bg-green-100 text-green-700', label: '已完成' },
+    completed: { color: 'bg-fall/10 text-fall', label: '已完成' },
     failed: { color: 'bg-destructive/10 text-destructive', label: '失败' },
     cancelled: { color: 'bg-secondary text-muted-foreground', label: '已取消' },
   };

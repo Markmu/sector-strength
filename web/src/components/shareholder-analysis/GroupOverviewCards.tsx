@@ -95,20 +95,20 @@ export default function GroupOverviewCards({
               </div>
               {hasPrevPeriod ? (
                 <>
-                  <div className="text-emerald-600">↑增持</div>
-                  <div className="text-right text-emerald-600 font-medium">
+                  <div className="text-rise">↑增持</div>
+                  <div className="text-right text-rise font-medium">
                     {group.increaseCount}
                   </div>
-                  <div className="text-red-600">↓减持</div>
-                  <div className="text-right text-red-600 font-medium">
+                  <div className="text-rise">↓减持</div>
+                  <div className="text-right text-rise font-medium">
                     {group.decreaseCount}
                   </div>
-                  <div className="text-blue-600">★新进</div>
-                  <div className="text-right text-blue-600 font-medium">
+                  <div className="text-primary">★新进</div>
+                  <div className="text-right text-primary font-medium">
                     {group.newCount}
                   </div>
-                  <div className="text-gray-500">✕退出</div>
-                  <div className="text-right text-gray-500 font-medium">
+                  <div className="text-muted-foreground">✕退出</div>
+                  <div className="text-right text-muted-foreground font-medium">
                     {group.exitCount}
                   </div>
                 </>

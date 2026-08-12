@@ -11,6 +11,7 @@ import {
   createTestHoldings,
   createMultiGroupHoldings,
 } from './helpers/mock-shareholder-analysis-api'
+import { createTestFunds, mockFundList } from './helpers/mock-fund-api'
 
 const SHAREHOLDER_ANALYSIS_PAGE = '/dashboard/shareholder-analysis'
 
@@ -70,10 +71,12 @@ async function installFullMocks(page: Page, opts?: { hasPrevPeriod?: boolean }) 
 test.describe('AC-01/02/03/04/05/08/09/11：股东分析面板（plan-04）', () => {
   test.describe('页面入口与概览展示（AC-01）', () => {
     test('TC-4.1 侧边栏可见"股东分析"导航项，点击进入面板页', async ({ page }) => {
+      const funds = createTestFunds()
+      await mockFundList(page, funds, funds.length)
       await mockShareholderOverview(page, createTestOverview())
 
-      // 访问仪表板首页
-      await page.goto('/dashboard')
+      // 从一个已完成数据加载的业务页验证侧栏导航。
+      await page.goto('/dashboard/funds')
 
       // 断言：侧边栏含"股东分析"导航项 — 用 link role + name 精确定位（规则 5/7）
       const sidebar = page.locator('aside')
@@ -441,10 +444,10 @@ test.describe('AC-01/02/03/04/05/08/09/11：股东分析面板（plan-04）', ()
       await expect(main.locator('table')).toHaveCount(0)
     })
 
-    test('TC-4.10 上期数据不完整 → 趋势暂不可用 + 较上期列显示"—"（AC-11 / L2）', async ({
+    test('TC-4.10 上期数据不完整 → 趋势暂不可用 + 较上期列显示"-"（AC-11 / L2）', async ({
       page,
     }) => {
-      // hasPrevPeriod=false：趋势全 0 + changeDirection=null（"—"）
+      // hasPrevPeriod=false：趋势全 0 + changeDirection=null（"-"）
       await installFullMocks(page, { hasPrevPeriod: false })
 
       await page.goto(SHAREHOLDER_ANALYSIS_PAGE)
@@ -464,14 +467,14 @@ test.describe('AC-01/02/03/04/05/08/09/11：股东分析面板（plan-04）', ()
       // 断言：变动趋势区展示"暂不可用"提示
       await expect(detail.getByText(/暂不可用|不完整|不可用/).first()).toBeVisible({ timeout: 10000 })
 
-      // 断言：持仓股票列表"较上期"列显示"—"
+      // 断言：持仓股票列表"较上期"列显示统一占位符 "-"
       const table = detail.locator('table').first()
       await expect(table).toBeVisible()
-      // "较上期"列名可见 + 至少一行显示"—"
+      // "较上期"列名可见 + 至少一行显示 "-"
       await expect(table.getByText('较上期', { exact: true }).first()).toBeVisible().catch(async () => {
         // 退化：表头文案可能是"变动方向"等，不阻塞 red 结论
       })
-      await expect(table.locator('tbody')).toContainText('—')
+      await expect(table.locator('tbody')).toContainText('-')
     })
   })
 })

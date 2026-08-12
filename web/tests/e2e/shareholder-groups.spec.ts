@@ -67,6 +67,29 @@ test.describe('AC-06/07/10：股东分组管理面板（plan-03）', () => {
     }) => {
       const groups = createTestShareholderGroups()
       await mockShareholderGroupsList(page, [groups])
+      await page.route(
+        (url) => url.pathname === '/api/v1/admin/tasks/stats/summary',
+        (route) => route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            pending: 0,
+            running: 0,
+            completed: 0,
+            failed: 0,
+            cancelled: 0,
+            total: 0,
+          }),
+        })
+      )
+      await page.route(
+        (url) => url.pathname === '/api/v1/admin/tasks',
+        (route) => route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ tasks: [], total: 0, page: 1 }),
+        })
+      )
 
       // 访问管理后台首页
       await page.goto('/dashboard/admin')
@@ -332,10 +355,8 @@ test.describe('AC-06/07/10：股东分组管理面板（plan-03）', () => {
 
       await page.getByRole('button', { name: /^保存$/ }).click()
 
-      // 断言：编辑页内 inline 错误提示可见 — 兼容"组名已存在"或通用失败文案
-      await expect(
-        page.getByText(/组名已存在|操作失败|保存失败|失败/)
-      ).toBeVisible({ timeout: 10000 })
+      // 断言：编辑页内 inline 错误提示可见
+      await expect(page.getByText('组名已存在', { exact: true })).toBeVisible({ timeout: 10000 })
     })
 
     test('TC-1.11 列表 API 返回 500 时展示加载失败提示', async ({ page }) => {

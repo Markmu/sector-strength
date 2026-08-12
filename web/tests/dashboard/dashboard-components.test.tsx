@@ -44,15 +44,6 @@ import {
   ErrorState,
 } from '@/components/dashboard';
 
-// Test DashboardLayout separately with simplified test
-describe('DashboardLayout (integration)', () => {
-  // Skip these tests for now - they require full component integration
-  it.skip('should render children', () => {});
-  it.skip('should render sidebar', () => {});
-  it.skip('should render all sidebar menu items', () => {});
-  it.skip('should apply custom className', () => {});
-});
-
 describe('DashboardHeader', () => {
   it('should render title', () => {
     render(<DashboardHeader title="Test Dashboard" />);
@@ -132,10 +123,10 @@ describe('DashboardContent', () => {
 });
 
 describe('LoadingState', () => {
-  it('should render loading spinner', () => {
+  it('should render loading skeleton', () => {
     const { container } = render(<LoadingState />);
-    const spinner = container.querySelector('.animate-spin');
-    expect(spinner).toBeInTheDocument();
+    const skeleton = container.querySelector('.animate-pulse');
+    expect(skeleton).toBeInTheDocument();
   });
 
   it('should render default message', () => {

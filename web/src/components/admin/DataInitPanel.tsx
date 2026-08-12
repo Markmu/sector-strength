@@ -150,10 +150,10 @@ export default function DataInitPanel() {
   const getStatusBadge = (status: string) => {
     const styles = {
       pending: 'bg-secondary text-foreground',
-      running: 'bg-blue-100 text-blue-700',
-      completed: 'bg-green-100 text-green-700',
-      failed: 'bg-red-100 text-red-700',
-      cancelled: 'bg-yellow-100 text-yellow-700'
+      running: 'bg-primary-light text-primary',
+      completed: 'bg-fall/10 text-fall',
+      failed: 'bg-rise/10 text-rise',
+      cancelled: 'bg-warning/10 text-warning'
     };
 
     const labels = {
@@ -400,7 +400,7 @@ export default function DataInitPanel() {
           disabled={loading}
           className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <BarChart3 className="w-5 h-5 text-indigo-600" />
+          <BarChart3 className="w-5 h-5 text-primary" />
           <span className="font-medium">板块历史数据</span>
         </button>
 
@@ -409,7 +409,7 @@ export default function DataInitPanel() {
           disabled={loading}
           className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <TrendingUp className="w-5 h-5 text-purple-600" />
+          <TrendingUp className="w-5 h-5 text-primary" />
           <span className="font-medium">股票历史数据</span>
         </button>
 
@@ -418,7 +418,7 @@ export default function DataInitPanel() {
           disabled={loading}
           className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Layers className="w-5 h-5 text-cyan-600" />
+          <Layers className="w-5 h-5 text-primary" />
           <span className="font-medium">申万分类同步</span>
         </button>
 
@@ -427,7 +427,7 @@ export default function DataInitPanel() {
           disabled={loading}
           className="flex items-center justify-center gap-2 px-4 py-3 bg-card rounded-lg border border-border hover:bg-secondary hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Network className="w-5 h-5 text-teal-600" />
+          <Network className="w-5 h-5 text-primary" />
           <span className="font-medium">申万成分股同步</span>
         </button>
 
@@ -533,14 +533,14 @@ export default function DataInitPanel() {
       )}
 
       {/* 提示信息 */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
         <div className="flex">
           <div className="flex-shrink-0">
-            <ShieldAlert className="w-5 h-5 text-yellow-600" />
+            <ShieldAlert className="w-5 h-5 text-warning" />
           </div>
           <div className="ml-3">
-            <h4 className="text-sm font-medium text-yellow-800">注意事项</h4>
-            <div className="mt-1 text-sm text-yellow-700">
+            <h4 className="text-sm font-medium text-warning">注意事项</h4>
+            <div className="mt-1 text-sm text-warning">
               <ul className="list-disc list-inside space-y-1">
                 <li>数据初始化可能需要较长时间，取决于数据量和网络状况</li>
                 <li>请确保网络连接稳定，数据源 API 有请求频率限制</li>

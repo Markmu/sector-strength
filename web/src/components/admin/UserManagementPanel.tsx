@@ -55,7 +55,7 @@ interface UserStats {
  */
 function RoleBadge({ role }: { role: UserRole }) {
   const config = {
-    admin: { color: 'bg-purple-100 text-purple-700', label: '管理员', icon: Shield },
+    admin: { color: 'bg-primary-light text-primary', label: '管理员', icon: Shield },
     user: { color: 'bg-secondary text-foreground', label: '用户', icon: ShieldAlert },
   };
 
@@ -74,8 +74,8 @@ function RoleBadge({ role }: { role: UserRole }) {
  */
 function StatusBadge({ status }: { status: UserStatus }) {
   const config = {
-    active: { color: 'bg-green-100 text-green-700', label: '活跃' },
-    banned: { color: 'bg-red-100 text-red-700', label: '已禁用' },
+    active: { color: 'bg-fall/10 text-fall', label: '活跃' },
+    banned: { color: 'bg-rise/10 text-rise', label: '已禁用' },
   };
 
   const { color, label } = config[status];
@@ -205,7 +205,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
                   disabled={isCurrentUser}
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     user.role === 'user'
-                      ? 'bg-gray-600 text-white'
+                      ? 'bg-foreground text-background'
                       : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
@@ -216,7 +216,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
                   disabled={isCurrentUser}
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     user.role === 'admin'
-                      ? 'bg-purple-600 text-white'
+                      ? 'bg-primary text-on-signal'
                       : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
@@ -245,7 +245,7 @@ function UserRow({ user, currentUserEmail, onRoleChange, onStatusChange, onEdit 
                   disabled={isCurrentUser}
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     user.status === 'banned'
-                      ? 'bg-red-600 text-white'
+                      ? 'bg-destructive text-destructive-foreground'
                       : 'bg-card text-foreground hover:bg-secondary'
                   } ${isCurrentUser ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
@@ -306,12 +306,12 @@ function EditUserDialog({ user, open, onClose, onSave }: EditUserDialogProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-foreground/35 flex items-center justify-center z-50 p-4">
       <div className="bg-card rounded-lg shadow-xl max-w-md w-full p-6">
         <h3 className="text-lg font-semibold mb-4">编辑用户</h3>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-destructive">
+          <div className="mb-4 p-3 bg-rise/10 border border-rise/30 rounded-lg text-sm text-destructive">
             {error}
           </div>
         )}
@@ -526,15 +526,15 @@ export default function UserManagementPanel() {
           <div className="text-2xl font-bold">{stats.total}</div>
           <div className="text-sm opacity-80">全部用户</div>
         </div>
-        <div className="bg-purple-100 text-purple-700 rounded-lg p-4">
+        <div className="bg-primary-light text-primary rounded-lg p-4">
           <div className="text-2xl font-bold">{stats.byRole.admin}</div>
           <div className="text-sm opacity-80">管理员</div>
         </div>
-        <div className="bg-green-100 text-green-700 rounded-lg p-4">
+        <div className="bg-fall/10 text-fall rounded-lg p-4">
           <div className="text-2xl font-bold">{stats.byStatus.active}</div>
           <div className="text-sm opacity-80">活跃</div>
         </div>
-        <div className="bg-red-100 text-red-700 rounded-lg p-4">
+        <div className="bg-rise/10 text-rise rounded-lg p-4">
           <div className="text-2xl font-bold">{stats.byStatus.banned}</div>
           <div className="text-sm opacity-80">已禁用</div>
         </div>

@@ -23,13 +23,16 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     id,
     ...props
   }, ref) => {
-    const inputId = id || `input-${React.useId()}`
+    const generatedId = React.useId()
+    const inputId = id || `input-${generatedId}`
 
-    const baseStyles = 'block w-full px-4 py-2.5 text-sm border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-light disabled:opacity-50 disabled:cursor-not-allowed'
+    const errorId = `${inputId}-error`
+    const helperId = `${inputId}-helper`
+    const baseStyles = 'block h-9 w-full rounded-lg border px-3 text-sm transition-[background-color,border-color,box-shadow] duration-200 focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground'
 
     const variants = {
-      default: 'border-border bg-card text-foreground placeholder-faint focus:border-primary focus:ring-primary-light',
-      error: 'border-red-300 bg-red-50 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-100',
+      default: 'border-input bg-card text-foreground placeholder:text-faint focus:border-primary',
+      error: 'border-destructive bg-destructive/5 text-foreground placeholder:text-faint focus:border-destructive focus:ring-destructive/15',
     }
 
     return (
@@ -53,6 +56,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           <input
             type={type}
             id={inputId}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : helperText ? helperId : undefined}
             className={cn(
               baseStyles,
               variants[error ? 'error' : 'default'],
@@ -72,13 +77,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         </div>
 
         {error && (
-          <p className="mt-1.5 text-sm text-red-600">
+          <p id={errorId} className="mt-1.5 text-xs font-medium text-destructive" role="alert">
             {error}
           </p>
         )}
 
         {helperText && !error && (
-          <p className="mt-1.5 text-sm text-muted-foreground">
+          <p id={helperId} className="mt-1.5 text-xs text-muted-foreground">
             {helperText}
           </p>
         )}

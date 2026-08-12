@@ -1,5 +1,6 @@
 import { test as base, expect } from '@playwright/test'
 import {
+  mockFundList,
   mockFundDetail,
   mockFundPortfolio,
   mockFundPortfolioNoData,
@@ -71,7 +72,7 @@ test.describe('AC-03/05：基金详情页', () => {
       await expect(main.getByText('场内')).toBeVisible()
     })
 
-    test('跟踪标的为空时显示"—"', async ({ page }) => {
+    test('跟踪标的为空时显示占位符', async ({ page }) => {
       const fundNoBenchmark: FundItem = {
         ...testFund,
         tsCode: '000002.OF',
@@ -85,9 +86,9 @@ test.describe('AC-03/05：基金详情页', () => {
       // 找到 "跟踪标的" 标签所在的父容器
       const benchmarkLabel = main.getByText('跟踪标的', { exact: true })
       await expect(benchmarkLabel).toBeVisible()
-      // 同一行的内容值显示 "—"
+      // 同一行的内容值显示占位符
       const benchmarkContainer = benchmarkLabel.locator('..')
-      await expect(benchmarkContainer.getByText('—', { exact: true })).toBeVisible()
+      await expect(benchmarkContainer.getByText('-', { exact: true })).toBeVisible()
     })
   })
 
@@ -142,7 +143,7 @@ test.describe('AC-03/05：基金详情页', () => {
       await expect(firstRow).toContainText('0.64%') // 占流通比
     })
 
-    test('占流通比为 null 时显示"—"', async ({ page }) => {
+    test('占流通比为 null 时显示占位符', async ({ page }) => {
       await mockFundDetail(page, testFund)
       await mockFundPortfolio(page, testFund.tsCode, createTestPortfolio(testFund.tsCode))
       await page.goto(`/dashboard/funds/${encodeURIComponent(testFund.tsCode)}`)
@@ -157,7 +158,7 @@ test.describe('AC-03/05：基金详情页', () => {
       await expect(fourthRow).toContainText('2.95%')
       // 占流通比那列应该显示 "—"
       // 同一行有两个 "—"（stockName 和 stkFloatRatio 都可能显示 —）
-      await expect(fourthRow).toContainText('—')
+      await expect(fourthRow).toContainText('-')
     })
   })
 
@@ -234,6 +235,8 @@ test.describe('AC-03/05：基金详情页', () => {
 
   test.describe('返回列表', () => {
     test('点击"返回列表"按钮跳转到基金列表页', async ({ page }) => {
+      const funds = createTestFunds()
+      await mockFundList(page, funds, funds.length)
       await mockFundDetail(page, testFund)
       await mockFundPortfolio(page, testFund.tsCode, createTestPortfolio(testFund.tsCode))
       await page.goto(`/dashboard/funds/${encodeURIComponent(testFund.tsCode)}`)
