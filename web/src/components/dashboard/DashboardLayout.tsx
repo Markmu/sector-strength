@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Settings, ScatterChart, LineChart, LandmarkIcon, Users, UsersRound, Star, ArrowDownUp, TrendingUp, Flame } from 'lucide-react';
+import { Settings, ScatterChart, LineChart, LandmarkIcon, Users, UsersRound, Star, ArrowDownUp, TrendingUp, Flame, Home } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import Sidebar, { SidebarItem } from '@/components/layout/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,11 @@ export interface DashboardLayoutProps {
 
 // 基础菜单项（所有用户可见）
 const baseSidebarItems: SidebarItem[] = [
+  {
+    title: '首页',
+    href: '/dashboard',
+    icon: <Home className="w-5 h-5" />,
+  },
   {
     title: '强度分析',
     href: '/dashboard/analysis',
