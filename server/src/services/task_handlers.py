@@ -1724,6 +1724,15 @@ async def sync_index_daily_task(
     try:
         result = await service.sync_index_daily(trade_date)
 
+        if result.get("skipped"):
+            await manager.log_message(
+                task_id,
+                "INFO",
+                f"Index daily sync skipped: trade_date={trade_date}, "
+                f"reason={result.get('skip_reason', 'non-trading day')}",
+            )
+            return
+
         await manager.log_message(
             task_id, "INFO",
             f"Index daily sync completed: "

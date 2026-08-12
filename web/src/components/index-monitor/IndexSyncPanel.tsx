@@ -13,7 +13,7 @@
  * - 同步记录表（SWR 拉 task_types=sync_index_basic,backfill_index_history,sync_index_daily）
  */
 import React, { useState, useCallback } from 'react';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import {
   Database,
   BarChart3,
@@ -65,6 +65,7 @@ const RECORDS_SWR_KEY = `/api/v1/admin/tasks?task_types=${INDEX_TASK_TYPES}&page
 export default function IndexSyncPanel() {
   useRequireAdmin();
   const { isAdmin } = useAuth();
+  const { mutate: mutateGlobalCache } = useSWRConfig();
 
   // ---- 基础信息同步状态 ----
   const [basicTaskId, setBasicTaskId] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export default function IndexSyncPanel() {
 
   // ---- 关注管理状态 ----
   const [pendingCodes, setPendingCodes] = useState<string[] | null>(null);
+  const [pendingIndexNames, setPendingIndexNames] = useState<Record<string, string>>({});
   const [savingWatchlist, setSavingWatchlist] = useState(false);
   const [watchlistError, setWatchlistError] = useState<string | null>(null);
 
@@ -112,14 +114,18 @@ export default function IndexSyncPanel() {
   const {
     data: watchlistData,
     isLoading: watchlistLoading,
+    isValidating: watchlistRefreshing,
+    error: watchlistLoadError,
     mutate: refreshWatchlist,
   } = useSWR<{
-    success: boolean;
-    data: { watchlist: Array<{ tsCode: string; name: string; market: string | null; hasValuation: boolean }> };
+    watchlist: Array<{ tsCode: string; name: string; market: string | null; hasValuation: boolean }>;
   }>(`/api/v1/index-monitor/watchlist`, fetcher);
 
+  // fetcher 已将后端 { success, data } 解包为 data，此处直接读取 watchlist。
+  const savedWatchlist = watchlistData?.watchlist ?? [];
+
   // 当前关注 ts_code 列表（pending 优先，否则用后端返回）
-  const currentCodes: string[] = pendingCodes ?? (watchlistData?.data?.watchlist ?? []).map((w) => w.tsCode);
+  const currentCodes: string[] = pendingCodes ?? savedWatchlist.map((w) => w.tsCode);
 
   // Toast 通知
   const [toast, setToast] = useState<{
@@ -135,6 +141,18 @@ export default function IndexSyncPanel() {
   const refreshOnTaskChange = useCallback(() => {
     refreshRecords();
   }, [refreshRecords]);
+
+  const refreshIndexMonitorCache = useCallback(() => {
+    void mutateGlobalCache(
+      (key) =>
+        key === 'indexMonitorWatchlist' ||
+        key === 'indexMonitorOverview' ||
+        (Array.isArray(key) &&
+          ['indexTrend', 'indexValuation', 'indexWeights'].includes(String(key[0]))),
+      undefined,
+      { revalidate: true }
+    );
+  }, [mutateGlobalCache]);
 
   // ---- 基础信息同步回调 ----
   const handleBasicComplete = useCallback(
@@ -205,9 +223,10 @@ export default function IndexSyncPanel() {
       setDailyLoading(false);
       setDailyTaskId(null);
       refreshOnTaskChange();
+      refreshIndexMonitorCache();
       showToast('success', '指数当日采集完成');
     },
-    [refreshOnTaskChange, showToast]
+    [refreshIndexMonitorCache, refreshOnTaskChange, showToast]
   );
 
   const handleDailyFailed = useCallback(
@@ -265,9 +284,10 @@ export default function IndexSyncPanel() {
       setHistoryLoading(false);
       setHistoryTaskId(null);
       refreshOnTaskChange();
+      refreshIndexMonitorCache();
       showToast('success', '指数历史数据回填完成');
     },
-    [refreshOnTaskChange, showToast]
+    [refreshIndexMonitorCache, refreshOnTaskChange, showToast]
   );
 
   const handleHistoryFailed = useCallback(
@@ -349,6 +369,7 @@ export default function IndexSyncPanel() {
         showToast('error', `${option.label}（${code}）已在关注列表`);
         return;
       }
+      setPendingIndexNames((names) => ({ ...names, [code]: option.label }));
       setPendingCodes([...currentCodes, code]);
       showToast('success', `已添加 ${option.label}（${code}），记得保存`);
     },
@@ -356,7 +377,17 @@ export default function IndexSyncPanel() {
   );
 
   const removeCode = (code: string) => {
+    setPendingIndexNames((names) => {
+      const nextNames = { ...names };
+      delete nextNames[code];
+      return nextNames;
+    });
     setPendingCodes(currentCodes.filter((c) => c !== code));
+  };
+
+  const resetPendingWatchlist = () => {
+    setPendingCodes(null);
+    setPendingIndexNames({});
   };
 
   const saveWatchlist = async () => {
@@ -377,8 +408,20 @@ export default function IndexSyncPanel() {
         // 不清 pendingCodes，保留让用户修正
         return;
       }
-      setPendingCodes(null);
-      await refreshWatchlist();
+      try {
+        // 强制重新请求服务端，右侧「已关注清单」只展示保存后的真实数据。
+        await refreshWatchlist(undefined, { revalidate: true });
+      } catch (refreshError) {
+        const msg = `关注清单已保存，但刷新失败：${(refreshError as Error).message}`;
+        setWatchlistError(msg);
+        showToast('error', msg);
+        return;
+      }
+
+      resetPendingWatchlist();
+
+      // 同步失效主页的关注指数、行情总览和分析缓存，下次展示时使用新清单。
+      refreshIndexMonitorCache();
       showToast('success', `关注清单已更新（${codesToSave.length} 只）`);
     } catch (error) {
       const msg = (error as Error).message;
@@ -639,9 +682,17 @@ export default function IndexSyncPanel() {
 
         {/* 添加输入区常驻：是否已同步指数基础信息不再用前端会话状态判断，
             由后端 PUT /watchlist 校验 ts_code 是否存在并返回 notFound，避免"假成功"。 */}
-        <>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
+          <div className="min-w-0">
+            <div className="mb-3">
+              <h4 className="text-sm font-semibold text-foreground">编辑关注清单</h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                搜索添加或移除指数，修改仅在点击保存后生效。
+              </p>
+            </div>
+
             {/* 添加输入：按名称/代码模糊搜索，默认展示 15 条 */}
-            <div className="mb-4 max-w-md">
+            <div className="mb-4 max-w-lg">
               <SearchDropdownInput
                 placeholder="输入指数代码或名称搜索，如 000300 或 沪深300"
                 icon={<Search className="w-4 h-4" />}
@@ -651,46 +702,40 @@ export default function IndexSyncPanel() {
               />
             </div>
 
-            {/* 当前关注清单（tag 列表） */}
-            {watchlistLoading ? (
-              <div className="text-sm text-muted-foreground">加载关注清单...</div>
-            ) : currentCodes.length === 0 ? (
-              <div className="text-sm text-muted-foreground">暂无关注指数</div>
+            {/* 待提交清单：反映本次编辑状态，和右侧已保存清单明确分离。 */}
+            {currentCodes.length === 0 ? (
+              <div className="mb-4 rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                待保存清单为空，可通过上方搜索添加指数。
+              </div>
             ) : (
               <div className="flex flex-wrap gap-2 mb-4">
-                {(watchlistData?.data?.watchlist ?? []).map((w) => (
-                  <span
-                    key={w.tsCode}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-secondary text-foreground rounded-full text-xs"
-                  >
-                    {w.name} ({w.tsCode})
-                    <button
-                      onClick={() => removeCode(w.tsCode)}
-                      className="text-muted-foreground hover:text-destructive"
-                      aria-label={`移除 ${w.name}`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                {/* pending 新增（尚未在后端 watchlist 的） */}
-                {(pendingCodes ?? [])
-                  .filter((c) => !(watchlistData?.data?.watchlist ?? []).some((w) => w.tsCode === c))
-                  .map((c) => (
+                {currentCodes.map((code) => {
+                  const savedItem = savedWatchlist.find((item) => item.tsCode === code);
+                  const name = pendingIndexNames[code] ?? savedItem?.name;
+                  const isPendingAddition = !savedItem;
+
+                  return (
                     <span
-                      key={c}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-light text-primary rounded-full text-xs"
+                      key={code}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs ${
+                        isPendingAddition
+                          ? 'bg-primary-light text-primary'
+                          : 'bg-secondary text-foreground'
+                      }`}
                     >
-                      {c}
+                      <span className="font-mono tabular-nums">{code}</span>
+                      {name && <span>{name}</span>}
                       <button
-                        onClick={() => removeCode(c)}
-                        className="hover:text-destructive"
-                        aria-label={`移除 ${c}`}
+                        type="button"
+                        onClick={() => removeCode(code)}
+                        className="rounded-sm text-muted-foreground transition-colors hover:text-destructive focus:outline-none focus:ring-2 focus:ring-primary-light"
+                        aria-label={`从待保存清单移除 ${name ?? code}`}
                       >
                         <X className="w-3 h-3" />
                       </button>
                     </span>
-                  ))}
+                  );
+                })}
               </div>
             )}
 
@@ -714,8 +759,9 @@ export default function IndexSyncPanel() {
               </button>
               {pendingCodes !== null && (
                 <button
-                  onClick={() => setPendingCodes(null)}
-                  className="text-sm text-muted-foreground hover:text-foreground"
+                  type="button"
+                  onClick={resetPendingWatchlist}
+                  className="rounded text-sm text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary-light"
                 >
                   撤销修改
                 </button>
@@ -728,7 +774,71 @@ export default function IndexSyncPanel() {
                 {watchlistError}
               </div>
             )}
-        </>
+          </div>
+
+          <aside className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-baseline gap-2">
+                <h4 className="text-sm font-semibold text-foreground">已关注清单</h4>
+                {!watchlistLoading && (
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                    {savedWatchlist.length} 只
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshWatchlist(undefined, { revalidate: true })}
+                disabled={watchlistRefreshing}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="刷新已关注清单"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${watchlistRefreshing ? 'animate-spin' : ''}`} />
+                刷新
+              </button>
+            </div>
+
+            <div aria-live="polite" aria-busy={watchlistLoading || watchlistRefreshing}>
+              {watchlistLoading && savedWatchlist.length === 0 ? (
+                <div className="space-y-2" aria-label="正在加载已关注清单">
+                  {[0, 1, 2, 3].map((item) => (
+                    <div key={item} className="h-8 animate-pulse rounded-md bg-secondary" />
+                  ))}
+                </div>
+              ) : watchlistLoadError && savedWatchlist.length === 0 ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-4 text-sm text-destructive">
+                  <p>已关注清单加载失败</p>
+                  <button
+                    type="button"
+                    onClick={() => void refreshWatchlist(undefined, { revalidate: true })}
+                    className="mt-2 inline-flex items-center gap-1 rounded font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-destructive/30"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    重试
+                  </button>
+                </div>
+              ) : savedWatchlist.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                  暂无已关注指数
+                </div>
+              ) : (
+                <ul className="max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-background/50">
+                  {savedWatchlist.map((item) => (
+                    <li
+                      key={item.tsCode}
+                      className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center gap-3 px-3 py-2 text-sm"
+                    >
+                      <span className="font-mono tabular-nums text-foreground">{item.tsCode}</span>
+                      <span className="truncate text-foreground" title={item.name}>
+                        {item.name}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </aside>
+        </div>
       </div>
 
       {/* 同步记录表格 */}

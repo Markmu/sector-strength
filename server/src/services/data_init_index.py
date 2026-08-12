@@ -75,6 +75,8 @@ class IndexDataInitService:
         self.session = session
         self._progress_callback: Optional[callable] = None
         self._cancel_check: Optional[callable] = None
+        # 单个同步任务复用同一数据源实例，使客户端级限流在请求间持续生效。
+        self._data_source = None
 
     def set_session(self, session: AsyncSession):
         """设置数据库会话（collector 模式下由外部注入）"""
@@ -107,6 +109,12 @@ class IndexDataInitService:
             except Exception as e:
                 logger.error(f"进度回调失败: {e}")
 
+    def _get_data_source(self):
+        """延迟创建并复用当前同步任务的数据源客户端。"""
+        if self._data_source is None:
+            self._data_source = DataSourceFactory.create()
+        return self._data_source
+
     # ------------------------------------------------------------------
     # sync_index_basic：指数基础信息（index_basic 接口，全量拉取）
     # ------------------------------------------------------------------
@@ -128,7 +136,7 @@ class IndexDataInitService:
         if self.session is None:
             raise RuntimeError("IndexDataInitService.session 未设置")
 
-        tushare = DataSourceFactory.create()
+        tushare = self._get_data_source()
         added = 0
         failed = 0
 
@@ -139,6 +147,9 @@ class IndexDataInitService:
         except Exception as e:
             logger.error(f"拉取指数基础信息失败: {e}")
             raise
+
+        if not records:
+            raise RuntimeError("指数基础信息接口返回 0 条数据，拒绝将任务标记为成功")
 
         total = len(records)
         logger.info(f"拉取到 {total} 条指数基础信息")
@@ -281,15 +292,10 @@ class IndexDataInitService:
         # 2. 查关注指数清单（依赖 sync_index_basic 已设置 is_watched）
         watched_codes = await self._get_watched_codes()
         if not watched_codes:
-            logger.warning("[INDEX] 关注指数清单为空，请先执行 sync_index_basic 设置预置关注")
-            await self._update_progress(0, 1, "关注指数清单为空，请先同步指数基础信息")
-            return {
-                "trading_days": 0,
-                "daily_records": 0,
-                "basic_records": 0,
-                "weight_records": 0,
-                "errors": ["watched_codes_empty"],
-            }
+            message = "关注指数清单为空，请先同步指数基础信息并设置关注指数"
+            logger.error("[INDEX] %s", message)
+            await self._update_progress(0, 1, message)
+            raise RuntimeError(message)
 
         # 3. 用交易日历筛选范围内交易日（按日期升序）
         cal = TradingCalendar()
@@ -377,6 +383,16 @@ class IndexDataInitService:
                 f"历史回填进度 {i}/{total_days}（{trade_date_str}）"
             )
 
+        if daily_records == 0:
+            message = (
+                f"历史回填覆盖 {total_days} 个交易日，但 index_daily 写入 0 条；"
+                f"关注指数: {', '.join(watched_codes)}。"
+                "请检查指数代码、数据源响应或接口权限"
+            )
+            logger.error("[INDEX] %s", message)
+            await self._update_progress(total_days, total_days, message)
+            raise RuntimeError(message)
+
         logger.info(
             f"[INDEX] 历史回填完成: 交易日 {total_days}, "
             f"daily {daily_records}, dailybasic {basic_records}, "
@@ -415,17 +431,27 @@ class IndexDataInitService:
             raise RuntimeError("IndexDataInitService.session 未设置")
 
         target_date = self._parse_trade_date(trade_date)
-        target_date_str_yyyymmdd = trade_date.replace("-", "")
 
-        watched_codes = await self._get_watched_codes()
-        if not watched_codes:
-            logger.warning("[INDEX] sync_index_daily: 关注指数清单为空")
+        # 非交易日无行情属于正常跳过，不能误判成数据源故障。
+        is_trading_day, skip_reason = await TradingCalendar().is_trading_day(target_date)
+        if not is_trading_day:
+            message = f"{trade_date} 为{skip_reason or '非交易日'}，跳过指数当日采集"
+            logger.info("[INDEX] %s", message)
+            await self._update_progress(0, 0, message)
             return {
                 "daily_records": 0,
                 "basic_records": 0,
                 "weight_records": 0,
-                "errors": ["watched_codes_empty"],
+                "errors": [],
+                "skipped": True,
+                "skip_reason": skip_reason or "非交易日",
             }
+
+        watched_codes = await self._get_watched_codes()
+        if not watched_codes:
+            message = "关注指数清单为空，请先同步指数基础信息并设置关注指数"
+            logger.error("[INDEX] sync_index_daily: %s", message)
+            raise RuntimeError(message)
 
         total = len(watched_codes)
         logger.info(
@@ -489,8 +515,19 @@ class IndexDataInitService:
                     f"当日增量进度 {i}/{total}（{trade_date}）"
                 )
 
-        if not weight_done and weight_records > 0:
-            weight_done = True
+        if daily_records == 0:
+            await self.session.rollback()
+            error_preview = "; ".join(errors[:3])
+            message = (
+                f"{trade_date} 为交易日，但 index_daily 写入 0 条；"
+                f"关注指数: {', '.join(watched_codes)}。"
+                "请检查数据发布时间、指数代码或数据源响应"
+            )
+            if error_preview:
+                message = f"{message}；错误示例: {error_preview}"
+            logger.error("[INDEX] %s", message)
+            await self._update_progress(total, total, message)
+            raise RuntimeError(message)
 
         await self.session.commit()
 
@@ -524,7 +561,7 @@ class IndexDataInitService:
         Returns:
             成功 upsert 的条数。
         """
-        tushare = DataSourceFactory.create()
+        tushare = self._get_data_source()
         records = tushare.get_index_daily(ts_code, start, end)
         if not records:
             return 0
@@ -577,7 +614,7 @@ class IndexDataInitService:
         Returns:
             成功 upsert 的条数。
         """
-        tushare = DataSourceFactory.create()
+        tushare = self._get_data_source()
         records = tushare.get_index_dailybasic(ts_code, start, end)
         if not records:
             return 0
@@ -630,7 +667,7 @@ class IndexDataInitService:
         Returns:
             成功 upsert 的条数。
         """
-        tushare = DataSourceFactory.create()
+        tushare = self._get_data_source()
         records = tushare.get_index_weight(index_code, start, end)
         if not records:
             return 0
@@ -666,7 +703,32 @@ class IndexDataInitService:
         """查询 is_watched=true 的指数 ts_code 清单。"""
         stmt = select(IndexBasic.ts_code).where(IndexBasic.is_watched.is_(True))
         result = await self.session.execute(stmt)
-        return [row[0] for row in result.scalars().all() if row[0]]
+        # scalars().all() 已经返回字符串标量，不能再取 row[0]，否则完整代码
+        # "000300.SH" 会被截断为 "0"。
+        raw_codes = result.scalars().all()
+        codes: List[str] = []
+        invalid_codes: List[str] = []
+        seen: Set[str] = set()
+
+        for value in raw_codes:
+            code = str(value).strip() if value is not None else ""
+            if not code:
+                continue
+            # Tushare 指数代码应包含代码段与市场后缀，例如 000300.SH。
+            if "." not in code or code.startswith(".") or code.endswith("."):
+                invalid_codes.append(code)
+                continue
+            if code not in seen:
+                seen.add(code)
+                codes.append(code)
+
+        if invalid_codes:
+            raise ValueError(
+                "关注清单包含无效指数代码: " + ", ".join(invalid_codes)
+            )
+
+        logger.info("[INDEX] 已加载 %d 个关注指数: %s", len(codes), ", ".join(codes))
+        return codes
 
     async def _has_weight_for_month(self, target_date: date) -> bool:
         """检查当月是否已有 index_weight 数据（任意指数任意成分股）。
