@@ -14,7 +14,7 @@ import {
   LightBulbIcon,
   MapIcon,
 } from '@heroicons/react/24/outline'
-import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
+import { DashboardLayout, DashboardHeader, DashboardContent } from '@/components/dashboard'
 import { Disclaimer } from '@/components/ui/Disclaimer'
 import { SectorGradeTable } from '@/components/analysis/SectorGradeTable'
 import { useSectorGradeTable } from '@/hooks/useSectorGradeTable'
@@ -64,9 +64,10 @@ export default function SectorAnalysisPage() {
         title="板块强度分析"
         subtitle="按强度等级查看板块分布情况"
         onRefresh={handleRefresh}
+        className="[&>div]:mx-auto [&>div]:max-w-7xl"
       />
 
-      <div className="space-y-6">
+      <DashboardContent>
         {/* 统计卡片 */}
         {distributionData && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -169,7 +170,7 @@ export default function SectorAnalysisPage() {
 
         {/* 免责声明 */}
         <Disclaimer showSeparator={true} />
-      </div>
+      </DashboardContent>
     </DashboardLayout>
   )
 }

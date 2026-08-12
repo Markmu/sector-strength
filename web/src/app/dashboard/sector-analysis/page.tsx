@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { DashboardLayout, DashboardHeader } from '@/components/dashboard'
+import { DashboardLayout, DashboardHeader, DashboardContent } from '@/components/dashboard'
 import { Disclaimer } from '@/components/ui/Disclaimer'
 import { sectorsApi } from '@/lib/api'
 import type { Sector } from '@/types'
@@ -223,13 +223,19 @@ export default function SectorAnalysisListPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <DashboardHeader title="板块分析" subtitle="加载中..." />
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">加载板块列表...</p>
+        <DashboardHeader
+          title="板块分析"
+          subtitle="加载中..."
+          className="[&>div]:mx-auto [&>div]:max-w-7xl"
+        />
+        <DashboardContent>
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">加载板块列表...</p>
+            </div>
           </div>
-        </div>
+        </DashboardContent>
       </DashboardLayout>
     )
   }
@@ -237,12 +243,18 @@ export default function SectorAnalysisListPage() {
   if (error) {
     return (
       <DashboardLayout>
-        <DashboardHeader title="板块分析" subtitle="加载失败" />
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center text-destructive">
-            <p>{error}</p>
+        <DashboardHeader
+          title="板块分析"
+          subtitle="加载失败"
+          className="[&>div]:mx-auto [&>div]:max-w-7xl"
+        />
+        <DashboardContent>
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center text-destructive">
+              <p>{error}</p>
+            </div>
           </div>
-        </div>
+        </DashboardContent>
       </DashboardLayout>
     )
   }
@@ -252,9 +264,10 @@ export default function SectorAnalysisListPage() {
       <DashboardHeader
         title="板块分析"
         subtitle={`共 ${totalCount} 个板块，当前显示第 ${currentPage} 页`}
+        className="[&>div]:mx-auto [&>div]:max-w-7xl"
       />
 
-      <div className="space-y-6">
+      <DashboardContent>
         {/* 说明信息 */}
         <div className="bg-primary-light rounded-lg border border-primary/30 p-4">
           <div className="flex items-start gap-3">
@@ -602,7 +615,7 @@ export default function SectorAnalysisListPage() {
 
         {/* 免责声明 */}
         <Disclaimer showSeparator={true} />
-      </div>
+      </DashboardContent>
     </DashboardLayout>
   )
 }
