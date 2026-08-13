@@ -66,7 +66,7 @@ export default function IndexTrendChart({ watchlist }: Props) {
   const [selected, setSelected] = useState<string[]>(() =>
     watchlist.map((w) => w.tsCode)
   )
-  const [normalize, setNormalize] = useState(false)
+  const [normalize, setNormalize] = useState(true)
 
   // watchlist 变化时重置默认选中（全选）——渲染期调整 state（React 官方范式）
   const [prevWatchlistLength, setPrevWatchlistLength] = useState(watchlist.length)
