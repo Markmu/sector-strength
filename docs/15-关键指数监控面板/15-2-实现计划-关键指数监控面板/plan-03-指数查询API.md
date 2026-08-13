@@ -68,7 +68,7 @@ router = APIRouter(prefix="/index-monitor", tags=["IndexMonitor"])
 
 参数：`ts_codes: str`（逗号分隔）、`start_date: date`（可选）、`end_date: date`（可选，默认近1年）
 逻辑：
-- 拆分 ts_codes（逗号分隔），最多取前 6 只
+- 拆分 ts_codes（逗号分隔），不限制数量
 - 查 index_daily：`WHERE ts_code IN (...) AND trade_date BETWEEN start AND end`，按 trade_date 升序
 - 按 ts_code 分组为 series
 - 返回 `{success, data: {series: [{tsCode, name, points: [...]}], hasData: bool}}`
@@ -143,7 +143,7 @@ router.include_router(index_monitor_router)  # /api/v1/index-monitor/*
 ### 走势验收（AC-02）
 
 - [ ] AC-02 `GET /trend?ts_codes=000300.SH,000001.SH&start_date=2026-08-01&end_date=2026-08-08` 返回 2 条 series，每个含按日期升序的 close 序列
-- [ ] AC-02 传超过 6 只 ts_codes 时截断前 6 只
+- [ ] AC-02 传任意数量 ts_codes 全部生效（不截断）
 
 ### 估值验收（AC-03）
 
@@ -211,6 +211,6 @@ curl -s -X PUT http://localhost:8000/api/v1/index-monitor/watchlist -H "Authoriz
 | 指数无行情数据 | /overview 该指数 peTtm=null，其余字段尽量填或跳过 | done |
 | 指数无估值数据 | /valuation 返回 hasData=false，空序列 | done |
 | 权重成分股无 name 匹配 | 显示 con_code 作为 fallback | done |
-| ts_codes 超过 6 只 | /trend 截断前 6 只 | done |
+| ts_codes 任意数量 | /trend 全部生效，不截断 | done |
 | 当日无数据 | /overview 回退最近有数据交易日 | done |
 | 关注清单为空 | /overview 返回空数组，不报错 | done |

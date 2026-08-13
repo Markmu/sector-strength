@@ -3,18 +3,18 @@
 /**
  * 多指数走势对比图（第 15 期 plan-04 Task 8）
  *
- * AC-02：选择多只指数（1~6 只）后展示收盘价走势；归一化开关（基准日=100）
+ * AC-02：选择多只指数（不限制数量，默认全选）后展示收盘价走势；归一化开关（基准日=100）
  *       方便量级不同的指数（如上证指数 3000 点 vs 创业板指 2000 点）对比涨跌幅。
  *
  * 实现：
- * - 从 watchlist 多选指数（最多 6 只）
+ * - 从 watchlist 多选指数（不限制数量，默认全选）
  * - 归一化：以各自首日 close 为基准 100，后续按比例换算
  * - 原始：双 yAxis（量级差异大时可分别对比），这里用单 yAxis + 归一化切换更直观
  * - ECharts 多 line series，tooltip 显示各指数当日 close / 归一化值
  *
  * SWR 调 indexMonitorApi.getTrend(tsCodes, start, end)，默认拉近 1 年。
  */
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import dynamic from 'next/dynamic'
 import { Loader2, AlertCircle } from 'lucide-react'
@@ -37,6 +37,7 @@ const ReactECharts = dynamic(
   }
 )
 
+// 默认全选时最多可达 14 只关注指数，颜色尽量互不重复
 const SERIES_COLORS = [
   '#EF4444',
   '#3B82F6',
@@ -44,6 +45,14 @@ const SERIES_COLORS = [
   '#F59E0B',
   '#8B5CF6',
   '#EC4899',
+  '#06B6D4',
+  '#F97316',
+  '#14B8A6',
+  '#6366F1',
+  '#84CC16',
+  '#D946EF',
+  '#0EA5E9',
+  '#A855F7',
 ]
 
 const SWR_OPTIONS = { revalidateOnFocus: false, dedupingInterval: 30000 } as const
@@ -53,26 +62,24 @@ interface Props {
 }
 
 export default function IndexTrendChart({ watchlist }: Props) {
-  // 默认选前 2 只（走势对比至少需要 1 只，默认 2 只便于直观对比）
+  // 默认全选（不限制选择数量）
   const [selected, setSelected] = useState<string[]>(() =>
-    watchlist.slice(0, 2).map((w) => w.tsCode)
+    watchlist.map((w) => w.tsCode)
   )
   const [normalize, setNormalize] = useState(false)
 
-  // watchlist 变化时重置默认选中（仅首次或长度变化时）
-  useEffect(() => {
-    if (selected.length === 0 && watchlist.length > 0) {
-      setSelected(watchlist.slice(0, 2).map((w) => w.tsCode))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchlist.length])
+  // watchlist 变化时重置默认选中（全选）——渲染期调整 state（React 官方范式）
+  const [prevWatchlistLength, setPrevWatchlistLength] = useState(watchlist.length)
+  if (prevWatchlistLength !== watchlist.length) {
+    setPrevWatchlistLength(watchlist.length)
+    setSelected(watchlist.map((w) => w.tsCode))
+  }
 
   const toggleSelect = (tsCode: string) => {
     setSelected((prev) => {
       if (prev.includes(tsCode)) {
         return prev.filter((c) => c !== tsCode)
       }
-      if (prev.length >= 6) return prev // 最多 6 只
       return [...prev, tsCode]
     })
   }
@@ -211,7 +218,7 @@ export default function IndexTrendChart({ watchlist }: Props) {
         })}
       </div>
       <p className="text-xs text-muted-foreground">
-        已选 {selected.length} / 6 只
+        已选 {selected.length} / {watchlist.length} 只
       </p>
 
       {/* 图表区 */}

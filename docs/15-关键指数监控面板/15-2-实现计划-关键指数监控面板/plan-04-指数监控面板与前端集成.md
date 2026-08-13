@@ -196,7 +196,7 @@ import { IndexMonitorPage } from '@/components/index-monitor/IndexMonitorPage';
 
 #### 9. IndexTrendChart.tsx — ECharts 走势对比
 
-- 多选指数（从 watchlist 选择，最少1最多6只）
+- 多选指数（从 watchlist 选择，不限制数量，默认全选）
 - 归一化开关（基准日=100）
 - ECharts line chart，双轴（量级不同可分别对比）
 - SWR 调 `indexMonitorApi.getTrend(tsCodes, start, end)`

@@ -1530,7 +1530,7 @@ export const indexMonitorApi = {
       '/index-monitor/overview'
     ),
 
-  // 多指数收盘价走势（最多 6 只，AC-02）
+  // 多指数收盘价走势（不限制数量，AC-02）
   getTrend: (tsCodes: string[], startDate?: string, endDate?: string) =>
     apiClient.get<{ success: boolean; data: IndexTrendData }>(
       '/index-monitor/trend',

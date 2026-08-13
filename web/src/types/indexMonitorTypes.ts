@@ -60,7 +60,7 @@ export interface IndexTrendSeries {
 export interface IndexTrendData {
   /** 是否有数据（false 时 series 为空） */
   hasData: boolean
-  /** 多指数序列（最多 6 只，超过后端截断） */
+  /** 多指数序列（数量不限制） */
   series: IndexTrendSeries[]
 }
 

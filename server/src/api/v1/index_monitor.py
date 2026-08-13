@@ -196,7 +196,7 @@ async def get_overview(
 
 @router.get("/trend")
 async def get_trend(
-    ts_codes: str = Query(..., description="指数代码列表，逗号分隔（最多前 6 只生效）"),
+    ts_codes: str = Query(..., description="指数代码列表，逗号分隔（不限制数量）"),
     start_date: Optional[date] = Query(None, description="起始日（YYYY-MM-DD，默认近1年）"),
     end_date: Optional[date] = Query(None, description="结束日（YYYY-MM-DD，默认今天）"),
     session: AsyncSession = Depends(get_session),
@@ -206,7 +206,7 @@ async def get_trend(
     多指数走势（AC-02）。
 
     逻辑：
-    - 拆分 ts_codes（逗号分隔），最多取前 6 只；
+    - 拆分 ts_codes（逗号分隔），不限制数量；
     - 查 index_daily WHERE ts_code IN(...) AND trade_date BETWEEN start AND end，
       按 trade_date 升序；
     - 按 ts_code 分组为 series。
@@ -214,9 +214,8 @@ async def get_trend(
     返回 { success, data: { series: [...], hasData } }。
     """
     try:
-        # 拆分 ts_codes，最多前 6 只
+        # 拆分 ts_codes，不限制数量
         code_list = [c.strip() for c in ts_codes.split(",") if c.strip()]
-        code_list = code_list[:6]
 
         if not code_list:
             logger.debug("trend: ts_codes 为空，返回空 series")
