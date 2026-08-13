@@ -51,6 +51,10 @@ class IndexBasic(Base):
     list_date = Column(Date, comment="发布日期")
     # 关注标记（ADR-2）：替代独立 watchlist 表，默认 false
     is_watched = Column(Boolean, default=False, comment="是否加入关注清单")
+    # 关注清单排序（0 起，越小越靠前）；非关注指数为 NULL
+    sort_order = Column(
+        Integer, nullable=True, comment="关注清单排序（0 起，越小越靠前）"
+    )
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), comment="创建时间"

@@ -27,6 +27,8 @@ import {
   Star,
   Search,
   X,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { adminApi, indexMonitorApi } from '@/lib/api';
 import { useTaskStatus, type TaskData } from '@/hooks/useTaskStatus';
@@ -415,6 +417,15 @@ export default function IndexSyncPanel() {
     setPendingCodes(currentCodes.filter((c) => c !== code));
   };
 
+  /** 上移/下移：direction 为 -1 上移、1 下移；交换数组相邻元素，顺序随保存提交 */
+  const moveCode = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= currentCodes.length) return;
+    const next = [...currentCodes];
+    [next[index], next[target]] = [next[target], next[index]];
+    setPendingCodes(next);
+  };
+
   const resetPendingWatchlist = () => {
     setPendingCodes(null);
     setPendingIndexNames({});
@@ -730,7 +741,7 @@ export default function IndexSyncPanel() {
           <h3 className="text-lg font-semibold text-foreground">关注指数管理</h3>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          管理主页监控面板的关注指数列表。在搜索框输入指数代码或名称，从下拉结果中选中添加，修改完成点击保存即全量更新。
+          管理主页监控面板的关注指数列表。在搜索框输入指数代码或名称，从下拉结果中选中添加，可上下移动调整顺序（顺序与主页展示一致），修改完成点击保存即全量更新。
         </p>
 
         {/* 添加输入区常驻：是否已同步指数基础信息不再用前端会话状态判断，
@@ -740,7 +751,7 @@ export default function IndexSyncPanel() {
             <div className="mb-3">
               <h4 className="text-sm font-semibold text-foreground">编辑关注清单</h4>
               <p className="mt-1 text-xs text-muted-foreground">
-                搜索添加或移除指数，修改仅在点击保存后生效。
+                搜索添加或移除指数，使用箭头调整顺序（列表顺序即主页展示顺序），修改仅在点击保存后生效。
               </p>
             </div>
 
@@ -755,41 +766,70 @@ export default function IndexSyncPanel() {
               />
             </div>
 
-            {/* 待提交清单：反映本次编辑状态，和右侧已保存清单明确分离。 */}
+            {/* 待提交清单：反映本次编辑状态，和右侧已保存清单明确分离。
+                列表顺序即主页展示顺序，支持上移/下移调整。 */}
             {currentCodes.length === 0 ? (
               <div className="mb-4 rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
                 待保存清单为空，可通过上方搜索添加指数。
               </div>
             ) : (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {currentCodes.map((code) => {
+              <ul className="mb-4 max-h-80 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-background/50">
+                {currentCodes.map((code, index) => {
                   const savedItem = savedWatchlist.find((item) => item.tsCode === code);
                   const name = pendingIndexNames[code] ?? savedItem?.name;
                   const isPendingAddition = !savedItem;
 
                   return (
-                    <span
-                      key={code}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs ${
-                        isPendingAddition
-                          ? 'bg-primary-light text-primary'
-                          : 'bg-secondary text-foreground'
-                      }`}
-                    >
-                      <span className="font-mono tabular-nums">{code}</span>
-                      {name && <span>{name}</span>}
-                      <button
-                        type="button"
-                        onClick={() => removeCode(code)}
-                        className="rounded-sm text-muted-foreground transition-colors hover:text-destructive focus:outline-none focus:ring-2 focus:ring-primary-light"
-                        aria-label={`从待保存清单移除 ${name ?? code}`}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
+                    <li key={code} className="flex items-center gap-2 px-3 py-2 text-sm">
+                      <span className="w-6 shrink-0 text-center font-mono text-xs tabular-nums text-muted-foreground">
+                        {index + 1}
+                      </span>
+                      <span className="w-[6.5rem] shrink-0 font-mono tabular-nums text-foreground">
+                        {code}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-foreground" title={name}>
+                        {name ?? '—'}
+                        {isPendingAddition && (
+                          <span className="ml-2 rounded bg-primary-light px-1.5 py-0.5 text-xs text-primary">
+                            新增
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => moveCode(index, -1)}
+                          disabled={index === 0}
+                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-30"
+                          aria-label={`上移 ${name ?? code}`}
+                          title="上移"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveCode(index, 1)}
+                          disabled={index === currentCodes.length - 1}
+                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary-light disabled:cursor-not-allowed disabled:opacity-30"
+                          aria-label={`下移 ${name ?? code}`}
+                          title="下移"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeCode(code)}
+                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-destructive focus:outline-none focus:ring-2 focus:ring-primary-light"
+                          aria-label={`从待保存清单移除 ${name ?? code}`}
+                          title="移除"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </span>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
 
             <div className="flex items-center gap-3">
@@ -876,11 +916,14 @@ export default function IndexSyncPanel() {
                 </div>
               ) : (
                 <ul className="max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-background/50">
-                  {savedWatchlist.map((item) => (
+                  {savedWatchlist.map((item, index) => (
                     <li
                       key={item.tsCode}
-                      className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center gap-3 px-3 py-2 text-sm"
+                      className="grid grid-cols-[1.5rem_7rem_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-sm"
                     >
+                      <span className="text-center font-mono text-xs tabular-nums text-muted-foreground">
+                        {index + 1}
+                      </span>
                       <span className="font-mono tabular-nums text-foreground">{item.tsCode}</span>
                       <span className="truncate text-foreground" title={item.name}>
                         {item.name}

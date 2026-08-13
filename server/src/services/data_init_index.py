@@ -24,7 +24,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Set
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -203,25 +203,34 @@ class IndexDataInitService:
                 await self._update_progress(i, total, f"已处理 {i}/{total} 条指数基础信息")
 
         # 4. 预置 14 只关注指数置 true（仅首次同步：WHERE is_watched IS NULL 兜底，
-        #    避免覆盖已关注记录；用 ts_code IN 预置清单限定范围）
-        from sqlalchemy import update
-
+        #    避免覆盖已关注记录；用 ts_code IN 预置清单限定范围），
+        #    同时按预置清单顺序写入 sort_order。
+        preset_sort = case(
+            {code: i for i, code in enumerate(PRESET_WATCHED)},
+            value=IndexBasic.ts_code,
+            else_=0,
+        )
         preset_result = await self.session.execute(
             update(IndexBasic)
             .where(
                 IndexBasic.ts_code.in_(PRESET_WATCHED),
                 IndexBasic.is_watched.is_(None),
             )
-            .values(is_watched=True)
+            .values(is_watched=True, sort_order=preset_sort)
         )
         preset_rows = preset_result.rowcount or 0
         # 再次兜底：预置清单中 ts_code 已存在但 is_watched=False 的也置为 true
         # （仅针对预置清单 14 只，不触碰用户主动取消关注的记录）
         # 说明：AC 要求首次同步后 14 只 must be true，故对预置清单强制置 true。
+        # sort_order 仅在未设置时写入预置顺序（coalesce），避免覆盖用户在关注管理中
+        # 保存的自定义顺序。
         await self.session.execute(
             update(IndexBasic)
             .where(IndexBasic.ts_code.in_(PRESET_WATCHED))
-            .values(is_watched=True)
+            .values(
+                is_watched=True,
+                sort_order=func.coalesce(IndexBasic.sort_order, preset_sort),
+            )
         )
 
         await self.session.commit()
@@ -700,8 +709,16 @@ class IndexDataInitService:
     # ------------------------------------------------------------------
 
     async def _get_watched_codes(self) -> List[str]:
-        """查询 is_watched=true 的指数 ts_code 清单。"""
-        stmt = select(IndexBasic.ts_code).where(IndexBasic.is_watched.is_(True))
+        """查询 is_watched=true 的指数 ts_code 清单（按关注清单排序）。"""
+        stmt = (
+            select(IndexBasic.ts_code)
+            .where(IndexBasic.is_watched.is_(True))
+            .order_by(
+                IndexBasic.sort_order.is_(None),
+                IndexBasic.sort_order,
+                IndexBasic.ts_code,
+            )
+        )
         result = await self.session.execute(stmt)
         # scalars().all() 已经返回字符串标量，不能再取 row[0]，否则完整代码
         # "000300.SH" 会被截断为 "0"。

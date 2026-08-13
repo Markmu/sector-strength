@@ -31,7 +31,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic.alias_generators import to_camel
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_user, get_session
@@ -113,9 +113,15 @@ async def get_overview(
                 "data": _dict_to_camel({"indices": [], "trade_date": None}),
             }
 
-        # 2. 关注指数
+        # 2. 关注指数（按关注清单排序：sort_order 升序，未设置排后，ts_code 兜底）
         watched_res = await session.execute(
-            select(IndexBasic).where(IndexBasic.is_watched.is_(True))
+            select(IndexBasic)
+            .where(IndexBasic.is_watched.is_(True))
+            .order_by(
+                IndexBasic.sort_order.is_(None),
+                IndexBasic.sort_order,
+                IndexBasic.ts_code,
+            )
         )
         watched_list = watched_res.scalars().all()
 
@@ -490,13 +496,19 @@ async def get_watchlist(
     """
     关注清单（AC-07）。
 
-    查 index_basic WHERE is_watched=true，每项返回
-    { tsCode, name, market, hasValuation }，其中 hasValuation 表示该指数
-    是否在 index_dailybasic 有估值数据。
+    查 index_basic WHERE is_watched=true，按 sort_order 升序（未设置排后，
+    ts_code 兜底）返回，每项 { tsCode, name, market, hasValuation }，其中
+    hasValuation 表示该指数是否在 index_dailybasic 有估值数据。
     """
     try:
         res = await session.execute(
-            select(IndexBasic).where(IndexBasic.is_watched.is_(True))
+            select(IndexBasic)
+            .where(IndexBasic.is_watched.is_(True))
+            .order_by(
+                IndexBasic.sort_order.is_(None),
+                IndexBasic.sort_order,
+                IndexBasic.ts_code,
+            )
         )
         watched = res.scalars().all()
 
@@ -539,13 +551,14 @@ async def update_watchlist(
     """
     全量更新关注清单（AC-07）。
 
-    body: { "ts_codes": ["000300.SH", ...] } — 全量列表。
+    body: { "ts_codes": ["000300.SH", ...] } — 全量列表，数组顺序即关注清单顺序。
 
     逻辑：
     1. 校验所有 ts_code 是否存在于 index_basic；不存在的拒绝并返回清单，
        避免静默 UPDATE 不命中导致"保存成功但未生效"的假成功。
-    2. UPDATE index_basic SET is_watched=false（清空）；
-    3. UPDATE index_basic SET is_watched=true WHERE ts_code IN(...)（设置新列表）。
+    2. UPDATE index_basic SET is_watched=false, sort_order=NULL（清空）；
+    3. UPDATE index_basic SET is_watched=true, sort_order=数组下标
+       WHERE ts_code IN(...)（设置新列表与顺序）。
 
     返回 { success, data: { updated: N, not_found: [...] } }。
     success=False 时 data.updated=0 且 not_found 列出未识别的 ts_code，前端据此提示。
@@ -581,16 +594,23 @@ async def update_watchlist(
                 ),
             }
 
-        # 2. 清空关注标记
-        await session.execute(update(IndexBasic).values(is_watched=False))
+        # 2. 清空关注标记与排序
+        await session.execute(
+            update(IndexBasic).values(is_watched=False, sort_order=None)
+        )
 
-        # 3. 设置新列表
+        # 3. 设置新列表：is_watched=true，sort_order=数组下标（顺序持久化）
         updated = 0
         if ts_codes:
+            sort_case = case(
+                {code: i for i, code in enumerate(ts_codes)},
+                value=IndexBasic.ts_code,
+                else_=None,
+            )
             res = await session.execute(
                 update(IndexBasic)
                 .where(IndexBasic.ts_code.in_(ts_codes))
-                .values(is_watched=True)
+                .values(is_watched=True, sort_order=sort_case)
             )
             updated = res.rowcount or 0
 
