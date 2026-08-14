@@ -651,6 +651,14 @@ export const adminApi = {
       start_date,
       end_date,
     }),
+  // 全市场融资融券范围同步（第 17 期 plan-05/plan-08，start_date/end_date 为 YYYY-MM-DD）
+  // body 字段 snake_case（user_input，与后端 MarginRangePayload 一致）；
+  // 返回 ApiResponse data.task_id（与 initMarketMetrics 同款）。
+  initMargin: (start_date: string, end_date: string) =>
+    adminApiClient.post<{ task_id: string }>('/admin/init/margin', {
+      start_date,
+      end_date,
+    }),
 
   // 股东监控组管理（plan-03 / plan-01 后端契约）
   // 后端 ApiResponse 包 { success, data, message }，AdminApiClient.request 已提取 data 字段
@@ -1417,6 +1425,10 @@ import type {
   MarketMetricsTrendData,
   MarketMetricsRange,
 } from '@/types/marketMetricsTypes'
+import type {
+  MarginTrendData,
+  MarginRange,
+} from '@/types/marginTypes'
 
 export type {
   EtfSortBy,
@@ -1629,5 +1641,28 @@ export const marketMetricsApi = {
   getTrend: (range: MarketMetricsRange) =>
     apiClient.get<{ success: boolean; data: MarketMetricsTrendData }>(
       `/market-metrics/trend?range=${range}`
+    ),
+}
+
+// ===================== 融资融券（17 期 plan-07 前端客户端）=====================
+//
+// apiClient.baseURL 已含 /api/v1（见上方 API_BASE_WITH_PREFIX），endpoint 不再带
+// /api/v1，避免双前缀（与 marketMetricsApi 一致）。
+//
+// 契约（17 期 plan-06 §实现规格，已上线）：
+// - query 参数 ``range``（单词无 snake/camel 歧义），仅 30/90/250，默认 30
+// - 响应外层 { success, data }，data 内字段经后端 _dict_to_camel 转 camelCase、
+//   Decimal → float、date → ISO 字符串
+// - apiClient.get 泛型 T 必须写 ``{ success: boolean; data: 业务对象 }``
+//   （与 marketMetricsApi 一致，ApiClient.request 返回 { data: 完整响应体 }）
+/**
+ * 融资融券查询 API（首页面板消费）。
+ * 类型定义见 types/marginTypes.ts（camelCase 业务对象）。
+ */
+export const marginApi = {
+  // 全市场融资融券趋势（AC-5 缺口 null；AC-6 30/90/250 裁剪）
+  getTrend: (range: MarginRange) =>
+    apiClient.get<{ success: boolean; data: MarginTrendData }>(
+      `/margin/trend?range=${range}`
     ),
 }

@@ -12,7 +12,10 @@ import type { MarketMetricsTaskResult } from '@/types/marketMetricsTypes'
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 // 任务数据类型
-export interface TaskData {
+// result 为泛型参数（第 17 期 plan-08 Task 1）：默认 MarketMetricsTaskResult（16 期既有
+// 消费方不变）；融资融券面板以 TaskData<MarginTaskResult> / useTaskStatus<MarginTaskResult>
+// 获得直消费的 MarginTaskResult（camelCase 契约，无二次键转换）。
+export interface TaskData<TResult = MarketMetricsTaskResult> {
   taskId: string
   taskType: string
   status: TaskStatus
@@ -27,29 +30,30 @@ export interface TaskData {
   startedAt?: string
   completedAt?: string
   // 任务终态聚合结果（plan-05 to_dict 原样透传，camelCase 直消费）。
-  // sync_market_metrics 携带 MarketMetricsTaskResult；其他任务类型为 null/undefined。
-  result?: MarketMetricsTaskResult | null
+  // sync_market_metrics 携带 MarketMetricsTaskResult；sync_market_margin 携带
+  // MarginTaskResult；其他任务类型为 null/undefined。
+  result?: TResult | null
 }
 
 // Hook 选项
-interface UseTaskStatusOptions {
+interface UseTaskStatusOptions<TResult = MarketMetricsTaskResult> {
   // 是否启用轮询
   enabled?: boolean
   // 轮询间隔（毫秒）
   pollInterval?: number
   // 任务完成后的回调
-  onComplete?: (task: TaskData) => void
+  onComplete?: (task: TaskData<TResult>) => void
   // 任务失败后的回调
-  onFailed?: (task: TaskData) => void
+  onFailed?: (task: TaskData<TResult>) => void
   // 任务取消后的回调
-  onCancelled?: (task: TaskData) => void
+  onCancelled?: (task: TaskData<TResult>) => void
   // 进度更新回调
-  onProgress?: (task: TaskData) => void
+  onProgress?: (task: TaskData<TResult>) => void
 }
 
 // Hook 返回值
-interface UseTaskStatusResult {
-  task: TaskData | null
+interface UseTaskStatusResult<TResult = MarketMetricsTaskResult> {
+  task: TaskData<TResult> | null
   isLoading: boolean
   isError: boolean
   error: unknown
@@ -66,10 +70,10 @@ const DEFAULT_POLL_INTERVAL = 2000 // 2秒
  * @param taskId - 任务ID，如果为null则不进行轮询
  * @param options - Hook选项
  */
-export function useTaskStatus(
+export function useTaskStatus<TResult = MarketMetricsTaskResult>(
   taskId: string | null,
-  options: UseTaskStatusOptions = {}
-): UseTaskStatusResult {
+  options: UseTaskStatusOptions<TResult> = {}
+): UseTaskStatusResult<TResult> {
   const {
     enabled = true,
     pollInterval = DEFAULT_POLL_INTERVAL,
@@ -79,7 +83,7 @@ export function useTaskStatus(
     onProgress,
   } = options
 
-  const [task, setTask] = useState<TaskData | null>(null)
+  const [task, setTask] = useState<TaskData<TResult> | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isError, setIsError] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -111,7 +115,7 @@ export function useTaskStatus(
 
     try {
       const response = await tasksApi.getTask(taskId)
-      const taskData = response.data as TaskData
+      const taskData = response.data as TaskData<TResult>
 
       setTask(taskData)
 
@@ -180,7 +184,7 @@ export function useTaskStatus(
 
       try {
         const response = await tasksApi.getTask(taskId)
-        const taskData = response.data as TaskData
+        const taskData = response.data as TaskData<TResult>
 
         setTask(taskData)
 
@@ -224,7 +228,7 @@ export function useTaskStatus(
 
       try {
         const response = await tasksApi.getTask(taskId)
-        const taskData = response.data as TaskData
+        const taskData = response.data as TaskData<TResult>
 
         setTask(taskData)
 

@@ -11,6 +11,7 @@ import DataStatusPanel from '@/components/admin/DataStatusPanel';
 import BrokerRecommendSyncPanel from '@/components/admin/BrokerRecommendSyncPanel';
 import IndexSyncPanel from '@/components/index-monitor/IndexSyncPanel';
 import MarketMetricsSyncPanel from '@/components/market-metrics/MarketMetricsSyncPanel';
+import MarginSyncPanel from '@/components/market-margin/MarginSyncPanel';
 
 type DataTab =
   | 'data-status'
@@ -19,7 +20,8 @@ type DataTab =
   | 'strength-calc'
   | 'broker-recommend'
   | 'index-data'
-  | 'market-metrics';
+  | 'market-metrics'
+  | 'market-margin';
 
 /**
  * 数据管理页面
@@ -114,6 +116,17 @@ export default function DataManagementPage() {
           >
             市场量价
           </button>
+          <button
+            data-testid="tab-market-margin"
+            onClick={() => setActiveTab('market-margin')}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'market-margin'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            融资融券
+          </button>
         </nav>
       </div>
 
@@ -125,6 +138,7 @@ export default function DataManagementPage() {
       {activeTab === 'broker-recommend' && <BrokerRecommendSyncPanel />}
       {activeTab === 'index-data' && <IndexSyncPanel />}
       {activeTab === 'market-metrics' && <MarketMetricsSyncPanel />}
+      {activeTab === 'market-margin' && <MarginSyncPanel />}
     </AdminLayoutWithSidebar>
   );
 }

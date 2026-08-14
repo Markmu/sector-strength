@@ -9,6 +9,7 @@ import { BarChart3Icon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import IndexMonitorPage from '@/components/index-monitor/IndexMonitorPage';
 import MarketMetricsPanel from '@/components/market-metrics/MarketMetricsPanel';
+import MarginPanel from '@/components/market-margin/MarginPanel';
 
 /**
  * Dashboard Page
@@ -67,6 +68,11 @@ export default function DashboardPage() {
                 isLoading 期间 AuthContext 首帧 user=null → isAdmin 不可靠，
                 故等认证就绪后再渲染，避免管理员首页过渡帧误显普通分支面板。 */}
             {!isLoading && <MarketMetricsPanel />}
+
+            {/* 融资融券面板（17 期 plan-07）：市场量价面板后、市场强度前，
+                仅普通用户首页（spec REQ-7 冻结，管理员 IndexMonitorPage 分支不动）。
+                沿用 !isLoading 认证就绪守卫，避免过渡帧误显。 */}
+            {!isLoading && <MarginPanel />}
 
             {/* 市场强度指数 - Story 4-4 实现 */}
             <Card>
