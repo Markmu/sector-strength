@@ -10,9 +10,13 @@ from typing import List, Optional
 
 from .models import (
     DailyQuote,
+    LifecycleStock,
+    MarketDailyQuote,
     SectorInfo,
     SectorMemberInfo,
     StockInfo,
+    SuspensionRecord,
+    TradingCalendarEntry,
 )
 
 
@@ -110,6 +114,30 @@ class BaseDataSource(ABC):
         pass
 
     @abstractmethod
+    def get_trading_calendar_range(
+        self, start_date: date, end_date: date
+    ) -> List[TradingCalendarEntry]:
+        """
+        获取闭区间全量开/休市记录（含休市日，不过滤 is_open）
+
+        返回 ``[start_date, end_date]`` 闭区间内每个自然日一条 ``TradingCalendarEntry``，
+        供本地 ``trading_calendar_days`` 表刷新与首页缺口轴使用。与 ``get_trading_calendar``
+        （仅开市日）并存：本方法明确不传 is_open 过滤，保留休市日锚点（架构 ADR-6）。
+
+        Args:
+            start_date: 开始日期（闭区间，含）
+            end_date: 结束日期（闭区间，含）
+
+        Returns:
+            闭区间内每个自然日一条的日历条目列表
+
+        Raises:
+            DataFetchError: 数据获取失败
+            ValueError: 参数校验失败（start 晚于 end）
+        """
+        pass
+
+    @abstractmethod
     def get_sector_members(self, ts_code: str) -> SectorMemberInfo:
         """
         获取板块成分股列表
@@ -148,6 +176,98 @@ class BaseDataSource(ABC):
 
         Returns:
             板块日线行情数据列表
+
+        Raises:
+            DataFetchError: 数据获取失败
+        """
+        pass
+
+    @abstractmethod
+    def get_market_daily_quotes(
+        self, trade_date: date, expected_count: int
+    ) -> List[MarketDailyQuote]:
+        """
+        获取单交易日全市场未复权行情（单日模式，参数化分页）
+
+        按 ``trade_date`` 一次拉全沪深北全市场未复权日线（约 5500 行，单页
+        3000 自动翻页并带硬停止守卫）。分页异常（页签名重复、满页无新增
+        key、页数超限、跨页重复）抛 ``MarketDataIntegrityError``。
+
+        Args:
+            trade_date: 目标交易日
+            expected_count: 预期股票数（由调用方从生命周期快照传入，用于
+                计算硬页数上限 ``ceil(expected_count/3000)+1``）
+
+        Returns:
+            全市场未复权行情列表；首张空页时返回空列表，由调用方判为
+            全市场空并失败
+
+        Raises:
+            MarketDataIntegrityError: 分页守卫或行级校验失败
+            DataFetchError: 数据获取失败
+        """
+        pass
+
+    @abstractmethod
+    def get_close_quotes_in_window(
+        self, ts_codes: List[str], window_start: date, window_end: date
+    ) -> List[MarketDailyQuote]:
+        """
+        获取一批代码在时间窗口内的未复权行情（历史窗口模式，参数化分页）
+
+        用于停牌补价的前收盘回溯（ADR-3）。批次内代码由调用方按 ≤100/批
+        分块；本方法内部按接口上限再分块，每块独立分页并共享完整性守卫。
+        每行校验 ``window_start <= trade_date <= window_end`` 且 ts_code 属于
+        批次；窗口止于 T-1 由调用方保证。
+
+        Args:
+            ts_codes: 批次代码列表（ts_code 格式）
+            window_start: 窗口开始日期（闭区间，含）
+            window_end: 窗口结束日期（闭区间，含，应早于目标日 T）
+
+        Returns:
+            窗口内仅属批次代码的未复权行情列表；首张空页表示该窗口无命中，
+            返回空列表，由调用方推进更早窗口
+
+        Raises:
+            MarketDataIntegrityError: 分页守卫或行级校验失败
+            DataFetchError: 数据获取失败
+        """
+        pass
+
+    @abstractmethod
+    def get_suspensions(self, trade_date: date) -> List[SuspensionRecord]:
+        """
+        获取停牌查询原始行（suspend_d，原始数据保真）
+
+        忠实返回 Provider 全量行，不做日期与类型过滤；每条记录携带行自带的
+        日期（上游列名 suspend_date/trade_date 归一化为 ``suspend_date``）。
+        上游忽略 suspend_date 查询过滤，调用方（plan-03）必须按
+        ``record.suspend_date == trade_date`` 客户端过滤后才能作为当日停牌
+        证据，``suspend_type='S'`` 与全天停牌判定同样由调用方做（ADR-3）。
+
+        Args:
+            trade_date: 目标交易日（作为 suspend_date 查询参数传入）
+
+        Returns:
+            停牌记录原始行列表（含各自行 suspend_date）；无记录返回空列表
+
+        Raises:
+            MarketDataIntegrityError: suspend_date 解析失败
+            DataFetchError: 数据获取失败
+        """
+        pass
+
+    @abstractmethod
+    def get_lifecycle_stocks(self) -> List[LifecycleStock]:
+        """
+        获取 L/D/P/G 四状态生命周期股票全集
+
+        对 ``list_status in ('L','D','P','G')`` 分别分页拉取 ``stock_basic``
+        并合并返回；本方法不写库（upsert/set-diff 由调用方做，ADR-2）。
+
+        Returns:
+            四状态合并的生命周期股票列表；某状态 0 行时该状态为空集
 
         Raises:
             DataFetchError: 数据获取失败

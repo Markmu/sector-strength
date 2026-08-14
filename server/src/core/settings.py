@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # 缓存配置
     CACHE_TTL: int = 300
 
+    # 调度器配置
+    # 每日数据更新 job（架构 §6.3：生产恢复每日 job 时统一安排 18:00 北京时间）。
+    # 开发期默认停用，避免后台任务自动执行；生产环境置 true 即注册每日 18:00 Asia/Shanghai 的 job。
+    enable_daily_update_job: bool = False  # env: ENABLE_DAILY_UPDATE_JOB
+
     # 邮件服务配置
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

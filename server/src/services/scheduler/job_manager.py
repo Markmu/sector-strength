@@ -12,6 +12,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.job import Job
 
+from src.core.settings import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,25 +33,34 @@ class JobManager:
     def _register_jobs(self):
         """注册所有定时任务"""
         # ============================================================
-        # ⏸ 暂停注册：所有定时任务暂时停用，调度器仍会启动但不绑定任何 job。
-        # 需要恢复时，把下方对应 add_job 块的注释去掉即可。
-        # （2026-06-15 暂停，原因：开发期间避免后台任务自动执行）
+        # 除板块资金流快照外，其余日级/小时级 job 默认停用，避免开发期间
+        # 后台任务自动执行。各 job 的启用方式见下方注释：
+        #   - daily_data_update：由 settings.enable_daily_update_job
+        #     （env: ENABLE_DAILY_UPDATE_JOB）控制，生产置 true。
+        #   - data_quality_check / cache_cleanup / etf / index：仍按惯例
+        #     注释停用，需要时取消注释即可。
         # ============================================================
 
-        # # 每个工作日 15:30 执行数据更新
-        # self.scheduler.add_job(
-        #     self._daily_data_update,
-        #     trigger=CronTrigger(
-        #         day_of_week='mon-fri',
-        #         hour=15,
-        #         minute=30
-        #     ),
-        #     id='daily_data_update',
-        #     name='每日数据更新',
-        #     replace_existing=True
-        # )
+        # 每日数据更新：架构 §6.3 要求生产恢复每日 job 时统一安排 18:00 北京时间。
+        # 由 ENABLE_DAILY_UPDATE_JOB 控制，开发期默认停用（false），生产置 true。
+        # 休市判定不依赖 cron 工作日表达式——采集侧守卫由 collector.run_daily_update
+        # 内 refresh_range(today,today) + 本地交易日历完成（架构 §6.3 / AC-09）。
+        if settings.enable_daily_update_job:
+            self.scheduler.add_job(
+                self._daily_data_update,
+                trigger=CronTrigger(
+                    hour=18,
+                    minute=0,
+                    timezone='Asia/Shanghai',
+                ),
+                id='daily_data_update',
+                name='每日数据更新',
+                replace_existing=True,
+                max_instances=1,  # 防止并发执行，避免风控
+            )
+        # else: 开关关闭时不注册 daily_data_update（开发期默认）
 
-        # # 每小时检查数据质量
+        # # 每小时检查数据质量（仍按惯例注释停用，需要时取消注释）
         # self.scheduler.add_job(
         #     self._check_data_quality,
         #     trigger=IntervalTrigger(hours=1),
@@ -58,7 +69,7 @@ class JobManager:
         #     replace_existing=True
         # )
 
-        # # 每小时清理过期缓存
+        # # 每小时清理过期缓存（仍按惯例注释停用，需要时取消注释）
         # self.scheduler.add_job(
         #     self._cleanup_cache,
         #     trigger=IntervalTrigger(hours=1),
@@ -108,6 +119,24 @@ class JobManager:
         #     ),
         #     id='index_daily_update',
         #     name='关键指数当日采集（每个交易日 15:30）',
+        #     replace_existing=True,
+        #     max_instances=1,
+        # )
+
+        # 全市场量价指标自动日更（第 16 期 plan-05）：已合并进上方 daily_data_update
+        # 入口——daily_data_update 回调的 collector.run_daily_update() 已包含 market_metrics
+        # 步骤，两者回调完全等价，故不再单独注册（避免重复触发同一日更流程）。
+        # 保留下方 _market_metrics_daily_update 方法仅为兼容已有引用/手动触发路径。
+        # 如未来需要独立调度，可取消下方注释并改用独立 cron 时间。
+        # self.scheduler.add_job(
+        #     self._market_metrics_daily_update,
+        #     trigger=CronTrigger(
+        #         hour=18,
+        #         minute=0,
+        #         timezone='Asia/Shanghai',
+        #     ),
+        #     id='market_metrics_daily_update',
+        #     name='全市场量价指标自动日更（每日 18:00 Asia/Shanghai）',
         #     replace_existing=True,
         #     max_instances=1,
         # )
@@ -177,6 +206,34 @@ class JobManager:
             logger.info(f"[定时任务] 指数当日采集完成: {count} 条记录")
         except Exception as e:
             logger.error(f"[定时任务] 指数当日采集失败: {e}")
+            # 不 raise：采集失败不影响下一次调度
+
+    async def _market_metrics_daily_update(self):
+        """全市场量价指标自动日更任务（第 16 期 plan-05）
+
+        每日 18:00 Asia/Shanghai 触发，调用 collector.run_daily_update 完成当日
+        全市场量价指标汇总（含日历守卫、生命周期 preflight、行情、指标）。
+        休市判定不依赖 cron 工作日表达式，由 collector 内 refresh_range(today,today)
+        + 本地日历守卫完成（架构 §6.3 / AC-09）。
+
+        注意：本任务与 ``_daily_data_update`` 回调完全等价（均调用
+        ``collector.run_daily_update()``，后者已包含 market_metrics 步骤）。
+        因此日更流程已合并为单一入口 ``daily_data_update``（由
+        ``ENABLE_DAILY_UPDATE_JOB`` 控制），本方法不再单独注册，仅保留以兼容
+        已有引用/手动触发路径（如管理员经 POST /api/v1/admin/init/market-metrics
+        或范围任务手动触发）。
+        """
+        try:
+            from src.services.data_updater.collector import DataCollector
+
+            collector = DataCollector()
+            result = await collector.run_daily_update()
+            logger.info(
+                f"[定时任务] 市场量价指标自动日更完成: "
+                f"market_metrics_updated={result.get('market_metrics_updated', 0)}"
+            )
+        except Exception as e:
+            logger.error(f"[定时任务] 市场量价指标自动日更失败: {e}")
             # 不 raise：采集失败不影响下一次调度
 
 

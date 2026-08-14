@@ -8,13 +8,25 @@ import logging
 import os
 import time
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
+from math import ceil
 from typing import Any, Callable, List, Optional, TypeVar
 
 from pydantic import ValidationError
 
 from .base import BaseDataSource
 from .exceptions import DataFetchError, RetryExhaustedError
-from .models import DailyQuote, SectorInfo, SectorMemberInfo, StockInfo
+from .models import (
+    DailyQuote,
+    LifecycleStock,
+    MarketDataIntegrityError,
+    MarketDailyQuote,
+    SectorInfo,
+    SectorMemberInfo,
+    StockInfo,
+    SuspensionRecord,
+    TradingCalendarEntry,
+)
 from .sector_types import (
     SECTOR_TYPES,
     SW_LEVELS,
@@ -173,6 +185,61 @@ class TushareDataSource(BaseDataSource):
         dates.sort()
         logger.info(f"[Tushare] 获取到 {len(dates)} 个交易日")
         return dates
+
+    def get_trading_calendar_range(
+        self, start_date: date, end_date: date
+    ) -> List[TradingCalendarEntry]:
+        """获取闭区间全量开/休市记录（含休市日，不过滤 is_open）
+
+        调用 ``pro.trade_cal(exchange='SSE', start_date, end_date, fields='cal_date,is_open')``，
+        明确不传 ``is_open`` 过滤，保留休市日（架构 ADR-6：首页缺口轴与非交易日守卫
+        需要休市日锚点）。整个调用包在 ``_execute_with_retry``（3 次指数退避）内。
+
+        逐行映射为 ``TradingCalendarEntry``（``cal_date`` 字符串转 ``date``，
+        ``is_open`` 转 ``bool``）。Provider 失败直接抛，由 Repository 决定不提交。
+
+        与旧 ``get_trading_calendar()``（仅开市日、过滤休市）并存，本需求任何调用点
+        不得使用旧方法。
+        """
+        if start_date > end_date:
+            raise ValueError("开始日期不能晚于结束日期")
+
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取交易日历闭区间全量记录 "
+                f"({start_date} 至 {end_date})..."
+            )
+            return pro.trade_cal(
+                exchange="SSE",
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=end_date.strftime("%Y%m%d"),
+                fields="cal_date,is_open",
+            )
+
+        df = self._execute_with_retry(_fetch)
+        if df is None or (hasattr(df, "empty") and df.empty):
+            raise DataFetchError(
+                "交易日历闭区间返回空数据",
+                source=self.source_name,
+                endpoint="trade_cal",
+            )
+
+        entries: List[TradingCalendarEntry] = []
+        for _, row in df.iterrows():
+            cal_date = datetime.strptime(str(row["cal_date"]), "%Y%m%d").date()
+            # is_open 通常为 0/1 整数，兼容字符串/浮点
+            is_open = bool(int(row["is_open"]))
+            entries.append(TradingCalendarEntry(cal_date=cal_date, is_open=is_open))
+
+        entries.sort(key=lambda e: e.cal_date)
+        open_count = sum(1 for e in entries if e.is_open)
+        logger.info(
+            f"[Tushare] 获取到 {len(entries)} 条日历记录 "
+            f"(开市 {open_count} / 休市 {len(entries) - open_count})"
+        )
+        return entries
 
     def get_stock_list(self) -> List[StockInfo]:
         """获取 A 股股票列表 — 提取 stock_basic 全部字段"""
@@ -1570,3 +1637,554 @@ class TushareDataSource(BaseDataSource):
             f"(index_weight, index_code={index_code})"
         )
         return records
+
+    # ------------------------------------------------------------------
+    # 全市场量价采集（第 16 期 plan-02）
+    #
+    # 参数化 daily 分页器（单日模式 + 历史窗口模式）、suspend_d 停牌查询、
+    # L/D/P/G 生命周期分页拉取（ADR-1/2/3，架构 §6.1.3-6）。
+    # 明确不复用逐股 qfq get_daily_data()；数值一律 Decimal(str(value))，
+    # 单位保持 Tushare 原始口径（vol=手 / amount=千元），转换在 plan-03。
+    # ------------------------------------------------------------------
+
+    # daily 单页行数（ADR-1 / 架构 §6.1.3）
+    MARKET_DAILY_PAGE_SIZE = 3000
+    MARKET_DAILY_FIELDS = "ts_code,trade_date,close,pre_close,vol,amount"
+    # 历史窗口模式 ts_code 内部分块上限（≤100/批，风险备注：接口参数超限时按此分块）
+    WINDOW_TS_CODE_CHUNK_SIZE = 100
+    # 生命周期四状态（ADR-2）
+    LIFECYCLE_STATUSES = ("L", "D", "P", "G")
+    LIFECYCLE_PAGE_SIZE = 3000
+    # stock_basic 分页安全上限（防 offset 失效导致的死循环，远超任一状态实际行数）
+    LIFECYCLE_MAX_PAGES = 50
+
+    @staticmethod
+    def _df_to_rows(df: Any) -> List[dict]:
+        """DataFrame 页转原始行字典列表（NaN → None），空/None 返回空列表"""
+        import pandas as pd
+
+        if df is None or (hasattr(df, "empty") and df.empty):
+            return []
+        rows: List[dict] = []
+        for _, row in df.iterrows():
+            record = {}
+            for col in df.columns:
+                val = row[col]
+                record[col] = None if pd.isna(val) else val
+            rows.append(record)
+        return rows
+
+    def _parse_tushare_date(
+        self,
+        value: Any,
+        *,
+        ts_code: str = "",
+        endpoint: str = "daily",
+        field: str = "trade_date",
+    ) -> date:
+        """YYYYMMDD 字符串/数值转 date，失败抛含字段名的完整性错误"""
+        try:
+            return datetime.strptime(str(value), "%Y%m%d").date()
+        except (ValueError, TypeError) as e:
+            raise MarketDataIntegrityError(
+                f"日期字段 {field} 无法解析: value={value!r} (ts_code={ts_code})",
+                source=self.source_name,
+                endpoint=endpoint,
+                original_error=e,
+            ) from e
+
+    def _parse_optional_tushare_date(
+        self,
+        value: Any,
+        *,
+        ts_code: str = "",
+        endpoint: str = "stock_basic",
+        field: str = "list_date",
+    ) -> Optional[date]:
+        """可选 YYYYMMDD 转 date（None 直通，供 G 状态空日期等场景）"""
+        if value is None:
+            return None
+        return self._parse_tushare_date(
+            value, ts_code=ts_code, endpoint=endpoint, field=field
+        )
+
+    def _decimal_field(
+        self,
+        row: dict,
+        field: str,
+        *,
+        ts_code: str,
+        allow_none: bool = False,
+    ) -> Optional[Decimal]:
+        """行字段转 Decimal（架构 §6.1.4：Decimal(str(value))，禁止 binary float 路径）
+
+        校验可解析与 is_finite()；数值范围（close>0 / vol>=0 / amount>=0）
+        由调用方按字段语义追加。任一非法抛含 ts_code 与字段值的完整性错误。
+        """
+        value = row.get(field)
+        if value is None:
+            if allow_none:
+                return None
+            raise MarketDataIntegrityError(
+                f"daily 行字段 {field} 为空 (ts_code={ts_code}, trade_date={row.get('trade_date')})",
+                source=self.source_name,
+                endpoint="daily",
+            )
+        try:
+            dec = Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise MarketDataIntegrityError(
+                f"daily 行字段 {field} 无法转 Decimal: value={value!r} (ts_code={ts_code})",
+                source=self.source_name,
+                endpoint="daily",
+                original_error=e,
+            ) from e
+        if not dec.is_finite():
+            raise MarketDataIntegrityError(
+                f"daily 行字段 {field} 非有限数: value={value!r} (ts_code={ts_code})",
+                source=self.source_name,
+                endpoint="daily",
+            )
+        return dec
+
+    def _build_market_daily_quote(self, row: dict) -> MarketDailyQuote:
+        """单行原始 dict → MarketDailyQuote（数值校验：close>0 / vol>=0 / amount>=0）"""
+        raw_code = row.get("ts_code")
+        if raw_code is None or not str(raw_code).strip():
+            raise MarketDataIntegrityError(
+                f"daily 行缺少 ts_code: {row!r}",
+                source=self.source_name,
+                endpoint="daily",
+            )
+        ts_code = str(raw_code)
+        trade_date = self._parse_tushare_date(
+            row.get("trade_date"), ts_code=ts_code
+        )
+
+        close = self._decimal_field(row, "close", ts_code=ts_code)
+        assert close is not None  # allow_none=False 必返回值（类型收窄）
+        if close <= 0:
+            raise MarketDataIntegrityError(
+                f"daily 行 close 非法: close={close} (ts_code={ts_code}, trade_date={trade_date})",
+                source=self.source_name,
+                endpoint="daily",
+            )
+        pre_close = self._decimal_field(
+            row, "pre_close", ts_code=ts_code, allow_none=True
+        )
+        vol = self._decimal_field(row, "vol", ts_code=ts_code)
+        assert vol is not None
+        if vol < 0:
+            raise MarketDataIntegrityError(
+                f"daily 行 vol 非法: vol={vol} (ts_code={ts_code}, trade_date={trade_date})",
+                source=self.source_name,
+                endpoint="daily",
+            )
+        amount = self._decimal_field(row, "amount", ts_code=ts_code)
+        assert amount is not None
+        if amount < 0:
+            raise MarketDataIntegrityError(
+                f"daily 行 amount 非法: amount={amount} (ts_code={ts_code}, trade_date={trade_date})",
+                source=self.source_name,
+                endpoint="daily",
+            )
+        return MarketDailyQuote(
+            ts_code=ts_code,
+            trade_date=trade_date,
+            close=close,
+            pre_close=pre_close,
+            vol=vol,
+            amount=amount,
+        )
+
+    def _paginate_market_daily(
+        self,
+        page_params: dict,
+        key_fn: Callable[[dict], Any],
+        max_pages: int,
+        mode_label: str,
+    ) -> List[dict]:
+        """共享参数化分页引擎（ADR-1 / 架构 §6.1.3 / §6.1.6）
+
+        单日模式与历史窗口模式共用守卫、独享谓词（key_fn 与 page_params
+        由两模式分别注入）。每页请求经 ``_execute_with_retry``（内含
+        ``_enforce_rate_limit`` 0.3s 节流 + 3 次指数退避，非可重试关键字
+        立即失败）。
+
+        共同守卫（每页校验，违反抛 ``MarketDataIntegrityError``，错误信息
+        含页数与计数，禁止 drop_duplicates 静默修复）：
+        - 页签名重复：同一（首行 key + 行数）的内容形状在两个不同 offset
+          上再次出现（如代理忽略 offset 重复回页）。offset 本身严格递增、
+          不参与签名身份判定（否则该守卫不可达），但会记入错误信息。
+        - 满页（rows == 3000）但本页新增 key 数为 0；
+        - 跨页/页内出现重复行 key（单日模式 key=ts_code；历史模式
+          key=(ts_code, trade_date) 以支持一股多日行）；
+        - 请求页数超过 max_pages 硬上限（含尾部探测页）。
+
+        终止语义：短页（<3000 行）正常终止；首张 0 行页直接返回已收集行
+        （可能为空列表，语义由调用方解释：单日=全市场空、历史=窗口无命中）；
+        至少一张合法满页后的 0 行页为正常终止（尾部探测页）。
+
+        Args:
+            page_params: 传给 ``pro.daily`` 的模式独享参数（单日=trade_date；
+                历史=ts_code/start_date/end_date）
+            key_fn: 行 key 提取器（重复检测粒度由模式决定）
+            max_pages: 硬页数上限（含尾部探测页）
+            mode_label: 日志/错误信息中的模式标签
+
+        Returns:
+            合并后的原始行字典列表（行级谓词与数值校验由调用方做）
+        """
+        pro = self._get_pro_api()
+        page_size = self.MARKET_DAILY_PAGE_SIZE
+        seen_signatures = set()
+        seen_keys = set()
+        merged: List[dict] = []
+        offset = 0
+        page_no = 0
+
+        while True:
+            page_no += 1
+            if page_no > max_pages:
+                raise MarketDataIntegrityError(
+                    f"{mode_label}: daily 分页请求页数 {page_no} 超过硬上限 {max_pages} "
+                    f"(已收集 {len(merged)} 行, 已见 key {len(seen_keys)} 个, offset={offset})",
+                    source=self.source_name,
+                    endpoint="daily",
+                )
+            current_offset = offset
+
+            def _fetch(_offset=current_offset, _page=page_no):
+                logger.info(
+                    f"[Tushare] {mode_label} 拉取 daily 第 {_page} 页 "
+                    f"(offset={_offset}, limit={page_size})..."
+                )
+                return pro.daily(
+                    fields=self.MARKET_DAILY_FIELDS,
+                    limit=page_size,
+                    offset=_offset,
+                    **page_params,
+                )
+
+            rows = self._df_to_rows(self._execute_with_retry(_fetch))
+            row_count = len(rows)
+
+            if row_count == 0:
+                logger.info(
+                    f"[Tushare] {mode_label} 第 {page_no} 页为空页，分页终止 "
+                    f"(已收集 {len(merged)} 行)"
+                )
+                break
+
+            first_key = key_fn(rows[0])
+            signature = (first_key, row_count)
+            if signature in seen_signatures:
+                raise MarketDataIntegrityError(
+                    f"{mode_label}: 页签名重复: 首行 key={first_key}, 行数={row_count} "
+                    f"在 offset={current_offset} 再次出现 (第 {page_no} 页, "
+                    f"已收集 {len(merged)} 行, 已见 key {len(seen_keys)} 个)",
+                    source=self.source_name,
+                    endpoint="daily",
+                )
+            seen_signatures.add(signature)
+
+            page_keys = [key_fn(r) for r in rows]
+            new_key_count = sum(1 for k in page_keys if k not in seen_keys)
+            if row_count == page_size and new_key_count == 0:
+                raise MarketDataIntegrityError(
+                    f"{mode_label}: 满页({row_count} 行)但新增 key 数为 0 "
+                    f"(第 {page_no} 页, offset={current_offset}, "
+                    f"已见 key {len(seen_keys)} 个, 已收集 {len(merged)} 行)",
+                    source=self.source_name,
+                    endpoint="daily",
+                )
+            for key in page_keys:
+                if key in seen_keys:
+                    raise MarketDataIntegrityError(
+                        f"{mode_label}: 出现重复行 key={key} (第 {page_no} 页, "
+                        f"offset={current_offset}, 已见 key {len(seen_keys)} 个, "
+                        f"已收集 {len(merged)} 行)",
+                        source=self.source_name,
+                        endpoint="daily",
+                    )
+                seen_keys.add(key)
+
+            merged.extend(rows)
+            if row_count < page_size:
+                break
+            offset += page_size
+
+        logger.info(
+            f"[Tushare] {mode_label} 分页完成: 共 {page_no} 页请求, "
+            f"合并 {len(merged)} 行, 唯一 key {len(seen_keys)} 个"
+        )
+        return merged
+
+    def get_market_daily_quotes(
+        self, trade_date: date, expected_count: int
+    ) -> List[MarketDailyQuote]:
+        """单日模式：拉取单交易日全市场未复权行情（ADR-1 / 架构 §6.1.3）
+
+        ``pro.daily(trade_date=YYYYMMDD, limit=3000, offset=...)`` 参数化分页；
+        硬页数 = ``ceil(expected_count/3000)+1``（含尾部探测页，
+        expected_count 由调用方从生命周期快照传入，expected_count=0 时硬页数=1
+        仅探测一页）。每行校验 ``trade_date == T`` 与数值合法性。
+
+        首张 0 行页由本方法返回空列表，由调用方（plan-03）判为全市场空并
+        失败；至少一张合法满页后的 0 行页为正常终止。
+        """
+        if expected_count < 0:
+            raise ValueError("expected_count 不能为负数")
+
+        max_pages = ceil(expected_count / self.MARKET_DAILY_PAGE_SIZE) + 1
+        rows = self._paginate_market_daily(
+            page_params={"trade_date": trade_date.strftime("%Y%m%d")},
+            key_fn=lambda r: str(r.get("ts_code")),
+            max_pages=max_pages,
+            mode_label=f"单日模式 trade_date={trade_date} expected_count={expected_count}",
+        )
+
+        quotes: List[MarketDailyQuote] = []
+        for row in rows:
+            ts_code = str(row.get("ts_code"))
+            row_date = self._parse_tushare_date(row.get("trade_date"), ts_code=ts_code)
+            if row_date != trade_date:
+                raise MarketDataIntegrityError(
+                    f"单日模式出现非目标日期行: 期望 trade_date={trade_date}, "
+                    f"实际 {row_date} (ts_code={ts_code})",
+                    source=self.source_name,
+                    endpoint="daily",
+                )
+            quotes.append(self._build_market_daily_quote(row))
+
+        quotes.sort(key=lambda q: (q.trade_date, q.ts_code))
+        logger.info(
+            f"[Tushare] 单日模式 {trade_date} 获取 {len(quotes)} 行全市场未复权行情"
+        )
+        return quotes
+
+    def get_close_quotes_in_window(
+        self, ts_codes: List[str], window_start: date, window_end: date
+    ) -> List[MarketDailyQuote]:
+        """历史窗口模式：拉取一批代码在时间窗口内的未复权行情（ADR-3 / 架构 §6.1.6）
+
+        批次内代码由调用方按 ≤100/批分块；本方法再按 ``WINDOW_TS_CODE_CHUNK_SIZE``
+        内部分块，每块独立分页（ts_code 逗号拼接 + start_date/end_date）。
+        每块硬页数 = ``ceil(块内代码数 × 窗口自然日数 / 3000)+1``（含尾部
+        探测页）。每行校验 ``window_start <= trade_date <= window_end`` 且
+        ts_code ∈ 批次（窗口止于 T-1 由调用方保证）。
+
+        首张空页 ≠ 失败：表示该窗口无命中，返回空列表，由调用方推进更早窗口。
+        """
+        if window_start > window_end:
+            raise ValueError("开始日期不能晚于结束日期")
+
+        codes: List[str] = []
+        for code in ts_codes:
+            normalized = str(code).strip()
+            if normalized:
+                codes.append(normalized)
+        if not codes:
+            return []
+
+        code_set = set(codes)
+        window_days = (window_end - window_start).days + 1
+        quotes: List[MarketDailyQuote] = []
+
+        total_chunks = ceil(len(codes) / self.WINDOW_TS_CODE_CHUNK_SIZE)
+        for chunk_index in range(total_chunks):
+            chunk = codes[
+                chunk_index
+                * self.WINDOW_TS_CODE_CHUNK_SIZE : (chunk_index + 1)
+                * self.WINDOW_TS_CODE_CHUNK_SIZE
+            ]
+            max_candidates = len(chunk) * window_days
+            max_pages = ceil(max_candidates / self.MARKET_DAILY_PAGE_SIZE) + 1
+            rows = self._paginate_market_daily(
+                page_params={
+                    "ts_code": ",".join(chunk),
+                    "start_date": window_start.strftime("%Y%m%d"),
+                    "end_date": window_end.strftime("%Y%m%d"),
+                },
+                key_fn=lambda r: (str(r.get("ts_code")), str(r.get("trade_date"))),
+                max_pages=max_pages,
+                mode_label=(
+                    f"历史窗口模式 [{window_start}~{window_end}] "
+                    f"块 {chunk_index + 1}/{total_chunks} ({len(chunk)} 只)"
+                ),
+            )
+            for row in rows:
+                ts_code = str(row.get("ts_code"))
+                row_date = self._parse_tushare_date(
+                    row.get("trade_date"), ts_code=ts_code
+                )
+                if not (window_start <= row_date <= window_end):
+                    raise MarketDataIntegrityError(
+                        f"历史窗口模式出现窗口外日期行: trade_date={row_date} "
+                        f"不在 [{window_start}, {window_end}] (ts_code={ts_code})",
+                        source=self.source_name,
+                        endpoint="daily",
+                    )
+                if ts_code not in code_set:
+                    raise MarketDataIntegrityError(
+                        f"历史窗口模式出现批次外代码: ts_code={ts_code} "
+                        f"(窗口 [{window_start}, {window_end}], 批次 {len(codes)} 只)",
+                        source=self.source_name,
+                        endpoint="daily",
+                    )
+                quotes.append(self._build_market_daily_quote(row))
+
+        quotes.sort(key=lambda q: (q.trade_date, q.ts_code))
+        logger.info(
+            f"[Tushare] 历史窗口模式 [{window_start}~{window_end}] 批次 "
+            f"{len(codes)} 只获取 {len(quotes)} 行未复权行情"
+        )
+        return quotes
+
+    def _suspend_row_date(self, row: dict, ts_code: str) -> date:
+        """停牌行日期归一化：兼容 suspend_date（官方 schema）/ trade_date（代理实测）列名"""
+        for key in ("suspend_date", "trade_date"):
+            value = row.get(key)
+            if value is not None:
+                return self._parse_tushare_date(
+                    value, ts_code=ts_code, endpoint="suspend_d", field=key
+                )
+        raise MarketDataIntegrityError(
+            f"停牌行缺少日期字段（suspend_date/trade_date 均为空）(ts_code={ts_code})",
+            source=self.source_name,
+            endpoint="suspend_d",
+        )
+
+    def get_suspensions(self, trade_date: date) -> List[SuspensionRecord]:
+        """获取停牌查询原始行（suspend_d，ADR-3，原始数据保真）
+
+        ``pro.suspend_d(suspend_date=YYYYMMDD)``——**不传 fields**，取 Provider
+        原生 schema。
+
+        **上游行为（实测）**：
+        1. 代理忽略 ``suspend_date`` 查询过滤（任意日期返回同一批约 5000 行
+           全量、跨约 300 个日期）；offset 分页正常；
+        2. 代理把停牌日期列命名为 ``trade_date``（官方 schema 为
+           ``suspend_date``）；显式请求 ``suspend_date`` 字段只会得到全空列，
+           故不传 fields 并对两列名做兼容归一化。
+
+        因此本方法忠实返回 Provider 全量行、**不做任何日期过滤**，行日期
+        归一化为 ``SuspensionRecord.suspend_date``；调用方（plan-03）必须按
+        ``record.suspend_date == trade_date`` 客户端过滤后才能作为当日停牌
+        证据。``suspend_type`` 同样不过滤（'S' 与全天停牌判定由 plan-03 做）。
+        日期解析失败抛完整性错误；空结果返回空列表。
+        """
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取停牌记录 (suspend_d, suspend_date={trade_date})..."
+            )
+            return pro.suspend_d(suspend_date=trade_date.strftime("%Y%m%d"))
+
+        rows = self._df_to_rows(self._execute_with_retry(_fetch))
+        records: List[SuspensionRecord] = []
+        for row in rows:
+            ts_code = str(row["ts_code"])
+            records.append(
+                SuspensionRecord(
+                    ts_code=ts_code,
+                    suspend_date=self._suspend_row_date(row, ts_code),
+                    suspend_type=str(row["suspend_type"]),
+                    suspend_timing=(
+                        str(row["suspend_timing"])
+                        if row.get("suspend_timing") is not None
+                        else None
+                    ),
+                )
+            )
+        logger.info(
+            f"[Tushare] 获取到 {len(records)} 条停牌记录 (suspend_d, "
+            f"查询 suspend_date={trade_date}；原始全量行，未做日期过滤)"
+        )
+        return records
+
+    def get_lifecycle_stocks(self) -> List[LifecycleStock]:
+        """获取 L/D/P/G 四状态生命周期股票全集（ADR-2，不写库）
+
+        对 ``list_status in ('L','D','P','G')`` 分别调用
+        ``pro.stock_basic(exchange='', list_status=..., offset/limit 分页)`` 并
+        合并返回；某状态 0 行时该状态为空集，合并继续。upsert/set-diff 与
+        L/D/P 强制 list_date、D 强制 delist_date 等集合校验在 plan-03。
+        """
+        stocks: List[LifecycleStock] = []
+        for status in self.LIFECYCLE_STATUSES:
+            stocks.extend(self._fetch_lifecycle_by_status(status))
+        logger.info(
+            f"[Tushare] 生命周期四状态合并完成，共 {len(stocks)} 只 "
+            f"(L/D/P/G={self.LIFECYCLE_STATUSES})"
+        )
+        return stocks
+
+    def _fetch_lifecycle_by_status(self, list_status: str) -> List[LifecycleStock]:
+        """按单个 list_status 分页拉取 stock_basic（offset/limit while 循环）"""
+        pro = self._get_pro_api()
+        fields = (
+            "ts_code,symbol,name,area,industry,market,exchange,"
+            "list_status,list_date,delist_date"
+        )
+        collected: List[LifecycleStock] = []
+        offset = 0
+        page_no = 0
+
+        while True:
+            page_no += 1
+            if page_no > self.LIFECYCLE_MAX_PAGES:
+                raise DataFetchError(
+                    f"stock_basic(list_status={list_status}) 分页页数 {page_no} "
+                    f"超过安全上限 {self.LIFECYCLE_MAX_PAGES}（疑似 offset 失效）",
+                    source=self.source_name,
+                    endpoint="stock_basic",
+                )
+            current_offset = offset
+
+            def _fetch(_offset=current_offset):
+                logger.info(
+                    f"[Tushare] 正在获取生命周期股票 "
+                    f"(list_status={list_status}, offset={_offset})..."
+                )
+                return pro.stock_basic(
+                    exchange="",
+                    list_status=list_status,
+                    fields=fields,
+                    offset=_offset,
+                    limit=self.LIFECYCLE_PAGE_SIZE,
+                )
+
+            rows = self._df_to_rows(self._execute_with_retry(_fetch))
+            if not rows:
+                break
+
+            for row in rows:
+                ts_code = str(row["ts_code"])
+                collected.append(
+                    LifecycleStock(
+                        ts_code=ts_code,
+                        exchange=str(row.get("exchange") or ""),
+                        list_status=(
+                            str(row.get("list_status") or "").strip() or list_status
+                        ),
+                        name=(
+                            str(row["name"])
+                            if row.get("name") is not None
+                            else None
+                        ),
+                        list_date=self._parse_optional_tushare_date(
+                            row.get("list_date"), ts_code=ts_code, field="list_date"
+                        ),
+                        delist_date=self._parse_optional_tushare_date(
+                            row.get("delist_date"), ts_code=ts_code, field="delist_date"
+                        ),
+                    )
+                )
+
+            if len(rows) < self.LIFECYCLE_PAGE_SIZE:
+                break
+            offset += self.LIFECYCLE_PAGE_SIZE
+
+        return collected

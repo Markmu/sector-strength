@@ -48,6 +48,12 @@ class TestBaseDataSourceAbstractMethods:
             def get_sector_daily_data(self, sector_name, sector_type, start_date, end_date): return []
             def get_sector_members(self, ts_code): return []
             def get_trading_calendar(self): return []
+            def get_trading_calendar_range(self, start_date, end_date): return []
+            # plan-02 新增抽象方法的最小实现（仅满足实例化，不削弱真实现）
+            def get_market_daily_quotes(self, trade_date, expected_count): return []
+            def get_close_quotes_in_window(self, ts_codes, window_start, window_end): return []
+            def get_suspensions(self, trade_date): return []
+            def get_lifecycle_stocks(self): return []
 
         instance = CompleteSource("Test")
         assert instance.source_name == "Test"

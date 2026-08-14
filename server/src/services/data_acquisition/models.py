@@ -5,10 +5,12 @@
 """
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from .exceptions import DataSourceError
 from .sector_types import SECTOR_TYPES
 
 
@@ -129,6 +131,107 @@ class DailyQuote(BaseModel):
     volume: float = Field(..., description="成交量", ge=0)
     amount: Optional[float] = Field(None, description="成交额", ge=0)
     turnover: Optional[float] = Field(None, description="换手率")
+
+
+class TradingCalendarEntry(BaseModel):
+    """交易日历条目（含开市/休市标记）
+
+    闭区间全量记录中的一个自然日。``TradingCalendarRepository.refresh_range``
+    据此构造闭区间一一对应校验后写入本地 ``trading_calendar_days`` 表。
+
+    与旧 ``get_trading_calendar() -> List[date]``（仅开市日、过滤休市）的区别：
+    本条目不过滤 ``is_open``，首页缺口轴与非交易日守卫需要休市日锚点（架构 ADR-6）。
+    """
+
+    cal_date: date = Field(..., description="自然日")
+    is_open: bool = Field(..., description="是否开市（True 开市 / False 休市）")
+
+
+class MarketDailyQuote(BaseModel):
+    """全市场单日未复权日线行情（Tushare ``daily`` 当批响应，第 16 期 plan-02）
+
+    数值一律 ``Decimal``（适配器以 ``Decimal(str(value))`` 构造，禁止 binary float
+    累加路径，架构 §6.1.4）。单位保持 Tushare 原始口径：``vol`` 单位=手、
+    ``amount`` 单位=千元；单位转换（手×100 → 股、千元×1000 → 元）在 plan-03
+    汇总服务完成。
+    """
+
+    ts_code: str = Field(..., description="TS 代码（如 000001.SZ）")
+    trade_date: date = Field(..., description="交易日期")
+    close: Decimal = Field(..., description="未复权收盘价（元）")
+    pre_close: Optional[Decimal] = Field(
+        None, description="未复权前收盘价（元），历史窗口模式可为空"
+    )
+    vol: Decimal = Field(..., description="成交量（手，Tushare 原始单位）")
+    amount: Decimal = Field(..., description="成交额（千元，Tushare 原始单位）")
+
+
+class SuspensionRecord(BaseModel):
+    """停牌查询原始行（Tushare ``suspend_d`` 响应，第 16 期 plan-02）
+
+    适配器忠实返回 Provider 全量行、不做日期过滤（原始数据保真）：
+    实测上游代理忽略 ``suspend_date`` 查询过滤（不同日期返回同一批全量行），
+    且把停牌日期列命名为 ``trade_date``（官方 schema 为 ``suspend_date``，
+    适配器双键归一化）；调用方（plan-03）必须按
+    ``record.suspend_date == trade_date`` 客户端过滤后才能作为当日停牌证据，
+    ``suspend_type='S'`` 与全天停牌判定同样由 plan-03 做（ADR-3）。
+    """
+
+    ts_code: str = Field(..., description="TS 代码")
+    suspend_date: date = Field(
+        ...,
+        description="停牌日期（上游 suspend_date/trade_date 列归一化，供调用方客户端过滤当日记录）",
+    )
+    suspend_type: str = Field(
+        ..., description="停牌类型：S 连续停牌 / R 复牌等，判定交 plan-03"
+    )
+    suspend_timing: Optional[str] = Field(
+        None, description="停牌时段（如开盘/尾盘；连续停牌常为空）"
+    )
+
+
+class LifecycleStock(BaseModel):
+    """生命周期股票（``stock_basic`` L/D/P/G 四状态合并快照，第 16 期 plan-02）
+
+    只承载采集映射，不写库；L/D/P 强制 ``list_date``、D 强制 ``delist_date``、
+    G 固定排除等集合校验由 plan-03 ``LifecycleSnapshot`` 做（ADR-2）。
+    """
+
+    ts_code: str = Field(..., description="TS 代码")
+    exchange: str = Field(..., description="交易所（SSE/SZSE/BSE）")
+    list_status: str = Field(..., description="上市状态: L 上市 D 退市 P 暂停 G 过会")
+    name: Optional[str] = Field(None, description="股票名称")
+    list_date: Optional[date] = Field(None, description="上市日期")
+    delist_date: Optional[date] = Field(None, description="退市日期")
+
+
+class MarketDataIntegrityError(DataSourceError):
+    """市场量价数据完整性错误（第 16 期 plan-02 新增）
+
+    分页守卫（页签名重复 / 满页无新增 key / 跨页重复行 key / 页数超过硬上限）
+    或行级校验（日期谓词、批次归属、数值非法）触发。错误信息必须包含页数与
+    计数上下文，供调用方（plan-03）判定整日失败；**禁止 drop_duplicates
+    静默修复**（架构 §6.1 实现原则）。
+    """
+
+    def __init__(
+        self,
+        message: str,
+        source: Optional[str] = None,
+        endpoint: Optional[str] = None,
+        original_error: Optional[Exception] = None,
+    ):
+        """
+        初始化市场数据完整性异常
+
+        Args:
+            message: 错误消息（含页数/计数/ts_code 上下文）
+            source: 数据源名称（如 "Tushare"）
+            endpoint: API 端点或方法名（如 "daily"）
+            original_error: 原始异常对象
+        """
+        self.endpoint = endpoint
+        super().__init__(message, source, original_error)
 
 
 class FundInfo(BaseModel):

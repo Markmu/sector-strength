@@ -25,6 +25,11 @@ from src.models.sector_fund_flow import SectorFundFlow
 from src.services.data_acquisition import DataSourceFactory
 from src.services.data_acquisition.akshare_fund_flow import AkshareFundFlowFetcher
 from src.services.trading_calendar import TradingCalendar
+from src.services.trading_calendar_repository import TradingCalendarRepository
+from src.services.market_metrics_service import (
+    MarketMetricsService,
+    build_lifecycle_snapshot,
+)
 from src.services.cache.cache_manager import get_cache_manager
 
 try:
@@ -68,6 +73,10 @@ class DataCollector:
     def __init__(self):
         self._trading_calendar = TradingCalendar()
         self._data_source = DataSourceFactory.create()
+        # plan-05：lifecycle 快照与当日，由 run_daily_update 在守卫/preflight 后填充，
+        # 供 _update_market_data（当日在市过滤）与 _update_market_metrics 复用。
+        self._lifecycle_snapshot = None
+        self._today = None
 
     async def run_daily_update(self) -> Dict[str, Any]:
         """
@@ -88,6 +97,7 @@ class DataCollector:
             'sectors_updated': 0,
             'stocks_updated': 0,
             'market_data_updated': 0,
+            'market_metrics_updated': 0,
             'calculations_performed': 0,
             'cache_cleared': 0,
             'etf_daily_updated': 0,
@@ -95,17 +105,29 @@ class DataCollector:
             'errors': []
         }
 
+        # plan-05：lifecycle 快照由 _update_stocks 构建，供 _update_market_data /
+        # _update_market_metrics 复用（自动日更只构建一次，不读写 AsyncTask）。
+        self._lifecycle_snapshot = None
+
         try:
-            # 1. 检查交易日
-            is_trading, reason = await self._trading_calendar.is_trading_day()
-            if not is_trading:
-                logger.info(f"[数据更新] 今天不是交易日，跳过更新: {reason}")
+            # 1. 交易日检查（plan-05：先 refresh_range(today,today) 再以本批记录守卫）。
+            # 本次响应校验失败 → 日更失败，不用旧行冒充、不按工作日猜测；旧日历保留
+            # 供首页只读降级（架构 §6.3 / AC-09）。
+            today = datetime.now(BJ_TZ).date()
+            async with get_session() as session:
+                cal_repo = TradingCalendarRepository(session)
+                # refresh_range 失败（Provider 异常或响应不完整）直接抛 → 日更失败。
+                open_count, _closed_count = await cal_repo.refresh_range(today, today)
+            if open_count == 0:
+                # 本批记录表明今日休市 → skipped（AC-09，不调后续 Provider）。
+                logger.info("[数据更新] 今日非交易日，跳过更新: %s", today)
                 log_entry.status = 'skipped'
-                log_entry.error_message = reason
+                log_entry.error_message = f"非交易日: {today}"
                 log_entry.end_time = datetime.now()
-                results['message'] = f'非交易日，跳过更新: {reason}'
+                results['message'] = f'非交易日，跳过更新: {today}'
                 await self._save_update_log(log_entry)
                 return results
+            self._today = today
 
             # 2. 采集板块数据
             results['sectors_updated'] = await self._update_sectors()
@@ -116,13 +138,23 @@ class DataCollector:
             # 4. 采集行情数据（增量）
             results['market_data_updated'] = await self._update_market_data()
 
-            # 5. 执行计算
+            # 5. 市场量价指标汇总（plan-05：在 _update_market_data 成功后调用）。
+            # 自动日更不读写 AsyncTask、不传 fence（task_context=None）；失败写
+            # results.errors 与 market_metrics_updated=0，不阻断指数/ETF 等后续步骤。
+            try:
+                results['market_metrics_updated'] = await self._update_market_metrics()
+            except Exception as e:
+                logger.error(f"[数据更新] 市场量价指标汇总失败: {e}")
+                results['errors'].append(f"market_metrics: {e}")
+                results['market_metrics_updated'] = 0
+
+            # 6. 执行计算
             results['calculations_performed'] = await self._run_calculations()
 
-            # 6. 清除缓存
+            # 7. 清除缓存
             results['cache_cleared'] = await self._clear_cache()
 
-            # 7. 采集板块资金流即时快照（行业 + 概念）
+            # 8. 采集板块资金流即时快照（行业 + 概念）
             try:
                 await self._update_sector_fund_flow()
             except Exception as e:
@@ -130,7 +162,7 @@ class DataCollector:
                 logger.error(f"[数据更新] 板块资金流采集失败: {e}")
                 results['errors'].append(f"sector_fund_flow: {e}")
 
-            # 8. ETF 当日份额/净值快照（第 14 期）：先同步基础信息归类，再采集当日份额
+            # 9. ETF 当日份额/净值快照（第 14 期）：先同步基础信息归类，再采集当日份额
             try:
                 results['etf_daily_updated'] = await self._update_etf_daily()
             except Exception as e:
@@ -138,7 +170,7 @@ class DataCollector:
                 logger.error(f"[数据更新] ETF 当日采集失败: {e}")
                 results['errors'].append(f"etf_daily: {e}")
 
-            # 9. 关键指数当日行情/估值/权重采集（第 15 期）：调用 IndexDataInitService.sync_index_daily
+            # 10. 关键指数当日行情/估值/权重采集（第 15 期）：调用 IndexDataInitService.sync_index_daily
             try:
                 results['index_daily_updated'] = await self._update_index_daily()
             except Exception as e:
@@ -203,61 +235,19 @@ class DataCollector:
         return count
 
     async def _update_stocks(self) -> int:
-        """更新股票数据到数据库"""
-        logger.info("[数据更新] 开始更新股票数据")
+        """更新股票生命周期数据（plan-05 升级）。
 
-        data_source = self._data_source
-        stocks = data_source.get_stock_list()
-
-        # 需要增量同步的基础字段列表
-        _basic_fields = [
-            "name", "ts_code", "area", "industry", "fullname", "enname",
-            "cnspell", "market", "exchange", "curr_type", "list_status",
-            "list_date", "delist_date", "is_hs", "act_name", "act_ent_type",
-        ]
-
+        改调 ``DataInitService.init_stocks_lifecycle``（一次 L/D/P/G 联合 preflight +
+        upsert/set-diff），并构建不可变 ``LifecycleSnapshot`` 存于 run 级变量
+        ``self._lifecycle_snapshot``，供 ``_update_market_data``（当日在市过滤）与
+        ``_update_market_metrics`` 复用（架构 §6.3.2）。
+        """
+        logger.info("[数据更新] 开始更新股票生命周期数据")
         async with get_session() as session:
-            result = await session.execute(select(Stock))
-            existing_map = {s.symbol: s for s in result.scalars().all()}
-
-            count = 0
-            for stock_info in stocks:
-                if stock_info.symbol in existing_map:
-                    existing = existing_map[stock_info.symbol]
-                    changed = False
-                    for field in _basic_fields:
-                        new_val = getattr(stock_info, field, None)
-                        old_val = getattr(existing, field, None)
-                        if new_val != old_val:
-                            setattr(existing, field, new_val)
-                            changed = True
-                    if changed:
-                        count += 1
-                else:
-                    session.add(Stock(
-                        symbol=stock_info.symbol,
-                        name=stock_info.name,
-                        ts_code=stock_info.ts_code,
-                        area=stock_info.area,
-                        industry=stock_info.industry,
-                        fullname=stock_info.fullname,
-                        enname=stock_info.enname,
-                        cnspell=stock_info.cnspell,
-                        market=stock_info.market,
-                        exchange=stock_info.exchange,
-                        curr_type=stock_info.curr_type,
-                        list_status=stock_info.list_status,
-                        list_date=stock_info.list_date,
-                        delist_date=stock_info.delist_date,
-                        is_hs=stock_info.is_hs,
-                        act_name=stock_info.act_name,
-                        act_ent_type=stock_info.act_ent_type,
-                    ))
-                    count += 1
-
-            await session.commit()
-
-        logger.info(f"[数据更新] 股票数据更新完成: {count} 只股票")
+            snapshot = await build_lifecycle_snapshot(session)
+        self._lifecycle_snapshot = snapshot
+        count = len(snapshot.records)
+        logger.info("[数据更新] 股票生命周期更新完成: %d 只", count)
         return count
 
     async def _update_market_data(self) -> int:
@@ -265,7 +255,8 @@ class DataCollector:
         logger.info("[数据更新] 开始更新行情数据")
 
         data_source = self._data_source
-        today = datetime.now().date()
+        # plan-05：与日更守卫同口径取北京时区当日（run_daily_update 已设 self._today）。
+        today = getattr(self, "_today", None) or datetime.now(BJ_TZ).date()
         total_count = 0
 
         async with get_session() as session:
@@ -315,7 +306,18 @@ class DataCollector:
             await session.commit()
 
             # 写入股票行情（写入股票独立表 stock_daily_market_data）
+            # plan-05：仅遍历 snapshot 当日在市集合（不遍历历史退市全表，§6.3.2）。
+            in_market_symbols = None
+            if self._lifecycle_snapshot is not None:
+                in_market_ts_codes = self._lifecycle_snapshot.expected_codes(today)
+                in_market_symbols = {
+                    tc.split(".", 1)[0] for tc in in_market_ts_codes
+                }
             symbols = list(stock_map.items())
+            if in_market_symbols is not None:
+                symbols = [
+                    (sym, sid) for sym, sid in symbols if sym in in_market_symbols
+                ]
             failed_count = 0
             batch_size = 50
             stock_inserted_count = 0
@@ -374,6 +376,46 @@ class DataCollector:
 
         logger.info(f"[数据更新] 行情数据更新完成: {total_count} 条记录")
         return total_count
+
+    async def _update_market_metrics(self) -> int:
+        """市场量价指标当日汇总（plan-05，架构 §6.3.3-4）。
+
+        在 ``_update_market_data`` 成功后调用，复用 ``_update_stocks`` 构建的
+        ``LifecycleSnapshot``：``MarketMetricsService.sync_date(today, snapshot,
+        task_context=None, ...)``。自动日更**不读写 AsyncTask、不传 fence**
+        （``task_context=None`` → 直接原子 upsert，不经 ``lock_and_validate``）。
+
+        休市已被 ``run_daily_update`` 步骤 1 守卫拦截，此处不再重复判定（AC-09）。
+        失败时由调用方写 ``results.errors`` 与 ``market_metrics_updated=0``，不覆盖
+        最近成功结果、不阻断指数/ETF 等后续步骤。
+
+        Returns:
+            1 表示当日指标已成功写入；抛异常表示失败（由调用方捕获）。
+        """
+        from src.db import database as db_module
+
+        today = getattr(self, "_today", None) or datetime.now(BJ_TZ).date()
+        if self._lifecycle_snapshot is None:
+            raise RuntimeError(
+                "市场量价指标汇总缺少生命周期快照（_update_stocks 未执行）"
+            )
+
+        logger.info("[数据更新] 开始汇总市场量价指标 (trade_date=%s)", today)
+        async with db_module.AsyncSessionLocal() as session:
+            service = MarketMetricsService(session)
+            status = await service.sync_date(
+                today, self._lifecycle_snapshot, task_context=None
+            )
+        if status != "success":
+            # sync_date 返回 skipped（理论上已被守卫拦截）或异常；非 success 视为未写入。
+            logger.warning(
+                "[数据更新] 市场量价指标汇总未成功 trade_date=%s status=%s",
+                today,
+                status,
+            )
+            return 0
+        logger.info("[数据更新] 市场量价指标汇总完成 (trade_date=%s)", today)
+        return 1
 
     async def _update_sector_fund_flow(self) -> int:
         """采集同花顺即时板块资金流（行业 + 概念）并落库。

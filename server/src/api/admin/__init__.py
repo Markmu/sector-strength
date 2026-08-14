@@ -21,6 +21,7 @@ from .init_etf_daily import router as init_etf_daily_router  # 第 14 期 plan-0
 from .init_etf_basic import router as init_etf_basic_router
 from .init_limit import router as init_limit_router
 from .init_index_basic import router as init_index_basic_router  # 第 15 期 plan-02
+from .init_market_metrics import router as init_market_metrics_router  # 第 16 期 plan-05
 from .tasks import router as tasks_router
 from .rbac import router as rbac_router
 from .data_status import router as data_status_router
@@ -42,6 +43,7 @@ router.include_router(init_etf_daily_router)  # /api/admin/init/etf-daily（第 
 router.include_router(init_etf_basic_router)  # /api/admin/init/etf-basic
 router.include_router(init_limit_router)  # /api/admin/init/limit
 router.include_router(init_index_basic_router)  # /api/admin/init/index-*（第 15 期 plan-02）
+router.include_router(init_market_metrics_router)  # /api/admin/init/market-metrics（第 16 期 plan-05）
 router.include_router(tasks_router)   # /api/admin/tasks/*
 router.include_router(rbac_router)    # /api/admin/*
 router.include_router(data_status_router)  # /api/admin/data/*

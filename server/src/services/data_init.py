@@ -11,7 +11,8 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select, delete, and_
+from sqlalchemy import select, delete, and_, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.sector import Sector
@@ -24,6 +25,19 @@ from src.services.data_acquisition.models import A_STOCK_EXCHANGES, StockInfo, S
 from src.repositories.symbol_repository import SectorStockRepository
 
 logger = logging.getLogger(__name__)
+
+# 生命周期批量 upsert 的批大小（plan-03 后补丁 #2：去掉逐股 savepoint 循环，避免
+# ~5882 股规模下 SQLAlchemy 2.0.23 savepoint 编译无限递归；改为 pg_insert 批量）。
+_LIFECYCLE_BATCH_SIZE = 500
+# 生命周期 upsert 涉及的字段（与原 ORM setattr 字段集一致）。
+_LIFECYCLE_UPSERT_FIELDS = (
+    "name",
+    "ts_code",
+    "exchange",
+    "list_status",
+    "list_date",
+    "delist_date",
+)
 
 
 @asynccontextmanager
@@ -467,6 +481,13 @@ class DataInitService:
 
         Returns:
             初始化结果字典
+
+        .. note::
+            历史路径，本期未改动。该方法的逐股 ``_safe_nested_tx`` savepoint 循环与
+            ``init_stocks_lifecycle`` 后补丁 #2 修复前存在相同风险：在大规模（数千股）
+            下可能触发 SQLAlchemy 2.0.23 ``visit_rollback_to_savepoint`` 无限递归。
+            若后续观察到本路径同样崩溃，可参照 ``init_stocks_lifecycle`` 的批量 upsert
+            方案改造（plan-03 后补丁 #2）。
         """
         self._cancelled = False
         logger.info("开始初始化股票数据（A 股 + 港股）")
@@ -612,6 +633,268 @@ class DataInitService:
             await self.session.rollback()
             logger.error(f"股票初始化失败: {e}")
             return {"success": False, "error": str(e)}
+
+    async def init_stocks_lifecycle(self) -> dict:
+        """L/D/P/G 联合生命周期同步（第 16 期 plan-03，ADR-2 / §6.2.4 / §8.6 首行）。
+
+        与旧 ``init_stocks``（仅 L 状态 + 港股）并存、互不影响：
+
+        1. 调 ``get_lifecycle_stocks()`` 拉取四状态全集（L/D/P/G）；
+        2. **记录级校验**：所有记录 ``ts_code/exchange`` 必填且为 A 股；L/D/P 必须有
+           ``list_date``；D 还必须有 ``delist_date``；G 允许两日期为空。任一违反抛
+           ``ValueError``（含代码样本），**不降级用当前 L 集合**；
+        3. **批量 upsert**：预加载现有股票生命周期字段，精确区分 insert / update(变更) /
+           skipped(未变更)，单事务内 ``pg_insert(Stock)`` 按 ``_LIFECYCLE_BATCH_SIZE``
+           行/批 upsert（新行含 ``current_price/market_cap=None``；变更行走
+           ``on_conflict_do_update(symbol)`` 更新生命周期字段 + ``updated_at``）。仅更新
+           生命周期相关字段 ts_code/exchange/list_status/list_date/delist_date/name；
+           批量失败时回退逐行定位问题行（``errors`` 含 ts_code 样本）。
+           （后补丁 #2：去掉逐股 ``_safe_nested_tx`` savepoint 循环——原实现在 ~5882 股
+           规模触发 SQLAlchemy 2.0.23 ``visit_rollback_to_savepoint``→``format_savepoint``
+           无限 RecursionError；批量 upsert 同规模 ~5s 完成。）
+        4. A 股以 **L/D/P/G 四状态联合全集** 做 set-diff 清理（替换 ``init_stocks``
+           仅以 L 清理的行为——旧 ``init_stocks()`` 保持不动）；港股清理入口沿用
+           ``_cleanup_disappeared_stocks``，lifecycle 路径不拉港股故传 ``None`` 跳过；
+        5. 结构化日志：四状态行数、created/updated/deleted 计数（§8.5）。
+
+        Returns:
+            统计字典：``{success, created, updated, skipped, deleted, deleted_count,
+            cleanup_errors, errors, total, status_counts}``。
+        """
+        # 局部导入避免循环依赖；validate_lifecycle_records / resolve_a_stock_exchange
+        # 为生命周期校验与交易所解析的唯一可信源（plan-03 market_metrics_service）。
+        from src.services.market_metrics_service import (
+            resolve_a_stock_exchange,
+            validate_lifecycle_records,
+        )
+        from src.services.data_acquisition.models import LifecycleStock
+
+        self._cancelled = False
+        logger.info("开始 L/D/P/G 联合生命周期同步")
+
+        try:
+            records: list[LifecycleStock] = self.data_source.get_lifecycle_stocks()
+            self._check_cancelled()
+
+            # ---- 记录级校验 ----
+            violations, samples = validate_lifecycle_records(records)
+            if violations:
+                raise ValueError(
+                    "生命周期记录校验失败: "
+                    + "; ".join(violations[:5])
+                    + f" | 样本={samples[:10]}"
+                )
+
+            # 四状态行数统计
+            status_counts = {"L": 0, "D": 0, "P": 0, "G": 0}
+            for rec in records:
+                key = (rec.list_status or "").strip().upper()
+                if key in status_counts:
+                    status_counts[key] += 1
+
+            # ---- 批量 upsert（去掉逐股 savepoint 循环；后补丁 #2）----
+            # 预处理：构建待写行（symbol 去重，后值覆盖）+ 解析交易所。
+            pending: dict[str, dict] = {}  # symbol -> row
+            for rec in records:
+                symbol = rec.ts_code.split(".", 1)[0]
+                pending[symbol] = {
+                    "symbol": symbol,
+                    "name": rec.name or symbol,
+                    "ts_code": rec.ts_code,
+                    "exchange": resolve_a_stock_exchange(rec.ts_code, rec.exchange),
+                    "list_status": (rec.list_status or "").strip().upper(),
+                    "list_date": rec.list_date,
+                    "delist_date": rec.delist_date,
+                }
+            a_source_symbols: set[str] = set(pending.keys())
+
+            # 预加载现有股票生命周期字段（一次查询），精确区分
+            # insert / update(变更) / skipped(未变更)，保持原计数语义。
+            existing_map: dict[str, dict] = {}
+            if pending:
+                preload = await self.session.execute(
+                    select(
+                        Stock.symbol,
+                        Stock.name,
+                        Stock.ts_code,
+                        Stock.exchange,
+                        Stock.list_status,
+                        Stock.list_date,
+                        Stock.delist_date,
+                    ).where(Stock.symbol.in_(list(pending.keys())))
+                )
+                for (
+                    sym,
+                    name,
+                    ts_code,
+                    exchange,
+                    list_status,
+                    list_date,
+                    delist_date,
+                ) in preload.all():
+                    existing_map[sym] = {
+                        "name": name,
+                        "ts_code": ts_code,
+                        "exchange": exchange,
+                        "list_status": list_status,
+                        "list_date": list_date,
+                        "delist_date": delist_date,
+                    }
+
+            insert_rows: list[dict] = []
+            update_rows: list[dict] = []
+            skipped = 0
+            for symbol, row in pending.items():
+                existing = existing_map.get(symbol)
+                if existing is None:
+                    insert_rows.append(row)
+                elif any(
+                    row[fname] != existing[fname]
+                    for fname in _LIFECYCLE_UPSERT_FIELDS
+                ):
+                    update_rows.append(row)
+                else:
+                    skipped += 1
+
+            created = 0
+            updated = 0
+            errors: list[str] = []
+
+            # 批量插入新行（含 current_price/market_cap=None，匹配原 ORM 新建语义）
+            for start_i in range(0, len(insert_rows), _LIFECYCLE_BATCH_SIZE):
+                self._check_cancelled()
+                batch = insert_rows[start_i : start_i + _LIFECYCLE_BATCH_SIZE]
+                await self._update_progress(
+                    start_i, len(records), f"批量插入生命周期股票 {len(batch)} 只"
+                )
+                created += await self._batch_upsert_lifecycle(
+                    batch, update_existing=False, errors=errors
+                )
+
+            # 批量更新变更行（on_conflict(symbol) do update 生命周期字段 + updated_at）
+            for start_i in range(0, len(update_rows), _LIFECYCLE_BATCH_SIZE):
+                self._check_cancelled()
+                batch = update_rows[start_i : start_i + _LIFECYCLE_BATCH_SIZE]
+                await self._update_progress(
+                    start_i, len(records), f"批量更新生命周期股票 {len(batch)} 只"
+                )
+                updated += await self._batch_upsert_lifecycle(
+                    batch, update_existing=True, errors=errors
+                )
+
+            # ---- 四状态联合全集 set-diff 清理（A 股；港股跳过）----
+            cleanup = await self._cleanup_disappeared_stocks(
+                a_source_symbols=a_source_symbols,
+                hk_source_symbols=None,
+            )
+
+            await self.session.commit()
+
+            result = {
+                "success": True,
+                "created": created,
+                "updated": updated,
+                "skipped": skipped,
+                "deleted": cleanup["deleted_symbols"],
+                "deleted_count": len(cleanup["deleted_symbols"]),
+                "cleanup_errors": cleanup["cleanup_errors"],
+                "errors": errors,
+                "total": len(records),
+                "status_counts": status_counts,
+            }
+
+            logger.info(
+                f"生命周期同步完成: 四状态 L/D/P/G="
+                f"{status_counts['L']}/{status_counts['D']}/{status_counts['P']}/"
+                f"{status_counts['G']}, 创建 {created}, 更新 {updated}, "
+                f"跳过 {skipped}, 删除 {len(cleanup['deleted_symbols'])}, "
+                f"错误 {len(errors)}"
+            )
+            return result
+
+        except InterruptedError:
+            await self.session.rollback()
+            logger.warning("生命周期同步已取消")
+            return {"success": False, "cancelled": True, "message": "任务已取消"}
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"生命周期同步失败: {e}")
+            raise
+
+    def _build_lifecycle_upsert_stmt(
+        self, rows: list[dict], update_existing: bool
+    ):
+        """构造生命周期批量 upsert 语句（后补丁 #2）。
+
+        - ``update_existing=False``（新行）：``pg_insert`` 含 ``current_price/market_cap=None``，
+          无 on_conflict（preload 已确认这些 symbol 不存在）。
+        - ``update_existing=True``（变更行）：``on_conflict_do_update(symbol)`` 仅更新
+          生命周期字段 + ``updated_at=func.now()``（匹配原 ORM setattr 触发 onupdate 的语义）。
+        """
+        symbol_and_fields = ("symbol",) + _LIFECYCLE_UPSERT_FIELDS
+        if update_existing:
+            values = [{f: r[f] for f in symbol_and_fields} for r in rows]
+            stmt = pg_insert(Stock).values(values)
+            set_ = {
+                fname: getattr(stmt.excluded, fname)
+                for fname in _LIFECYCLE_UPSERT_FIELDS
+            }
+            set_["updated_at"] = func.now()
+            return stmt.on_conflict_do_update(
+                index_elements=["symbol"], set_=set_
+            )
+        values = [
+            {f: r[f] for f in symbol_and_fields}
+            | {"current_price": None, "market_cap": None}
+            for r in rows
+        ]
+        return pg_insert(Stock).values(values)
+
+    async def _batch_upsert_lifecycle(
+        self,
+        rows: list[dict],
+        update_existing: bool,
+        errors: list[str],
+    ) -> int:
+        """批量 upsert 一批生命周期行；成功提交，整批失败则回退逐行定位问题行。
+
+        每批独立提交（Postgres 语句失败会中止事务，逐批提交隔离失败批次，不丢失先前已提交批次）。
+        整批失败时 rollback 本批后逐行重试（每行独立提交），问题行记入 ``errors``（含 ts_code 样本），
+        正常行仍写入。
+
+        Returns:
+            本批成功处理的行数。
+        """
+        if not rows:
+            return 0
+        try:
+            stmt = self._build_lifecycle_upsert_stmt(rows, update_existing)
+            await self.session.execute(stmt)
+            await self.session.commit()
+            return len(rows)
+        except Exception as batch_err:
+            # 整批失败：rollback 仅丢失本批（先前批次已 commit），逐行重试定位问题行
+            await self.session.rollback()
+            logger.warning(
+                "生命周期批量 upsert 整批失败（%s 行），回退逐行定位: %s",
+                len(rows),
+                batch_err,
+            )
+            ok = 0
+            for row in rows:
+                try:
+                    stmt = self._build_lifecycle_upsert_stmt(
+                        [row], update_existing
+                    )
+                    await self.session.execute(stmt)
+                    await self.session.commit()
+                    ok += 1
+                except Exception as row_err:
+                    await self.session.rollback()
+                    msg = f"处理生命周期股票失败 {row['ts_code']}: {row_err}"
+                    errors.append(msg)
+                    logger.error(msg)
+            return ok
 
     async def _cleanup_disappeared_stocks(
         self,

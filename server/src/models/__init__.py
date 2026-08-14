@@ -30,6 +30,8 @@ from .index_monitor import (
     IndexWeight,
 )
 from .limit import LimitListD, LimitStep, LimitCptList
+from .market_daily_metric import MarketDailyMetric
+from .trading_calendar_day import TradingCalendarDay
 
 __all__ = [
     "Base",
@@ -68,4 +70,6 @@ __all__ = [
     "LimitListD",
     "LimitStep",
     "LimitCptList",
+    "MarketDailyMetric",
+    "TradingCalendarDay",
 ]

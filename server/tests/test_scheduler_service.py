@@ -35,6 +35,9 @@ def job_manager():
         mock_job.id = job_id
         mock_job.name = kwargs.get('name', job_id)
         mock_job.trigger = trigger
+        # Capture scheduling options (max_instances etc.) for assertion
+        mock_job.max_instances = kwargs.get('max_instances')
+        mock_job.kwargs = kwargs
         jobs_dict[job_id] = mock_job
         return mock_job
 
@@ -100,39 +103,65 @@ class TestJobManager:
         assert manager1 is manager2
 
     def test_register_jobs(self, job_manager):
-        """测试注册定时任务"""
+        """默认（开关 false）只注册 sector_fund_flow_snapshot，日级 job 不注册"""
         job_manager._register_jobs()
 
         jobs = job_manager.scheduler.get_jobs()
         job_ids = [job.id for job in jobs]
 
-        assert 'daily_data_update' in job_ids
-        assert 'data_quality_check' in job_ids
-        assert 'cache_cleanup' in job_ids
+        # 板块资金流快照始终注册
+        assert 'sector_fund_flow_snapshot' in job_ids
+        # 开发期默认停用的 job 不应注册
+        assert 'daily_data_update' not in job_ids
+        assert 'data_quality_check' not in job_ids
+        assert 'cache_cleanup' not in job_ids
 
-    def test_daily_data_update_job(self, job_manager):
-        """测试每日数据更新任务配置"""
+    def test_daily_data_update_job_disabled_by_default(self, job_manager):
+        """ENABLE_DAILY_UPDATE_JOB 默认 false 时 daily_data_update 不注册"""
+        from src.core.settings import settings
+        assert settings.enable_daily_update_job is False
+
+        job_manager._register_jobs()
+
+        job = job_manager.scheduler.get_job('daily_data_update')
+        assert job is None
+
+    def test_daily_data_update_job_when_enabled(self, job_manager, monkeypatch):
+        """ENABLE_DAILY_UPDATE_JOB=True 时 daily_data_update 按 18:00 Asia/Shanghai 注册"""
+        from src.core.settings import settings
+        monkeypatch.setattr(settings, 'enable_daily_update_job', True)
+
         job_manager._register_jobs()
 
         job = job_manager.scheduler.get_job('daily_data_update')
         assert job is not None
         assert isinstance(job.trigger, CronTrigger)
+        # trigger 字段：hour=18, minute=0
+        field_map = {f.name: str(f) for f in job.trigger.fields}
+        assert field_map['hour'] == '18'
+        assert field_map['minute'] == '0'
+        # 不使用 day_of_week 工作日表达式（守卫由 collector 内本地日历完成）
+        assert field_map['day_of_week'] == '*'
+        # 时区 Asia/Shanghai
+        assert str(job.trigger.timezone) == 'Asia/Shanghai'
+        # 防止并发执行
+        assert job.max_instances == 1
 
-    def test_data_quality_check_job(self, job_manager):
-        """测试数据质量检查任务配置"""
+    def test_data_quality_check_job_disabled(self, job_manager):
+        """数据质量检查 job 当前停用（保留覆盖语义，不删测试）"""
         job_manager._register_jobs()
 
         job = job_manager.scheduler.get_job('data_quality_check')
-        assert job is not None
-        assert isinstance(job.trigger, IntervalTrigger)
+        # 仍按惯例注释停用，恢复时此处改为断言 IntervalTrigger
+        assert job is None
 
-    def test_cache_cleanup_job(self, job_manager):
-        """测试缓存清理任务配置"""
+    def test_cache_cleanup_job_disabled(self, job_manager):
+        """缓存清理 job 当前停用（保留覆盖语义，不删测试）"""
         job_manager._register_jobs()
 
         job = job_manager.scheduler.get_job('cache_cleanup')
-        assert job is not None
-        assert isinstance(job.trigger, IntervalTrigger)
+        # 仍按惯例注释停用，恢复时此处改为断言 IntervalTrigger
+        assert job is None
 
     @pytest.mark.asyncio
     async def test_start(self, real_job_manager):
@@ -175,23 +204,24 @@ class TestJobManager:
         assert real_job_manager.is_running is False
 
     def test_get_jobs(self, job_manager):
-        """测试获取所有任务"""
+        """测试获取所有任务（默认态：sector_fund_flow_snapshot 在，日级 job 不在）"""
         job_manager._register_jobs()
         jobs = job_manager.get_jobs()
 
         assert isinstance(jobs, dict)
-        assert 'daily_data_update' in jobs
-        assert 'data_quality_check' in jobs
-        assert 'cache_cleanup' in jobs
+        assert 'sector_fund_flow_snapshot' in jobs
+        assert 'daily_data_update' not in jobs
+        assert 'data_quality_check' not in jobs
+        assert 'cache_cleanup' not in jobs
 
     @pytest.mark.asyncio
     async def test_trigger_job_success(self, job_manager):
-        """测试触发指定任务 - 成功"""
+        """测试触发指定任务 - 成功（用默认注册的 sector_fund_flow_snapshot）"""
         job_manager._register_jobs()
 
         # Mock the job function
-        with patch.object(job_manager, '_daily_data_update', new_callable=AsyncMock) as mock_task:
-            result = await job_manager.trigger_job('daily_data_update')
+        with patch.object(job_manager, '_sector_fund_flow_snapshot', new_callable=AsyncMock) as mock_task:
+            result = await job_manager.trigger_job('sector_fund_flow_snapshot')
             assert result is True
 
     @pytest.mark.asyncio

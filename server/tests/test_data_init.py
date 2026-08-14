@@ -8,6 +8,7 @@ import pytest
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from sqlalchemy.orm import Query
+from sqlalchemy import select
 
 from src.services.data_init import DataInitService
 from src.services.data_acquisition.models import SectorInfo, StockInfo, DailyQuote
@@ -591,5 +592,249 @@ def test_days_validation_sync():
     # 超出范围
     assert max(1, min(365, 0)) == 1
     assert max(1, min(365, 500)) == 365
+
+
+# ---------------------------------------------------------------------------
+# init_stocks_lifecycle：L/D/P/G 联合同步 + 四状态全集 set-diff 清理（plan-03）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_init_stocks_lifecycle_four_state_cleanup_real_db(db_session):
+    """四状态联合全集清理口径：D/P/G 股不误删，不在 union 的 L 股被清理。
+
+    构造 D-only 场景验证：DB 既有 D 状态股（旧 init_stocks 仅 L 清理会误删），
+    lifecycle 拉取的 union 包含该 D 股 → 清理后保留；不在 union 的孤儿被删。
+    """
+    from src.models.stock import Stock
+    from src.services.data_acquisition.models import LifecycleStock
+
+    # 既有：1 只 D 状态（旧路径可能误删）+ 1 只不在 union 的孤儿 L 股
+    db_session.add(
+        Stock(
+            symbol="000002", name="delisted", ts_code="000002.SZ",
+            exchange="SZSE", list_status="D",
+            list_date=date(2010, 1, 1), delist_date=date(2025, 1, 1),
+            current_price=None, market_cap=None,
+        )
+    )
+    db_session.add(
+        Stock(
+            symbol="000099", name="orphan", ts_code="000099.SZ",
+            exchange="SZSE", list_status="L",
+            list_date=date(2020, 1, 1), delist_date=None,
+            current_price=None, market_cap=None,
+        )
+    )
+    await db_session.commit()
+
+    # lifecycle 拉取 union：包含 D 股 000002，不含孤儿 000099
+    lifecycle_records = [
+        LifecycleStock(
+            ts_code="000002.SZ", exchange="SZSE", list_status="D",
+            name="delisted", list_date=date(2010, 1, 1),
+            delist_date=date(2025, 1, 1),
+        ),
+        LifecycleStock(
+            ts_code="000001.SZ", exchange="SZSE", list_status="L",
+            name="newlist", list_date=date(2020, 1, 1), delist_date=None,
+        ),
+    ]
+    fake_source = MagicMock()
+    fake_source.get_lifecycle_stocks.return_value = lifecycle_records
+
+    with patch('src.services.data_init.DataSourceFactory.create', return_value=fake_source):
+        service = DataInitService(db_session)
+        result = await service.init_stocks_lifecycle()
+
+    assert result["success"] is True
+    assert result["status_counts"] == {"L": 1, "D": 1, "P": 0, "G": 0}
+    # 孤儿 000099 被清理（不在四状态 union）
+    assert "000099" in result["deleted"]
+    assert result["deleted_count"] == 1
+    # 000001 新建，000002 已存在
+    assert result["created"] == 1
+    assert result["updated"] == 0
+
+    # DB 校验：D 股保留、孤儿删除、L 新增
+    remaining = {
+        r.symbol: r.list_status
+        for r in (await db_session.execute(
+            select(Stock.symbol, Stock.list_status).where(
+                Stock.exchange.in_(("SSE", "SZSE", "BSE"))
+            )
+        )).all()
+    }
+    assert "000002" in remaining and remaining["000002"] == "D"  # D 不误删
+    assert "000001" in remaining and remaining["000001"] == "L"
+    assert "000099" not in remaining  # 孤儿清理
+
+
+@pytest.mark.asyncio
+async def test_init_stocks_lifecycle_validation_d_missing_delist_date(mock_session, mock_data_source):
+    """记录级校验：D 状态缺 delist_date → 抛 ValueError，不降级用当前 L 集合。"""
+    from src.services.data_acquisition.models import LifecycleStock
+
+    mock_data_source.get_lifecycle_stocks.return_value = [
+        LifecycleStock(
+            ts_code="000002.SZ", exchange="SZSE", list_status="D",
+            name="d", list_date=date(2010, 1, 1), delist_date=None,  # 缺 delist_date
+        ),
+    ]
+
+    service = DataInitService(mock_session)
+    with pytest.raises(ValueError, match="delist_date"):
+        await service.init_stocks_lifecycle()
+
+
+@pytest.mark.asyncio
+async def test_init_stocks_lifecycle_validation_l_missing_list_date(mock_session, mock_data_source):
+    """记录级校验：L 状态缺 list_date → 抛 ValueError。"""
+    from src.services.data_acquisition.models import LifecycleStock
+
+    mock_data_source.get_lifecycle_stocks.return_value = [
+        LifecycleStock(
+            ts_code="000001.SZ", exchange="SZSE", list_status="L",
+            name="l", list_date=None, delist_date=None,  # 缺 list_date
+        ),
+    ]
+
+    service = DataInitService(mock_session)
+    with pytest.raises(ValueError, match="list_date"):
+        await service.init_stocks_lifecycle()
+
+
+@pytest.mark.asyncio
+async def test_init_stocks_lifecycle_g_allows_empty_dates(mock_session, mock_data_source):
+    """G 状态允许两日期为空（不抛错）。"""
+    from src.services.data_acquisition.models import LifecycleStock
+
+    mock_data_source.get_lifecycle_stocks.return_value = [
+        LifecycleStock(
+            ts_code="000003.SZ", exchange="SZSE", list_status="G",
+            name="g", list_date=None, delist_date=None,
+        ),
+        LifecycleStock(
+            ts_code="000001.SZ", exchange="SZSE", list_status="L",
+            name="l", list_date=date(2020, 1, 1), delist_date=None,
+        ),
+    ]
+    # mock session 使 upsert 路径不报错
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    service = DataInitService(mock_session)
+    result = await service.init_stocks_lifecycle()
+
+    assert result["success"] is True
+    assert result["status_counts"] == {"L": 1, "D": 0, "P": 0, "G": 1}
+
+
+@pytest.mark.asyncio
+async def test_init_stocks_lifecycle_idempotent_rerun(db_session):
+    """重复执行幂等（后补丁 #2 批量 upsert）：第二次调用 created=0（不新增重复行），
+    变更行 updated=N；第三次完全相同 created=0/updated=0/skipped=N。
+
+    覆盖批量 upsert 的 insert/update/skipped 三路分区 + on_conflict(symbol) 覆盖语义。
+    """
+    from src.models.stock import Stock
+    from src.services.data_acquisition.models import LifecycleStock
+
+    records_v1 = [
+        LifecycleStock(
+            ts_code="000001.SZ", exchange="SZSE", list_status="L",
+            name="v1-a", list_date=date(2020, 1, 1), delist_date=None,
+        ),
+        LifecycleStock(
+            ts_code="600001.SH", exchange="SSE", list_status="L",
+            name="v1-b", list_date=date(2020, 1, 1), delist_date=None,
+        ),
+    ]
+    fake_source_v1 = MagicMock()
+    fake_source_v1.get_lifecycle_stocks.return_value = records_v1
+    with patch("src.services.data_init.DataSourceFactory.create", return_value=fake_source_v1):
+        service = DataInitService(db_session)
+        r1 = await service.init_stocks_lifecycle()
+    assert r1["success"] is True
+    assert r1["created"] == 2
+    assert r1["updated"] == 0
+
+    # 第二次：相同 symbol、name 变更 → created=0（幂等不新增），updated=2（变更行）
+    records_v2 = [
+        LifecycleStock(
+            ts_code="000001.SZ", exchange="SZSE", list_status="L",
+            name="v2-a", list_date=date(2020, 1, 1), delist_date=None,
+        ),
+        LifecycleStock(
+            ts_code="600001.SH", exchange="SSE", list_status="L",
+            name="v2-b", list_date=date(2020, 1, 1), delist_date=None,
+        ),
+    ]
+    fake_source_v2 = MagicMock()
+    fake_source_v2.get_lifecycle_stocks.return_value = records_v2
+    with patch("src.services.data_init.DataSourceFactory.create", return_value=fake_source_v2):
+        service2 = DataInitService(db_session)
+        r2 = await service2.init_stocks_lifecycle()
+    assert r2["created"] == 0          # 幂等：不产生重复行
+    assert r2["updated"] == 2          # 两个 name 变更
+    assert r2["skipped"] == 0
+    assert r2["deleted_count"] == 0    # union 覆盖全部，无清理
+
+    # DB 行数不变（无重复），name 已覆盖更新
+    rows = {
+        r.symbol: r.name
+        for r in (
+            await db_session.execute(
+                select(Stock.symbol, Stock.name).where(
+                    Stock.symbol.in_(("000001", "600001"))
+                )
+            )
+        ).all()
+    }
+    assert set(rows.keys()) == {"000001", "600001"}
+    assert rows["000001"] == "v2-a"
+    assert rows["600001"] == "v2-b"
+
+    # 第三次：完全相同 → created=0/updated=0/skipped=2（幂等无变更）
+    with patch("src.services.data_init.DataSourceFactory.create", return_value=fake_source_v2):
+        service3 = DataInitService(db_session)
+        r3 = await service3.init_stocks_lifecycle()
+    assert r3["created"] == 0
+    assert r3["updated"] == 0
+    assert r3["skipped"] == 2
+
+
+@pytest.mark.asyncio
+async def test_init_stocks_legacy_path_unaffected(db_session):
+    """旧 init_stocks() 路径不受 lifecycle 新增影响（回归保护）。"""
+    from src.models.stock import Stock
+
+    fake_source = MagicMock()
+    fake_source.get_stock_list.return_value = [
+        StockInfo(symbol="000001", name="A", exchange="SZSE"),
+    ]
+    fake_source.get_hk_stock_list.return_value = []
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    db_session_execute = db_session.execute
+
+    async def _execute(stmt, *a, **kw):
+        # upsert 查询走真实 DB；清理阶段 set-diff 也走真实 DB
+        return await db_session_execute(stmt, *a, **kw)
+
+    db_session.execute = _execute
+    try:
+        with patch('src.services.data_init.DataSourceFactory.create', return_value=fake_source):
+            service = DataInitService(db_session)
+            result = await service.init_stocks()
+    finally:
+        db_session.execute = db_session_execute
+
+    assert result["success"] is True
+    assert result["created"] == 1
+    # 旧路径仍以 L（get_stock_list）为清理口径
+    assert "deleted_count" in result
 
 

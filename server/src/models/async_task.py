@@ -1,6 +1,6 @@
 """异步任务相关模型"""
 
-from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey, Index
+from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey, Index, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .base import Base
@@ -28,6 +28,12 @@ class AsyncTask(Base):
     started_at = Column(DateTime(timezone=True), comment="开始时间")
     completed_at = Column(DateTime(timezone=True), comment="完成时间")
     cancelled_at = Column(DateTime(timezone=True), comment="取消时间")
+    # plan-04：sync_market_metrics 专属 fencing 字段（全部 nullable，仅本类型读写；
+    # 其他约 28 类任务保持 NULL 与原状态语义）。
+    result = Column(JSON, nullable=True, comment="结构化结果（仅 sync_market_metrics 读写，透传 MarketMetricsTaskResult）")
+    cancel_requested_at = Column(DateTime(timezone=True), nullable=True, comment="取消请求时间（sync_market_metrics 首因胜出）")
+    timeout_requested_at = Column(DateTime(timezone=True), nullable=True, comment="超时请求时间（sync_market_metrics 首因胜出）")
+    executor_acquisition_token = Column(String(36), nullable=True, comment="执行器 acquisition token（sync_market_metrics fencing 身份）")
 
     # 关联关系
     params = relationship("AsyncTaskParam", back_populates="task", cascade="all, delete-orphan")
@@ -71,6 +77,8 @@ class AsyncTask(Base):
             "startedAt": self.started_at.isoformat() if self.started_at else None,
             "completedAt": self.completed_at.isoformat() if self.completed_at else None,
             "cancelledAt": self.cancelled_at.isoformat() if self.cancelled_at else None,
+            # plan-04：nullable result 原样透传（其他任务恒为 None）
+            "result": self.result,
         }
 
 

@@ -6,7 +6,7 @@
 
 import logging
 from datetime import date
-from typing import Dict, Any
+from typing import Dict, Any, List
 from enum import Enum
 
 from sqlalchemy import select
@@ -87,6 +87,9 @@ class TaskType(str, Enum):
     SYNC_INDEX_BASIC = "sync_index_basic"
     BACKFILL_INDEX_HISTORY = "backfill_index_history"
     SYNC_INDEX_DAILY = "sync_index_daily"
+
+    # 全市场量价范围同步任务（第 16 期 plan-05；专属 advisory lock + fencing，见 plan-04）
+    SYNC_MARKET_METRICS = "sync_market_metrics"
 
 
 async def _make_progress_callback(manager: TaskManager, task_id: str):
@@ -1745,3 +1748,333 @@ async def sync_index_daily_task(
         error_msg = f"Index daily sync failed: {e}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
+
+
+# ============================================================
+# 全市场量价范围同步（第 16 期 plan-05）
+# ============================================================
+
+
+def _build_market_metrics_result(
+    success_count: int,
+    skipped_count: int,
+    failed_count: int,
+    date_results: List[Dict[str, Any]],
+    unprocessed_dates: List[str],
+) -> Dict[str, Any]:
+    """构造 ``MarketMetricsTaskResult``（架构 §7.2，camelCase 键）。
+
+    ``AsyncTask.to_dict()`` 原样透传 ``result``，不经 ``_dict_to_camel``；故 handler
+    构造时即用 camelCase 键，plan-08 前端直消费、无二次键转换。
+    """
+    return {
+        "successCount": success_count,
+        "skippedCount": skipped_count,
+        "failedCount": failed_count,
+        "dateResults": date_results,
+        "unprocessedDates": unprocessed_dates,
+    }
+
+
+async def _persist_market_metrics_result(
+    manager: TaskManager, task_id: str, result: Dict[str, Any]
+) -> None:
+    """将 ``result`` 直接写入 AsyncTask 行（成功/失败摘要路径，架构 §6.2.6）。
+
+    ``TaskManager.complete_task`` 不写 ``result``（仅状态/错误），故 handler 在范围
+    处理结束后自行持久化，使成功/失败摘要路径均带结构化结果。
+    """
+    from sqlalchemy import update as _update
+
+    await manager.db.execute(
+        _update(AsyncTask)
+        .where(AsyncTask.task_id == task_id)
+        .values(result=result)
+    )
+    await manager.db.commit()
+
+
+async def _read_day_counts(session: AsyncSession, day: date) -> Dict[str, int]:
+    """从已提交的 ``market_daily_metrics`` 行读当日四类计数（成功日 dateResults）。
+
+    sync_date 成功后以独立查询读取，避免改动 plan-03 的 ``sync_date`` 返回契约。
+    """
+    from src.models.market_daily_metric import MarketDailyMetric
+
+    row = (
+        await session.execute(
+            select(
+                MarketDailyMetric.expected_stock_count,
+                MarketDailyMetric.daily_quote_count,
+                MarketDailyMetric.suspended_stock_count,
+                MarketDailyMetric.final_stock_count,
+            ).where(MarketDailyMetric.trade_date == day)
+        )
+    ).one_or_none()
+    if row is None:
+        return {"expected": 0, "daily": 0, "suspended": 0, "final": 0}
+    return {
+        "expected": row[0] or 0,
+        "daily": row[1] or 0,
+        "suspended": row[2] or 0,
+        "final": row[3] or 0,
+    }
+
+
+async def _finalize_market_metrics_stop(
+    manager: TaskManager,
+    task_id: str,
+    token: str,
+    result: Dict[str, Any],
+) -> None:
+    """按已持久化的停止首因落终态并保存 partial result（架构 §7.4 / §6.2.6）。
+
+    重新读取 AsyncTask 的 ``cancel_requested_at`` / ``timeout_requested_at`` 选首因
+    （与 recovery 一致：双标记按较早数据库时间，同刻 cancel 优先）；调用对应
+    ``finalize_*_with_result``。若终态未能写入（任务已被 recovery 回收）则仅持久化
+    partial result，交由 recovery 兜底。
+    """
+    task = await manager.get_task(task_id)
+    cancel_at = getattr(task, "cancel_requested_at", None) if task else None
+    timeout_at = getattr(task, "timeout_requested_at", None) if task else None
+
+    finalized = False
+    if cancel_at is not None and timeout_at is not None:
+        # 不变量破坏：critical 告警，按较早时间选首因（同刻 cancel 优先）
+        logger.critical(
+            "INVARIANT BROKEN: task %s has both cancel_requested_at=%s and "
+            "timeout_requested_at=%s in handler stop finalize",
+            task_id,
+            cancel_at,
+            timeout_at,
+        )
+        if cancel_at <= timeout_at:
+            finalized = await manager.finalize_cancel_with_result(
+                task_id, token, result
+            )
+        else:
+            finalized = await manager.finalize_timeout_with_result(
+                task_id, token, result
+            )
+    elif cancel_at is not None:
+        finalized = await manager.finalize_cancel_with_result(task_id, token, result)
+    elif timeout_at is not None:
+        finalized = await manager.finalize_timeout_with_result(task_id, token, result)
+
+    if not finalized:
+        # 任务已被 recovery 回收（旧 token 失效）或无停止首因；持久化 partial result
+        # 供 recovery 兜底（recovery 以已提交 dateResults 重建计数）。
+        try:
+            await _persist_market_metrics_result(manager, task_id, result)
+        except Exception:
+            logger.exception(
+                "handler stop finalize: persist partial result failed for %s",
+                task_id,
+            )
+
+
+@TaskRegistry.register(TaskType.SYNC_MARKET_METRICS)
+async def sync_market_metrics_task(
+    task_id: str,
+    params: Dict[str, Any],
+    manager: TaskManager,
+) -> None:
+    """全市场量价范围同步任务（第 16 期 plan-05，架构 §6.2 / ADR-5 / §7.2）。
+
+    从 params 取 ``start_date`` / ``end_date``，逐交易日**串行**执行完整闭环：
+    日历守卫 → 生命周期快照校验 → 全市场行情拉取过滤 → 停牌确认 → 补价 → Decimal
+    计算 → ``task_context`` fencing + 单事务原子 upsert（plan-03 ``sync_date``）。
+
+    处理语义（AC-02/07）：
+    - 成功日立即提交（日级 commit）、失败日回滚并继续下一日；
+    - 每交易日结束向统一 ``dateResults`` 追加四类计数并更新 ``progress``（只计交易日）；
+    - 全部结束持久化 ``result``；``failedCount > 0`` 时抛一次摘要（``max_retries=0``
+      由执行器直接落 failed，成功日不回滚）；
+    - 协程被停止（fence 检测到 ``cancel/timeout_requested_at`` 或被 cancel）→
+      ``finalize_*_with_result`` 保存 partial result，已处理日保留、未处理日进
+      ``unprocessedDates``。
+
+    Args:
+        task_id: 任务ID
+        params: ``{"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}``
+        manager: 任务管理器（``manager.db`` 为执行器注入的会话）
+    """
+    import asyncio
+
+    from src.services.market_metrics_service import (
+        MarketMetricsService,
+        MarketMetricsSyncError,
+        build_lifecycle_snapshot,
+    )
+    from src.services.task_fence import FenceValidationError, TaskFenceRegistry
+    from src.services.trading_calendar_repository import TradingCalendarRepository
+
+    # 1. 取 fence context（plan-04 注册表；执行器派发本类型时注入）。
+    ctx = TaskFenceRegistry.get(task_id)
+    if ctx is None:
+        # 自动路径不走 handler；管理员任务必由执行器注入。取不到视为错误。
+        raise RuntimeError(
+            f"sync_market_metrics handler 缺少 TaskFenceContext (task={task_id})"
+        )
+
+    # 2. 解析参数；从本地日历取交易日升序列表（非交易日不进计算）。
+    start = date.fromisoformat(str(params["start_date"]))
+    end = date.fromisoformat(str(params["end_date"]))
+    cal_repo = TradingCalendarRepository(manager.db)
+    trading_days = await cal_repo.get_trading_days(start, end)
+
+    natural_days = (end - start).days + 1
+    skipped_count = natural_days - len(trading_days)  # §6.2.7
+    total = len(trading_days)
+
+    await manager.update_progress(task_id, 0, total)
+    await manager.log_message(
+        task_id,
+        "INFO",
+        f"market_metrics sync start: range={start}~{end}, "
+        f"trading_days={total}, natural_days={natural_days}, skipped={skipped_count}",
+    )
+
+    # 3. 一次生命周期 preflight（init_stocks_lifecycle + 快照构建，范围任务仅一次）。
+    await manager.log_message(
+        task_id, "INFO", "market_metrics preflight: 构建 L/D/P/G 生命周期快照（仅一次）"
+    )
+    snapshot = await build_lifecycle_snapshot(manager.db)
+    await manager.log_message(
+        task_id,
+        "INFO",
+        f"market_metrics preflight done: records={len(snapshot.records)}",
+    )
+
+    # 4. 逐交易日串行处理。
+    service = MarketMetricsService(manager.db)
+    close_cache: Dict[str, Any] = {}
+    date_results: List[Dict[str, Any]] = []
+    success_count = 0
+    failed_count = 0
+    processed = 0
+
+    for idx, day in enumerate(trading_days):
+        try:
+            await service.sync_date(
+                day, snapshot, task_context=ctx, close_cache=close_cache
+            )
+        except FenceValidationError:
+            # 停止请求首因胜出（fence 检测到 cancel/timeout_requested_at）或 token 失效。
+            # 当日未提交 → 计入 unprocessedDates；保存 partial result 后落终态。
+            unprocessed = [d.isoformat() for d in trading_days[idx:]]
+            result = _build_market_metrics_result(
+                success_count, skipped_count, failed_count, date_results, unprocessed
+            )
+            await manager.log_message(
+                task_id,
+                "WARNING",
+                f"market_metrics sync stopped at trade_date={day} (fence rejected); "
+                f"unprocessed={len(unprocessed)}",
+            )
+            await _finalize_market_metrics_stop(
+                manager, task_id, ctx.acquisition_token, result
+            )
+            return
+        except asyncio.CancelledError:
+            # 协程被 cancel（guard invalidate / 外部 cancel）→ 保存 partial result。
+            unprocessed = [d.isoformat() for d in trading_days[idx:]]
+            result = _build_market_metrics_result(
+                success_count, skipped_count, failed_count, date_results, unprocessed
+            )
+            try:
+                await _finalize_market_metrics_stop(
+                    manager, task_id, ctx.acquisition_token, result
+                )
+            except Exception:
+                logger.exception(
+                    "market_metrics handler: stop finalize on CancelledError failed "
+                    "for task %s (recovery will兜底)",
+                    task_id,
+                )
+            raise
+        except MarketMetricsSyncError as e:
+            # 单日失败：回滚该日、记录 dateResults、继续下一日（AC-07）。
+            failed_count += 1
+            date_results.append(
+                {
+                    "tradeDate": day.isoformat(),
+                    "status": "failed",
+                    "expected": e.expected,
+                    "daily": e.daily,
+                    "suspended": e.suspended,
+                    "final": e.final,
+                    "reason": e.raw_message,
+                }
+            )
+            await manager.log_message(
+                task_id,
+                "WARNING",
+                f"market_metrics day failed trade_date={day} "
+                f"expected={e.expected} daily={e.daily} suspended={e.suspended} "
+                f"final={e.final} reason={e.raw_message}",
+            )
+        except Exception as e:
+            # 其他异常（网络/Provider）：记为单日失败并继续，不中断整范围。
+            failed_count += 1
+            date_results.append(
+                {
+                    "tradeDate": day.isoformat(),
+                    "status": "failed",
+                    "expected": 0,
+                    "daily": 0,
+                    "suspended": 0,
+                    "final": 0,
+                    "reason": f"{type(e).__name__}: {e}",
+                }
+            )
+            await manager.log_message(
+                task_id,
+                "WARNING",
+                f"market_metrics day failed trade_date={day} "
+                f"reason={type(e).__name__}: {e}",
+            )
+        else:
+            # 成功日：从已提交行读四类计数（sync_date 仅返回 "success"）。
+            success_count += 1
+            counts = await _read_day_counts(manager.db, day)
+            date_results.append(
+                {
+                    "tradeDate": day.isoformat(),
+                    "status": "success",
+                    "expected": counts["expected"],
+                    "daily": counts["daily"],
+                    "suspended": counts["suspended"],
+                    "final": counts["final"],
+                }
+            )
+
+        processed += 1
+        await manager.update_progress(task_id, processed, total)
+        await manager.log_message(
+            task_id,
+            "INFO",
+            f"market_metrics progress: trade_date={day} "
+            f"processed={processed}/{total} success={success_count} failed={failed_count}",
+        )
+
+    # 5. 全部结束持久化 result（完整处理范围 → unprocessedDates 为空）。
+    result = _build_market_metrics_result(
+        success_count, skipped_count, failed_count, date_results, []
+    )
+    await _persist_market_metrics_result(manager, task_id, result)
+    await manager.log_message(
+        task_id,
+        "INFO",
+        f"market_metrics sync finished: success={success_count} "
+        f"skipped={skipped_count} failed={failed_count}",
+    )
+
+    # 6. failedCount > 0 → 抛一次摘要（max_retries=0 由执行器直接落 failed）。
+    if failed_count > 0:
+        raise MarketMetricsSyncError(
+            f"market_metrics 范围同步存在失败日: success={success_count} "
+            f"failed={failed_count}",
+            expected=success_count + failed_count,
+            final=success_count,
+        )

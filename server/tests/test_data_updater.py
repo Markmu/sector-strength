@@ -55,13 +55,19 @@ class TestDataCollector:
 
     @pytest.mark.asyncio
     async def test_run_daily_update_trading_day(self, data_collector):
-        """测试执行每日更新 - 交易日"""
-        with patch.object(data_collector._trading_calendar, 'is_trading_day', return_value=(True, None)), \
+        """测试执行每日更新 - 交易日（plan-05：本地日历守卫）"""
+        cal_repo = MagicMock()
+        cal_repo.refresh_range = AsyncMock(return_value=(1, 0))  # open_count=1 → 交易日
+        with patch('src.services.data_updater.collector.TradingCalendarRepository', return_value=cal_repo), \
              patch.object(data_collector, '_update_sectors', new_callable=AsyncMock, return_value=10), \
              patch.object(data_collector, '_update_stocks', new_callable=AsyncMock, return_value=100), \
              patch.object(data_collector, '_update_market_data', new_callable=AsyncMock, return_value=100), \
+             patch.object(data_collector, '_update_market_metrics', new_callable=AsyncMock, return_value=1), \
              patch.object(data_collector, '_run_calculations', new_callable=AsyncMock, return_value=100), \
              patch.object(data_collector, '_clear_cache', new_callable=AsyncMock, return_value=10), \
+             patch.object(data_collector, '_update_sector_fund_flow', new_callable=AsyncMock, return_value=0), \
+             patch.object(data_collector, '_update_etf_daily', new_callable=AsyncMock, return_value=0), \
+             patch.object(data_collector, '_update_index_daily', new_callable=AsyncMock, return_value=0), \
              patch.object(data_collector, '_save_update_log', new_callable=AsyncMock):
 
             result = await data_collector.run_daily_update()
@@ -70,17 +76,67 @@ class TestDataCollector:
             assert result['sectors_updated'] == 10
             assert result['stocks_updated'] == 100
             assert result['market_data_updated'] == 100
+            assert result['market_metrics_updated'] == 1
 
     @pytest.mark.asyncio
     async def test_run_daily_update_non_trading_day(self, data_collector):
-        """测试执行每日更新 - 非交易日"""
-        with patch.object(data_collector._trading_calendar, 'is_trading_day', return_value=(False, "周末")), \
+        """测试执行每日更新 - 非交易日（plan-05：open_count=0 → skipped，不调 Provider）"""
+        cal_repo = MagicMock()
+        cal_repo.refresh_range = AsyncMock(return_value=(0, 1))  # open_count=0 → 休市
+        with patch('src.services.data_updater.collector.TradingCalendarRepository', return_value=cal_repo), \
+             patch.object(data_collector, '_update_sectors', new_callable=AsyncMock) as mock_sectors, \
+             patch.object(data_collector, '_update_market_metrics', new_callable=AsyncMock) as mock_metrics, \
              patch.object(data_collector, '_save_update_log', new_callable=AsyncMock):
 
             result = await data_collector.run_daily_update()
 
             assert result['success'] is True
             assert '跳过更新' in result['message']
+            # 休市日不调后续 Provider 步骤（AC-09）
+            mock_sectors.assert_not_awaited()
+            mock_metrics.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_run_daily_update_calendar_refresh_failure_fails(self, data_collector):
+        """日历刷新失败 → 日更失败，不用旧行冒充（AC-08）"""
+        cal_repo = MagicMock()
+        cal_repo.refresh_range = AsyncMock(side_effect=ValueError("日历校验失败"))
+        with patch('src.services.data_updater.collector.TradingCalendarRepository', return_value=cal_repo), \
+             patch.object(data_collector, '_update_sectors', new_callable=AsyncMock) as mock_sectors, \
+             patch.object(data_collector, '_save_update_log', new_callable=AsyncMock):
+
+            result = await data_collector.run_daily_update()
+
+            assert result['success'] is False
+            assert result['market_metrics_updated'] == 0
+            mock_sectors.assert_not_awaited()  # 日历失败不继续后续步骤
+
+    @pytest.mark.asyncio
+    async def test_run_daily_update_metrics_failure_does_not_block(self, data_collector):
+        """指标步骤失败 → errors 有记录、market_metrics_updated=0，不阻断 index 步骤（AC-08）"""
+        cal_repo = MagicMock()
+        cal_repo.refresh_range = AsyncMock(return_value=(1, 0))
+        with patch('src.services.data_updater.collector.TradingCalendarRepository', return_value=cal_repo), \
+             patch.object(data_collector, '_update_sectors', new_callable=AsyncMock, return_value=10), \
+             patch.object(data_collector, '_update_stocks', new_callable=AsyncMock, return_value=100), \
+             patch.object(data_collector, '_update_market_data', new_callable=AsyncMock, return_value=100), \
+             patch.object(data_collector, '_update_market_metrics', new_callable=AsyncMock, side_effect=RuntimeError("指标失败")), \
+             patch.object(data_collector, '_run_calculations', new_callable=AsyncMock, return_value=100), \
+             patch.object(data_collector, '_clear_cache', new_callable=AsyncMock, return_value=10), \
+             patch.object(data_collector, '_update_sector_fund_flow', new_callable=AsyncMock, return_value=0), \
+             patch.object(data_collector, '_update_etf_daily', new_callable=AsyncMock, return_value=0), \
+             patch.object(data_collector, '_update_index_daily', new_callable=AsyncMock, return_value=5) as mock_index, \
+             patch.object(data_collector, '_save_update_log', new_callable=AsyncMock):
+
+            result = await data_collector.run_daily_update()
+
+            # 指标失败不阻断主流程
+            assert result['success'] is True
+            assert result['market_metrics_updated'] == 0
+            assert any('market_metrics' in e for e in result['errors'])
+            # index 步骤仍执行（不被指标失败阻断）
+            mock_index.assert_awaited_once()
+            assert result['index_daily_updated'] == 5
 
     @pytest.mark.asyncio
     async def test_update_sectors(self, data_collector):
@@ -94,13 +150,21 @@ class TestDataCollector:
 
     @pytest.mark.asyncio
     async def test_update_stocks(self, data_collector):
-        """测试更新股票数据"""
-        data_collector._data_source.get_stock_list.return_value = [
-            StockInfo(symbol='000001', name='测试股票')
-        ]
+        """测试更新股票生命周期数据（plan-05：调 build_lifecycle_snapshot，一次 preflight）"""
+        from src.services.market_metrics_service import LifecycleSnapshot
+        fake_snapshot = MagicMock(spec=LifecycleSnapshot)
+        fake_snapshot.records = ("A", "B", "C")
+        with patch('src.services.data_updater.collector.build_lifecycle_snapshot',
+                   new_callable=AsyncMock, return_value=fake_snapshot) as mock_build:
+            with patch('src.services.data_updater.collector.get_session') as mock_session_getter:
+                mock_session = AsyncMock()
+                mock_session_getter.return_value.__aenter__.return_value = mock_session
 
-        count = await data_collector._update_stocks()
-        assert count >= 0
+                count = await data_collector._update_stocks()
+
+                assert count == 3
+                assert data_collector._lifecycle_snapshot is fake_snapshot
+                mock_build.assert_awaited_once()  # 生命周期 preflight 仅一次
 
     @pytest.mark.asyncio
     async def test_update_market_data(self, data_collector):

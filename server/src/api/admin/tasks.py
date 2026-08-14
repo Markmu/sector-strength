@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from src.api.deps import get_session, require_admin
 from src.api.schemas.response import ApiResponse
-from src.services.task_manager import TaskManager
+from src.services.task_manager import TaskManager, RESERVED_TASK_TYPES
 from src.services.task_executor import TaskRegistry
 from src.models.async_task import AsyncTask
 from src.services.data_acquisition.sector_types import SECTOR_TYPES
@@ -51,6 +51,8 @@ class TaskResponse(BaseModel):
     startedAt: Optional[str] = Field(None, description="开始时间")
     completedAt: Optional[str] = Field(None, description="完成时间")
     cancelledAt: Optional[str] = Field(None, description="取消时间")
+    # plan-04：nullable result 原样透传（仅 sync_market_metrics 非 None）
+    result: Optional[dict] = Field(None, description="结构化结果（仅 sync_market_metrics）")
 
 
 class TaskDetailResponse(TaskResponse):
@@ -132,6 +134,16 @@ async def create_task(
     Returns:
         创建的任务信息
     """
+    # plan-04：保留任务类型封堵——通用入口拒绝 sync_market_metrics，
+    # 必须使用专用端点 POST /api/v1/admin/init/market-metrics（架构 §7.3）。
+    # 置于注册校验之前，确保 handler 是否已注册（plan-05）都返回专用提示。
+    if request.task_type in RESERVED_TASK_TYPES:
+        return ApiResponse(
+            success=False,
+            data=None,
+            message="sync_market_metrics 为保留任务类型，请使用 POST /api/v1/admin/init/market-metrics",
+        )
+
     # 验证任务类型是否已注册
     registered_tasks = TaskRegistry.list_registered_tasks()
     if request.task_type not in registered_tasks:
@@ -388,11 +400,14 @@ async def get_task_logs(
         offset=offset,
     )
 
+    # plan-04：total 由 len(logs)（仅当前页）改为数据库真实 count（架构 §7.3）
+    true_total = await manager.count_task_logs(task_id=task_id, level=level)
+
     return ApiResponse(
         success=True,
         data=TaskLogListResponse(
             logs=[log.to_dict() for log in logs],
-            total=len(logs),
+            total=true_total,
             page=page,
         )
     )
