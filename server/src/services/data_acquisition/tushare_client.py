@@ -2041,6 +2041,94 @@ class TushareDataSource(BaseDataSource):
         )
         return quotes
 
+    # margin 汇总接口七个数值字段（元/股原始口径；spec D1/D2：rqyl 不入库、
+    # rzrqye 仅供排查参考，本层保真透传，聚合口径在 plan-03）
+    MARGIN_DECIMAL_FIELDS = (
+        "rzye",
+        "rzmre",
+        "rzche",
+        "rqye",
+        "rqmcl",
+        "rqyl",
+        "rzrqye",
+    )
+
+    def get_margin(self, trade_date: date) -> List[dict]:
+        """获取单日融资融券交易汇总原始行（margin，spec D1，无分页）
+
+        ``pro.margin(trade_date=YYYYMMDD)``——**不传 fields**（取 Provider
+        原生 schema；16 期 suspend_d 实测教训：显式请求字段可能得到全空列）。
+        单日返回全部交易所行（实测 SSE/SZSE/BSE 三行，2026-08-14 裁定全量
+        入聚合；本层不强制行数），一次调用取全、**不做 offset/limit 分页**。
+        整个调用包在 ``_execute_with_retry``（3 次指数退避）内。
+
+        每行经 ``_build_margin_row`` 校验（exchange_id 非空、行日期一致、
+        七数值字段 Decimal 强约束且非负）。空结果（None/空 DataFrame）返回
+        空列表，由调用方（plan-03）判为当日失败。
+        """
+        pro = self._get_pro_api()
+
+        def _fetch():
+            logger.info(
+                f"[Tushare] 正在获取融资融券交易汇总 "
+                f"(margin, trade_date={trade_date})..."
+            )
+            return pro.margin(trade_date=trade_date.strftime("%Y%m%d"))
+
+        rows = self._df_to_rows(self._execute_with_retry(_fetch))
+        result = [self._build_margin_row(row, trade_date) for row in rows]
+        logger.info(
+            "[Tushare] margin %s 获取 %d 行（交易所: %s）",
+            trade_date,
+            len(result),
+            [r["exchange_id"] for r in result],
+        )
+        return result
+
+    def _build_margin_row(self, row: dict, trade_date: date) -> dict:
+        """单行 margin 原始 dict → 保真行 dict（七字段 Decimal + 非负 + 日期一致）
+
+        键名与 tushare 原生 schema 一致（蛇形）：trade_date/exchange_id/
+        rzye/rzmre/rzche/rqye/rqmcl/rqyl/rzrqye。数值范围复验（七字段均
+        ``>= 0``，余额/买入额/偿还额/卖出量/余量不可能为负）在本方法追加
+        （``_decimal_field`` 只保证可解析与有限）。rqyl/rzrqye 不做删改：
+        rqyl 不入库（spec REQ-2）、rzrqye 仅供排查参考（spec 冻结 D2：
+        服务层禁止直接 sum 每行 rzrqye），两字段在本层保真透传。
+        """
+        raw_exchange = row.get("exchange_id")
+        if raw_exchange is None or not str(raw_exchange).strip():
+            raise MarketDataIntegrityError(
+                f"margin 行缺少 exchange_id: {row!r}",
+                source=self.source_name,
+                endpoint="margin",
+            )
+        exchange_id = str(raw_exchange).strip()
+
+        row_date = self._parse_tushare_date(
+            row.get("trade_date"), ts_code=exchange_id, endpoint="margin"
+        )
+        if row_date != trade_date:
+            raise MarketDataIntegrityError(
+                f"margin 出现非目标日期行: 期望 trade_date={trade_date}, "
+                f"实际 {row_date} (exchange_id={exchange_id})",
+                source=self.source_name,
+                endpoint="margin",
+            )
+
+        built: dict = {"trade_date": row_date, "exchange_id": exchange_id}
+        for field in self.MARGIN_DECIMAL_FIELDS:
+            value = self._decimal_field(row, field, ts_code=exchange_id)
+            assert value is not None  # allow_none=False 必返回值（类型收窄）
+            if value < 0:
+                raise MarketDataIntegrityError(
+                    f"margin 行字段 {field} 非法: {field}={value} < 0 "
+                    f"(exchange_id={exchange_id}, trade_date={row_date})",
+                    source=self.source_name,
+                    endpoint="margin",
+                )
+            built[field] = value
+        return built
+
     def _suspend_row_date(self, row: dict, ts_code: str) -> date:
         """停牌行日期归一化：兼容 suspend_date（官方 schema）/ trade_date（代理实测）列名"""
         for key in ("suspend_date", "trade_date"):

@@ -32,8 +32,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# 仅本类型走 fencing 路径（与 task_manager.RESERVED_TASK_TYPES 对齐）。
-FENCED_TASK_TYPE = "sync_market_metrics"
+# 仅这些类型走 fencing 路径（与 task_manager.RESERVED_TASK_TYPES 对齐）。
+# 第 17 期 plan-04：单值扩展为集合，纳入 sync_market_margin。
+FENCED_TASK_TYPES = {"sync_market_metrics", "sync_market_margin"}
 
 
 class FenceValidationError(Exception):
@@ -141,9 +142,10 @@ class TaskFenceContext:
         task = result.scalar_one_or_none()
         if task is None:
             raise FenceValidationError(f"fence rejected: task not found (task={self.task_id})")
-        if task.task_type != FENCED_TASK_TYPE:
+        if task.task_type not in FENCED_TASK_TYPES:
             raise FenceValidationError(
-                f"fence rejected: task type {task.task_type!r} != {FENCED_TASK_TYPE!r}"
+                f"fence rejected: task type {task.task_type!r} not in "
+                f"{sorted(FENCED_TASK_TYPES)}"
             )
         if task.status != "running":
             raise FenceValidationError(

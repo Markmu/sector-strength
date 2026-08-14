@@ -5,6 +5,10 @@
 plan-04 扩展：为 ``sync_market_metrics`` 提供单 owner 任务执行的互斥创建、条件停止
 写入（首因胜出）、原子终态（行锁 + 双检 token + partial result 同事务）与 orphan
 recovery（三分支 + 双标记 critical 告警）。其他约 28 类任务保持原语义、新字段恒 NULL。
+
+第 17 期 plan-04 扩展：上述 fencing 基础设施按 task_type 参数化支持第二个任务类型
+``sync_market_margin``（专属锁 key 9001003/9001004、锁 key 映射、stale 恢复参数化
+``recover_stale_fenced_tasks``）；``sync_market_metrics`` 行为语义不变。
 """
 
 import uuid
@@ -25,7 +29,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # 保留任务类型：通用 POST /api/v1/admin/tasks 必须拒绝，专用入口（plan-05）调用
 # create_exclusive_task 创建。
-RESERVED_TASK_TYPES = {"sync_market_metrics"}
+RESERVED_TASK_TYPES = {"sync_market_metrics", "sync_market_margin"}
 
 # 同类创建互斥用 PostgreSQL advisory lock key（事务级）。
 # 设计澄清：架构 line 148 明确“事务级 lock 保证同类创建原子性，专属会话级 lock
@@ -38,8 +42,26 @@ RESERVED_TASK_TYPES = {"sync_market_metrics"}
 MARKET_METRICS_LOCK_KEY = 9001001
 MARKET_METRICS_OWNER_LOCK_KEY = 9001002
 
+# 融资融券专属锁 key（第 17 期 plan-04，沿用 16 期“创建互斥锁与 owner 锁分 key”
+# 裁定，不与 9001001/9001002 冲突）：
+#   - MARGIN_LOCK_KEY：创建互斥（事务级 xact lock）
+#   - MARGIN_OWNER_LOCK_KEY：执行器单 owner（会话级 try lock）
+MARGIN_LOCK_KEY = 9001003
+MARGIN_OWNER_LOCK_KEY = 9001004
+
 # 仅本类型走 fencing 路径。
 _MARKET_METRICS_TYPE = "sync_market_metrics"
+_MARGIN_TYPE = "sync_market_margin"
+
+# 走 fencing 路径的任务类型集合（与 task_fence.FENCED_TASK_TYPES 对齐）。
+_FENCED_TASK_TYPES = {_MARKET_METRICS_TYPE, _MARGIN_TYPE}
+
+# create_exclusive_task 的创建互斥锁 key 按 task_type 解析（缺省回落
+# MARKET_METRICS_LOCK_KEY，保持既有行为不变）。
+_EXCLUSIVE_TASK_LOCK_KEYS: Dict[str, int] = {
+    _MARKET_METRICS_TYPE: MARKET_METRICS_LOCK_KEY,
+    _MARGIN_TYPE: MARGIN_LOCK_KEY,
+}
 
 
 class TaskManager:
@@ -512,11 +534,13 @@ class TaskManager:
         created_by: Optional[str] = None,
         timeout_seconds: int = 14400,
     ) -> Optional[AsyncTask]:
-        """互斥创建 ``sync_market_metrics`` 任务（架构 §6.2.5 / §7.4）。
+        """互斥创建 ``sync_market_metrics`` / ``sync_market_margin`` 任务。
 
-        单数据库事务内先 ``pg_advisory_xact_lock(MARKET_METRICS_LOCK_KEY)`` 串行化
-        同类创建，再查同类型 ``status IN ('pending','running')``（running 含停止中/
-        待 recovery，命中则返回 ``None`` 表示互斥拒绝）；创建任务固定 ``max_retries=0``。
+        单数据库事务内先 ``pg_advisory_xact_lock(key)``（key 按 task_type 查
+        ``_EXCLUSIVE_TASK_LOCK_KEYS`` 映射，缺省回落 ``MARKET_METRICS_LOCK_KEY``
+        保持既有行为不变）串行化同类创建，再查同类型 ``status IN
+        ('pending','running')``（running 含停止中/待 recovery，命中则返回
+        ``None`` 表示互斥拒绝）；创建任务固定 ``max_retries=0``。
         锁随 commit 释放，等待者随后看到已提交任务并被拒。
 
         Returns:
@@ -527,7 +551,7 @@ class TaskManager:
         # 事务级 advisory lock 串行化同类创建（锁随本事务 commit/rollback 释放）。
         await self.db.execute(
             text("SELECT pg_advisory_xact_lock(:key)"),
-            {"key": MARKET_METRICS_LOCK_KEY},
+            {"key": self._exclusive_lock_key(task_type)},
         )
 
         # 同类互斥检查：pending 或 running（含停止中/待 recovery）任一存在即拒绝。
@@ -574,6 +598,11 @@ class TaskManager:
         )
 
         return task
+
+    @staticmethod
+    def _exclusive_lock_key(task_type: str) -> int:
+        """按 task_type 解析创建互斥锁 key（缺省回落 MARKET_METRICS_LOCK_KEY）。"""
+        return _EXCLUSIVE_TASK_LOCK_KEYS.get(task_type, MARKET_METRICS_LOCK_KEY)
 
     async def request_cancel(self, task_id: str) -> bool:
         """条件写入 ``cancel_requested_at``（首因胜出，架构 §6.2.5 / §7.4）。
@@ -696,7 +725,7 @@ class TaskManager:
         if task is None:
             await self.db.rollback()
             return False
-        if task.task_type != _MARKET_METRICS_TYPE or task.status != "running":
+        if task.task_type not in _FENCED_TASK_TYPES or task.status != "running":
             await self.db.rollback()
             return False
         if expected_token is not None and task.executor_acquisition_token != expected_token:
@@ -727,11 +756,31 @@ class TaskManager:
     ) -> Dict[str, int]:
         """回收旧 token（含 NULL）的 sync_market_metrics running（架构 §6.2.3）。
 
-        由持专属 owner lock 的当前 acquisition 调用。逐行独立事务 ``SELECT FOR UPDATE``
-        后复核类型/running/旧 token；以任务参数、本地日历与已提交 ``dateResults`` 重建
-        计数（``unprocessedDates`` = 范围交易日 − 已处理日；未处理日不计入 failedCount）；
-        按已持久化停止首因执行唯一终态（cancel/timeout/restarted 三分支；双字段同非空
-        critical 告警并按较早数据库时间选首因，同刻 cancel 优先）。
+        第 17 期 plan-04 薄包装：委托通用 :meth:`recover_stale_fenced_tasks`
+        （既有调用方/测试零改动）。
+        """
+        return await self.recover_stale_fenced_tasks(
+            _MARKET_METRICS_TYPE, current_token
+        )
+
+    async def recover_stale_fenced_tasks(
+        self,
+        task_type: str,
+        current_token: str,
+    ) -> Dict[str, int]:
+        """回收旧 token（含 NULL）的指定 fenced 类型 running（架构 §6.2.3）。
+
+        由持对应专属 owner lock 的当前 acquisition 调用。逐行独立事务
+        ``SELECT FOR UPDATE`` 后复核类型/running/旧 token；以任务参数、本地日历
+        与已提交 ``dateResults`` 重建计数（``unprocessedDates`` = 范围交易日 −
+        已处理日；未处理日不计入 failedCount）；按已持久化停止首因执行唯一终态
+        （cancel/timeout/restarted 三分支；双字段同非空 critical 告警并按较早
+        数据库时间选首因，同刻 cancel 优先）。
+
+        Args:
+            task_type: fenced 任务类型（``sync_market_metrics`` /
+                ``sync_market_margin``）。
+            current_token: 当前 owner 的 acquisition token。
 
         Returns:
             回收统计 ``{recovered, cancel, timeout, restarted, double_mark, skipped}``。
@@ -748,7 +797,7 @@ class TaskManager:
         # 候选：本类型 running 且 token IS DISTINCT FROM current_token（含 NULL）。
         candidate_rows = await self.db.execute(
             select(AsyncTask.task_id).where(
-                AsyncTask.task_type == _MARKET_METRICS_TYPE,
+                AsyncTask.task_type == task_type,
                 AsyncTask.status == "running",
                 AsyncTask.executor_acquisition_token.is_distinct_from(current_token),
             )
@@ -758,20 +807,21 @@ class TaskManager:
         await self.db.commit()
 
         for tid in candidate_ids:
-            branch = await self._recover_one_stale(tid, current_token)
+            branch = await self._recover_one_stale(tid, current_token, task_type)
             if branch in ("cancel", "timeout", "restarted"):
                 stats["recovered"] += 1
                 stats[branch] += 1
             else:
                 stats[branch] += 1  # "skipped" 或 "double_mark"
         if stats["recovered"]:
-            logger.info("market_metrics recovery summary: %s", stats)
+            logger.info("%s recovery summary: %s", task_type, stats)
         return stats
 
     async def _recover_one_stale(
         self,
         task_id: str,
         current_token: str,
+        task_type: str,
     ) -> str:
         """回收单条 stale running 任务，返回分支名。
 
@@ -785,7 +835,7 @@ class TaskManager:
         # 复核：类型/running/旧 token；不再 stale 则跳过。
         if (
             task is None
-            or task.task_type != _MARKET_METRICS_TYPE
+            or task.task_type != task_type
             or task.status != "running"
             or task.executor_acquisition_token == current_token
         ):
@@ -793,7 +843,7 @@ class TaskManager:
             return "skipped"
 
         # 重建 partial result（任务参数 + 本地日历 + 已提交 dateResults）。
-        result = await self._rebuild_recovery_result(task)
+        result = await self._rebuild_recovery_result(task, task_type)
 
         cancel_at = task.cancel_requested_at
         timeout_at = task.timeout_requested_at
@@ -846,9 +896,12 @@ class TaskManager:
     async def _rebuild_recovery_result(
         self,
         task: AsyncTask,
+        task_type: str,
     ) -> Dict[str, Any]:
-        """以任务参数、本地日历与已提交 ``dateResults`` 重建计数。
+        """以任务参数、本地日历与已提交 ``dateResults`` 重建计数（按 task_type 参数化）。
 
+        margin 与 market_metrics 的 dateResults 共用 ``tradeDate/status`` 口径
+        （margin 无四类计数），计数重建逻辑一致：
         - range trading days = 本地日历 [start_date, end_date] 闭区间开市日
         - processed days = 已提交 result.dateResults 的 tradeDate 集合
         - unprocessedDates = range trading days − processed days
@@ -887,8 +940,9 @@ class TaskManager:
         except Exception:
             # 日历/参数不可用时不阻塞 recovery；unprocessed 退化为空。
             logger.warning(
-                "recovery rebuild: unable to compute unprocessedDates for task %s; "
+                "%s recovery rebuild: unable to compute unprocessedDates for task %s; "
                 "falling back to committed dateResults only",
+                task_type,
                 task.task_id,
                 exc_info=True,
             )

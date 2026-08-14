@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["Admin - Tasks"])
 
+# 保留任务类型 → 专用触发端点提示（通用入口封堵消息按类型提示，架构 §7.3；
+# 第 17 期 plan-04 纳入 sync_market_margin）。
+_RESERVED_ENDPOINT_HINTS = {
+    "sync_market_metrics": "POST /api/v1/admin/init/market-metrics",
+    "sync_market_margin": "POST /api/v1/admin/init/margin",
+}
+
 
 # ============== 请求/响应模型 ==============
 
@@ -51,8 +58,9 @@ class TaskResponse(BaseModel):
     startedAt: Optional[str] = Field(None, description="开始时间")
     completedAt: Optional[str] = Field(None, description="完成时间")
     cancelledAt: Optional[str] = Field(None, description="取消时间")
-    # plan-04：nullable result 原样透传（仅 sync_market_metrics 非 None）
-    result: Optional[dict] = Field(None, description="结构化结果（仅 sync_market_metrics）")
+    # plan-04：nullable result 原样透传（仅 fenced 类型 sync_market_metrics /
+    # sync_market_margin 非 None；第 17 期 plan-04 扩展）
+    result: Optional[dict] = Field(None, description="结构化结果（仅保留任务类型）")
 
 
 class TaskDetailResponse(TaskResponse):
@@ -134,14 +142,16 @@ async def create_task(
     Returns:
         创建的任务信息
     """
-    # plan-04：保留任务类型封堵——通用入口拒绝 sync_market_metrics，
-    # 必须使用专用端点 POST /api/v1/admin/init/market-metrics（架构 §7.3）。
-    # 置于注册校验之前，确保 handler 是否已注册（plan-05）都返回专用提示。
+    # plan-04：保留任务类型封堵——通用入口拒绝 sync_market_metrics /
+    # sync_market_margin（第 17 期 plan-04），必须使用各自专用端点
+    # （POST /api/v1/admin/init/market-metrics、POST /api/v1/admin/init/margin）
+    # （架构 §7.3）。置于注册校验之前，确保 handler 是否已注册都返回专用提示。
     if request.task_type in RESERVED_TASK_TYPES:
+        hint = _RESERVED_ENDPOINT_HINTS.get(request.task_type, "专用端点")
         return ApiResponse(
             success=False,
             data=None,
-            message="sync_market_metrics 为保留任务类型，请使用 POST /api/v1/admin/init/market-metrics",
+            message=f"{request.task_type} 为保留任务类型，请使用 {hint}",
         )
 
     # 验证任务类型是否已注册

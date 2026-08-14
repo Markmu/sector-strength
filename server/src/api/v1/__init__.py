@@ -25,6 +25,7 @@ from .etf_monitor import router as etf_monitor_router  # ETF 监控查询 API（
 from .index_monitor import router as index_monitor_router  # 指数监控查询 API（第 15 期 plan-03）
 from .limit import router as limit_router  # 涨停专题查询 API（连板天梯）
 from .market_metrics import router as market_metrics_router  # 市场量价查询 API（第 16 期 plan-06）
+from .margin import router as margin_router  # 融资融券查询 API（第 17 期 plan-06）
 from .admin import router as admin_legacy_router  # legacy /v1/admin/data/*
 
 # 创建 v1 主路由
@@ -47,6 +48,7 @@ router.include_router(etf_monitor_router)    # /api/v1/etf-monitor/*（第 14 �
 router.include_router(index_monitor_router)  # /api/v1/index-monitor/*（第 15 期 plan-03）
 router.include_router(limit_router)  # /api/v1/limit/*（连板天梯）
 router.include_router(market_metrics_router)  # /api/v1/market-metrics/*（第 16 期 plan-06）
+router.include_router(margin_router)  # /api/v1/margin/*（第 17 期 plan-06）
 router.include_router(admin_legacy_router)   # /api/v1/admin/data/* (legacy)
 
 __all__ = ["router"]

@@ -16,13 +16,16 @@ import uuid
 from datetime import date, datetime, timezone, timedelta
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
-
 from src.models.async_task import AsyncTask, AsyncTaskParam
 from src.models.trading_calendar_day import TradingCalendarDay
-from src.services.task_manager import TaskManager, MARKET_METRICS_OWNER_LOCK_KEY
+from src.services.task_manager import (
+    TaskManager,
+    MARGIN_OWNER_LOCK_KEY,
+    MARKET_METRICS_OWNER_LOCK_KEY,
+)
 from src.services.task_executor import TaskExecutor
 from src.services.task_fence import (
     OwnerGenerationGuard,
@@ -100,11 +103,12 @@ def _new_executor(session: AsyncSession) -> TaskExecutor:
 
 @pytest.fixture(autouse=True)
 async def _release_owner_advisory_lock(db_session):
-    """安全网：每个测试后释放可能泄漏的 owner session advisory lock（9001002）。
+    """安全网：每个测试后释放可能泄漏的 owner session advisory lock。
 
     专属 owner lock 用会话级 pg_try_advisory_lock 绑定长连接；若断言失败前未显式
     _lose，连接被 GC 时可能滞后释放，污染后续测试。此处按 objid 终止残留持有者，
-    保证测试隔离（仅测试用，不影响生产代码）。
+    保证测试隔离（仅测试用，不影响生产代码）。第 17 期 plan-04 增量：同时清理
+    margin owner lock key（9001004）。
     """
     yield
     try:
@@ -112,9 +116,9 @@ async def _release_owner_advisory_lock(db_session):
             await c.execute(
                 text(
                     "SELECT pg_terminate_backend(pid) FROM pg_locks "
-                    "WHERE locktype='advisory' AND objid = :k"
-                ),
-                {"k": MARKET_METRICS_OWNER_LOCK_KEY},
+                    "WHERE locktype='advisory' AND objid IN :keys"
+                ).bindparams(bindparam("keys", expanding=True)),
+                {"keys": [MARKET_METRICS_OWNER_LOCK_KEY, MARGIN_OWNER_LOCK_KEY]},
             )
             await c.commit()
     except Exception:
@@ -480,3 +484,270 @@ async def test_fence_registry_clear_after_task():
     TaskFenceRegistry.pop("tid")
     assert TaskFenceRegistry.get("tid") is None
     TaskFenceRegistry.clear()
+
+
+# ===========================================================================
+# 第 17 期 plan-04 增量：sync_market_margin owner lock / 派发 / 停止 / 超时
+# ===========================================================================
+
+MARGIN = "sync_market_margin"
+
+
+async def _make_margin_task(
+    session: AsyncSession,
+    *,
+    status: str = "running",
+    token: str | None = "stale-margin-aaa",
+    cancel_at: datetime | None = None,
+    timeout_at: datetime | None = None,
+    result: dict | None = None,
+    started: datetime | None = None,
+    task_id: str | None = None,
+) -> AsyncTask:
+    task = AsyncTask(
+        task_id=task_id or f"task_{uuid.uuid4().hex[:12]}",
+        task_type=MARGIN,
+        status=status,
+        max_retries=0,
+        timeout_seconds=14400,
+        executor_acquisition_token=token,
+        cancel_requested_at=cancel_at,
+        timeout_requested_at=timeout_at,
+        result=result,
+        started_at=started or datetime.now(timezone.utc),
+    )
+    session.add(task)
+    await session.commit()
+    return task
+
+
+@pytest.mark.asyncio
+async def test_margin_acquisition_generates_new_token_each_time(db_session):
+    """margin：同一 TaskExecutor 两次 acquisition 生成不同 token（断线重连换 token）。"""
+    await _seed_calendar(db_session)
+    exec_ = _new_executor(db_session)
+
+    await exec_._on_margin_owner_acquired()
+    token1 = exec_._margin_owner_token
+    guard1 = exec_._margin_guard
+    assert token1 is not None
+    assert guard1.active is True
+    assert exec_._margin_lock_held is True
+
+    await exec_._lose_margin_owner_lock()
+    assert exec_._margin_lock_held is False
+    assert exec_._margin_owner_token is None
+    assert guard1.active is False
+
+    await exec_._on_margin_owner_acquired()
+    token2 = exec_._margin_owner_token
+    assert token2 is not None
+    assert token2 != token1
+
+
+@pytest.mark.asyncio
+async def test_margin_acquisition_recovers_stale_running(db_session):
+    """margin：acquisition 后 recovery 回收旧/NULL token 的本类型 running。"""
+    await _seed_calendar(db_session)
+    await _make_margin_task(db_session, status="running", token="ancient-margin-token")
+    exec_ = _new_executor(db_session)
+
+    await exec_._on_margin_owner_acquired()
+
+    rows = await db_session.execute(select(AsyncTask).where(AsyncTask.task_type == MARGIN))
+    t = rows.scalars().one()
+    assert t.status == "failed"
+    assert t.error_message == "executor_restarted"
+    assert exec_._margin_guard.active is True
+
+
+@pytest.mark.asyncio
+async def test_margin_owner_lock_single_owner_and_standby(db_session):
+    """真 PG：margin owner lock（9001004）两连接竞争仅一个 owner，另一个 standby。"""
+    eng1 = await _make_dedicated_engine(db_session)
+    eng2 = await _make_dedicated_engine(db_session)
+    exec1 = TaskExecutor()
+    exec1._session_factory = _factory_for(db_session)
+    exec1._margin_lock_engine = eng1
+    exec2 = TaskExecutor()
+    exec2._session_factory = _factory_for(db_session)
+    exec2._margin_lock_engine = eng2
+    try:
+        await exec1._maintain_margin_owner_lock()
+        assert exec1._margin_lock_held is True
+        assert exec1._margin_owner_token is not None
+
+        await exec2._maintain_margin_owner_lock()
+        assert exec2._margin_lock_held is False
+        assert exec2._margin_owner_token is None
+
+        await exec1._lose_margin_owner_lock()
+        await exec2._maintain_margin_owner_lock()
+        assert exec2._margin_lock_held is True
+    finally:
+        await exec1._lose_margin_owner_lock()
+        await exec2._lose_margin_owner_lock()
+        await eng1.dispose()
+        await eng2.dispose()
+
+
+@pytest.mark.asyncio
+async def test_margin_and_mm_owner_locks_independent(db_session):
+    """边界场景：两把 owner lock 独立 key，同一实例可同时持有（互不阻塞）。"""
+    eng = await _make_dedicated_engine(db_session)
+    exec_ = TaskExecutor()
+    exec_._session_factory = _factory_for(db_session)
+    exec_._mm_lock_engine = eng
+    exec_._margin_lock_engine = eng
+    try:
+        await exec_._maintain_mm_owner_lock()
+        assert exec_._mm_lock_held is True
+        # mm 已持 9001002 不影响 margin 获取 9001004
+        await exec_._maintain_margin_owner_lock()
+        assert exec_._margin_lock_held is True
+        assert exec_._mm_owner_token != exec_._margin_owner_token
+    finally:
+        await exec_._lose_mm_owner_lock()
+        await exec_._lose_margin_owner_lock()
+        await eng.dispose()
+
+
+@pytest.mark.asyncio
+async def test_margin_consume_stop_cancels_coroutine(db_session):
+    """margin：cancel 标记胜出 → cancel 对应协程。"""
+    now = datetime.now(timezone.utc)
+    task = await _make_margin_task(db_session, status="running", token="margin-owner", cancel_at=now)
+    exec_ = _new_executor(db_session)
+    exec_._margin_lock_held = True
+    exec_._margin_owner_token = "margin-owner"
+
+    cancelled = asyncio.Event()
+
+    async def handler_sim():
+        try:
+            await asyncio.sleep(100)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    coro_task = asyncio.create_task(handler_sim())
+    exec_._margin_task_coroutines[task.task_id] = coro_task
+
+    manager = TaskManager(db_session)
+    await exec_._consume_margin_stop_requests(manager)
+
+    with pytest.raises(asyncio.CancelledError):
+        await coro_task
+    assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_margin_pending_skipped_without_owner_lock(db_session):
+    """未持 margin owner lock 的实例不拉取 sync_market_margin pending。"""
+    await _make_margin_task(db_session, status="pending", token=None)
+    exec_ = _new_executor(db_session)  # 未持任何 owner lock
+    manager = TaskManager(db_session)
+    tasks = await exec_._get_executable_tasks(manager, limit=10)
+    assert all(t.task_type != MARGIN for t in tasks)
+
+    # 持有 margin owner lock 后可拉取
+    exec_._margin_lock_held = True
+    exec_._margin_owner_token = "margin-owner"
+    tasks = await exec_._get_executable_tasks(manager, limit=10)
+    assert [t.task_type for t in tasks] == [MARGIN]
+
+
+@pytest.mark.asyncio
+async def test_executor_dispatch_writes_margin_token_and_fence_ctx(db_session):
+    """持有 margin owner lock 后派发：start_task 写 _margin_owner_token 为
+    acquisition_token，并注入对应 guard 的 TaskFenceContext。"""
+    manager = TaskManager(db_session)
+    task = await manager.create_task(task_type=MARGIN, params={})
+    exec_ = _new_executor(db_session)
+    exec_._margin_lock_held = True
+    exec_._margin_owner_token = "margin-owner-token"
+    exec_._margin_guard = OwnerGenerationGuard("margin-owner-token")
+    exec_._margin_guard.activate()
+
+    seen = {}
+
+    async def fake_handler(task_id, params, mgr):
+        t = await mgr.get_task(task_id)
+        seen["token"] = t.executor_acquisition_token
+        seen["fence"] = TaskFenceRegistry.get(task_id)
+
+    from unittest.mock import patch as _patch
+    with _patch(
+        "src.services.task_executor.TaskRegistry.get_handler", return_value=fake_handler
+    ):
+        await exec_._execute_task(task.task_id)
+
+    assert seen["token"] == "margin-owner-token"
+    assert seen["fence"] is not None
+    assert seen["fence"].acquisition_token == "margin-owner-token"
+    assert seen["fence"].guard is exec_._margin_guard
+    # 任务完成（fake handler 正常返回）。populate_existing 绕过 db_session
+    # 身份映射中 create_task 留下的未过期对象，读到执行器会话写入的终态。
+    rows = await db_session.execute(
+        select(AsyncTask)
+        .where(AsyncTask.task_id == task.task_id)
+        .execution_options(populate_existing=True)
+    )
+    fresh = rows.scalars().one()
+    assert fresh.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_margin_timeout_uses_request_timeout(db_session):
+    """margin 超时同样走 request_timeout 条件更新（不直接置 failed）。"""
+    old = datetime.now(timezone.utc) - timedelta(seconds=10000)
+    task = await _make_margin_task(db_session, status="running", token="margin-owner", started=old)
+    rows = await db_session.execute(select(AsyncTask).where(AsyncTask.task_id == task.task_id))
+    t = rows.scalars().one()
+    t.timeout_seconds = 1
+    await db_session.commit()
+
+    exec_ = _new_executor(db_session)
+    exec_._margin_lock_held = True
+    exec_._margin_owner_token = "margin-owner"
+    manager = TaskManager(db_session)
+    await exec_._get_executable_tasks(manager, limit=10)
+    fresh = await manager.get_task(task.task_id)
+    assert fresh.timeout_requested_at is not None
+    assert fresh.status == "running"  # 仍 running，未直接 failed
+
+
+@pytest.mark.asyncio
+async def test_margin_handler_failure_lands_failed_without_retry(db_session):
+    """margin handler 抛失败摘要 → 执行器直接落 failed（max_retries=0 不自动重试）。"""
+    from src.services.margin_service import MarginSyncError
+
+    manager = TaskManager(db_session)
+    task = await manager.create_task(task_type=MARGIN, params={}, max_retries=0)
+    exec_ = _new_executor(db_session)
+    exec_._margin_lock_held = True
+    exec_._margin_owner_token = "margin-owner"
+    exec_._margin_guard = OwnerGenerationGuard("margin-owner")
+    exec_._margin_guard.activate()
+
+    async def failing_handler(task_id, params, mgr):
+        raise MarginSyncError(
+            "sync_market_margin 范围同步存在失败日: success=1 failed=1"
+        )
+
+    from unittest.mock import patch as _patch
+    with _patch(
+        "src.services.task_executor.TaskRegistry.get_handler",
+        return_value=failing_handler,
+    ):
+        await exec_._execute_task(task.task_id)
+
+    rows = await db_session.execute(
+        select(AsyncTask)
+        .where(AsyncTask.task_id == task.task_id)
+        .execution_options(populate_existing=True)
+    )
+    fresh = rows.scalars().one()
+    assert fresh.status == "failed"
+    assert "失败日" in (fresh.error_message or "")
+    assert fresh.retry_count == 0  # fenced 类型失败不自动重试

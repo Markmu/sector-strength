@@ -723,3 +723,259 @@ async def test_admin_logs_total_uses_true_count(db_session):
     # 1 条创建 + 5 条追加 = 6
     assert response.data.total == 6
     assert len(response.data.logs) == 6
+
+
+# ===========================================================================
+# 第 17 期 plan-04 增量：sync_market_margin 互斥 / finalize / recovery / 封堵
+# ===========================================================================
+
+from src.services.task_manager import (  # noqa: E402
+    MARGIN_LOCK_KEY,
+    MARGIN_OWNER_LOCK_KEY,
+    MARKET_METRICS_OWNER_LOCK_KEY,
+)
+
+MARGIN = "sync_market_margin"
+
+
+async def _make_margin_task(
+    session: AsyncSession,
+    *,
+    status: str = "running",
+    token: str | None = "old-token-bbbb",
+    cancel_at: datetime | None = None,
+    timeout_at: datetime | None = None,
+    result: dict | None = None,
+    started: datetime | None = None,
+    start_date: str = "2026-08-11",
+    end_date: str = "2026-08-13",
+    task_id: str | None = None,
+) -> AsyncTask:
+    """直接插入一条指定状态的 sync_market_margin 任务（含 start/end 参数）。"""
+    task = AsyncTask(
+        task_id=task_id or f"task_{uuid.uuid4().hex[:12]}",
+        task_type=MARGIN,
+        status=status,
+        max_retries=0,
+        timeout_seconds=14400,
+        executor_acquisition_token=token,
+        cancel_requested_at=cancel_at,
+        timeout_requested_at=timeout_at,
+        result=result,
+        started_at=started or datetime.now(timezone.utc),
+    )
+    session.add(task)
+    await session.flush()
+    session.add(AsyncTaskParam(task_id=task.task_id, key="start_date", value=json.dumps(start_date)))
+    session.add(AsyncTaskParam(task_id=task.task_id, key="end_date", value=json.dumps(end_date)))
+    await session.commit()
+    return task
+
+
+async def _seed_margin_calendar(db_session):
+    """seed 2026-08-10(一)~08-14(五)：08-10~08-13 开市、08-14(五) 开市、08-15/16 周末休市。"""
+    days = [
+        date(2026, 8, 10), date(2026, 8, 11), date(2026, 8, 12),
+        date(2026, 8, 13), date(2026, 8, 14), date(2026, 8, 15), date(2026, 8, 16),
+    ]
+    open_days = {date(2026, 8, 10), date(2026, 8, 11), date(2026, 8, 12), date(2026, 8, 13)}
+    await _seed_calendar(db_session, days, open_days)
+
+
+def test_margin_lock_keys_do_not_collide_with_market_metrics():
+    """margin 锁 key 与 16 期 9001001/9001002 不冲突（plan §3 暂停条件防线）。"""
+    assert MARGIN_LOCK_KEY == 9001003
+    assert MARGIN_OWNER_LOCK_KEY == 9001004
+    assert MARGIN_LOCK_KEY not in (MARKET_METRICS_LOCK_KEY, MARKET_METRICS_OWNER_LOCK_KEY)
+    assert MARGIN_OWNER_LOCK_KEY not in (MARKET_METRICS_LOCK_KEY, MARKET_METRICS_OWNER_LOCK_KEY)
+
+
+@pytest.mark.asyncio
+async def test_margin_create_exclusive_task_basic_max_retries_zero(db_session):
+    """margin 互斥创建：固定 max_retries=0，fencing 字段初始 NULL。"""
+    manager = TaskManager(db_session)
+    task = await manager.create_exclusive_task(
+        MARGIN, {"start_date": "2026-08-11", "end_date": "2026-08-13"}
+    )
+    assert task is not None
+    assert task.task_type == MARGIN
+    assert task.max_retries == 0
+    assert task.status == "pending"
+    assert task.executor_acquisition_token is None
+    assert task.result is None
+
+
+@pytest.mark.asyncio
+async def test_margin_create_exclusive_task_rejects_when_running(db_session):
+    """同类型 margin running 存在 → 返回 None（AC-3）。"""
+    await _make_margin_task(db_session, status="running", token="owner-1")
+    manager = TaskManager(db_session)
+    assert await manager.create_exclusive_task(
+        MARGIN, {"start_date": "2026-08-11", "end_date": "2026-08-13"}
+    ) is None
+
+
+@pytest.mark.asyncio
+async def test_margin_create_exclusive_task_rejects_when_pending(db_session):
+    """同类型 margin pending 存在 → 返回 None（AC-3）。"""
+    await _make_margin_task(db_session, status="pending", token=None)
+    manager = TaskManager(db_session)
+    assert await manager.create_exclusive_task(
+        MARGIN, {"start_date": "2026-08-11", "end_date": "2026-08-13"}
+    ) is None
+
+
+@pytest.mark.asyncio
+async def test_margin_mutex_independent_of_market_metrics(db_session):
+    """mm running 不阻塞 margin 创建（创建互斥按类型分 key；AC-3/边界场景）。"""
+    await _make_mm_task(db_session, status="running", token="mm-owner")
+    manager = TaskManager(db_session)
+    task = await manager.create_exclusive_task(
+        MARGIN, {"start_date": "2026-08-11", "end_date": "2026-08-13"}
+    )
+    assert task is not None
+    assert task.task_type == MARGIN
+
+
+@pytest.mark.asyncio
+async def test_margin_create_exclusive_task_concurrent_only_one_succeeds(db_session):
+    """AC-3：并发两次 margin create_exclusive_task 仅一个成功（真 PG advisory lock）。"""
+    factory = _second_factory(db_session)
+
+    async def try_create():
+        async with factory() as s:
+            m = TaskManager(s)
+            return await m.create_exclusive_task(
+                MARGIN, {"start_date": "2026-08-11", "end_date": "2026-08-13"}
+            )
+
+    t1, t2 = await asyncio.gather(try_create(), try_create())
+    results = [r for r in (t1, t2) if r is not None]
+    assert len(results) == 1, "margin 并发创建应只有一个成功"
+    rows = await db_session.execute(
+        select(AsyncTask).where(
+            AsyncTask.task_type == MARGIN,
+            AsyncTask.status.in_(["pending", "running"]),
+        )
+    )
+    assert len(rows.scalars().all()) == 1
+
+
+@pytest.mark.asyncio
+async def test_margin_finalize_cancel_with_result(db_session):
+    """margin 停止分支：finalize_cancel_with_result 对 sync_market_margin 落 cancelled。"""
+    task = await _make_margin_task(db_session, status="running", token="margin-owner")
+    manager = TaskManager(db_session)
+    ok = await manager.finalize_cancel_with_result(
+        task.task_id, "margin-owner", {"successCount": 1, "failedCount": 0}
+    )
+    assert ok is True
+    fresh = await manager.get_task(task.task_id)
+    assert fresh.status == "cancelled"
+    assert fresh.result == {"successCount": 1, "failedCount": 0}
+
+
+@pytest.mark.asyncio
+async def test_margin_finalize_fencing_rejects_old_token(db_session):
+    """旧 token 的 margin finalize 被拒绝（fencing），任务保持 running 留给 recovery。"""
+    task = await _make_margin_task(db_session, status="running", token="current-owner")
+    task_id = task.task_id
+    manager = TaskManager(db_session)
+    ok = await manager.finalize_cancel_with_result(task_id, "stale-old-token", {})
+    assert ok is False
+    fresh = await manager.get_task(task_id)
+    assert fresh.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_margin_recover_cancel_branch(db_session):
+    """margin recovery：cancel 分支 → cancelled + partial result，unprocessedDates 重建。"""
+    await _seed_margin_calendar(db_session)
+    now = datetime.now(timezone.utc)
+    await _make_margin_task(
+        db_session, status="running", token="stale-margin",
+        cancel_at=now,
+        result={"dateResults": [{"tradeDate": "2026-08-11", "status": "success"}]},
+    )
+    manager = TaskManager(db_session)
+    stats = await manager.recover_stale_fenced_tasks(MARGIN, "new-margin-owner")
+    assert stats["recovered"] == 1
+    assert stats["cancel"] == 1
+    rows = await db_session.execute(select(AsyncTask).where(AsyncTask.task_type == MARGIN))
+    t = rows.scalars().one()
+    assert t.status == "cancelled"
+    assert t.result["successCount"] == 1
+    # 范围 [08-11, 08-13] 三个交易日，08-11 已处理 → 未处理 08-12/08-13
+    assert set(t.result["unprocessedDates"]) == {"2026-08-12", "2026-08-13"}
+    assert t.result["failedCount"] == 0  # 未处理日不计入 failedCount
+
+
+@pytest.mark.asyncio
+async def test_margin_recover_restarted_branch_includes_null_token(db_session):
+    """margin recovery：无停止字段（含 NULL token）→ failed(executor_restarted)。"""
+    await _seed_margin_calendar(db_session)
+    await _make_margin_task(db_session, status="running", token=None)
+    manager = TaskManager(db_session)
+    stats = await manager.recover_stale_fenced_tasks(MARGIN, "new-margin-owner")
+    assert stats["recovered"] == 1
+    assert stats["restarted"] == 1
+    rows = await db_session.execute(select(AsyncTask).where(AsyncTask.task_type == MARGIN))
+    t = rows.scalars().one()
+    assert t.status == "failed"
+    assert t.error_message == "executor_restarted"
+
+
+@pytest.mark.asyncio
+async def test_margin_recovery_parameterized_does_not_touch_market_metrics(db_session):
+    """recover_stale_fenced_tasks 按 task_type 参数化：回收 margin 不碰 mm stale。"""
+    await _seed_margin_calendar(db_session)
+    await _make_mm_task(db_session, status="running", token="mm-stale", task_id="t_mm_stale")
+    await _make_margin_task(db_session, status="running", token="margin-stale", task_id="t_margin_stale")
+    manager = TaskManager(db_session)
+    stats = await manager.recover_stale_fenced_tasks(MARGIN, "new-margin-owner")
+    assert stats["recovered"] == 1
+    # mm stale 不被 margin recovery 触碰
+    mm_fresh = await manager.get_task("t_mm_stale")
+    assert mm_fresh.status == "running"
+    margin_fresh = await manager.get_task("t_margin_stale")
+    assert margin_fresh.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_margin_recovery_releases_mutex_allowing_new_task(db_session):
+    """margin 三分支终态后释放互斥——可创建新任务。"""
+    await _seed_margin_calendar(db_session)
+    await _make_margin_task(db_session, status="running", token="stale-margin")
+    manager = TaskManager(db_session)
+    await manager.recover_stale_fenced_tasks(MARGIN, "new-margin-owner")
+    new_task = await manager.create_exclusive_task(
+        MARGIN, {"start_date": "2026-08-11", "end_date": "2026-08-13"}
+    )
+    assert new_task is not None
+
+
+@pytest.mark.asyncio
+async def test_reserved_task_types_contains_margin():
+    assert "sync_market_margin" in RESERVED_TASK_TYPES
+    assert "sync_market_metrics" in RESERVED_TASK_TYPES
+
+
+@pytest.mark.asyncio
+async def test_admin_create_rejects_margin_reserved_task_type():
+    """AC-8：通用 POST 创建 sync_market_margin 被拒并提示专用端点。"""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from src.api.admin.tasks import CreateTaskRequest, create_task
+
+    request = CreateTaskRequest(
+        task_type="sync_market_margin",
+        params={"start_date": "2026-08-11", "end_date": "2026-08-13"},
+    )
+    response = await create_task(
+        request=request,
+        session=AsyncMock(),
+        _admin=SimpleNamespace(id="admin-1"),
+    )
+    assert response.success is False
+    assert "保留任务类型" in response.message
+    assert "POST /api/v1/admin/init/margin" in response.message
