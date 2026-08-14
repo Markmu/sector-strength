@@ -302,3 +302,80 @@ class TestJobManager:
         # Clean up
         if test_manager.scheduler.running:
             test_manager.shutdown()
+
+
+class TestMarginDailySyncJob:
+    """融资融券早间增量 job（第 17 期后续运维增强）注册与回调测试"""
+
+    def test_disabled_by_default(self, job_manager):
+        """ENABLE_MARGIN_DAILY_JOB 默认 false 时 margin_daily_sync 不注册"""
+        from src.core.settings import settings
+        assert settings.enable_margin_daily_job is False
+
+        job_manager._register_jobs()
+
+        assert job_manager.scheduler.get_job('margin_daily_sync') is None
+
+    def test_registered_when_enabled(self, job_manager, monkeypatch):
+        """ENABLE_MARGIN_DAILY_JOB=True 时按 09:30 Asia/Shanghai 注册"""
+        from src.core.settings import settings
+        monkeypatch.setattr(settings, 'enable_margin_daily_job', True)
+
+        job_manager._register_jobs()
+
+        job = job_manager.scheduler.get_job('margin_daily_sync')
+        assert job is not None
+        assert isinstance(job.trigger, CronTrigger)
+        field_map = {f.name: str(f) for f in job.trigger.fields}
+        assert field_map['hour'] == '9'
+        assert field_map['minute'] == '30'
+        # 不使用 day_of_week 工作日表达式（守卫由回调内本地日历完成）
+        assert field_map['day_of_week'] == '*'
+        assert str(job.trigger.timezone) == 'Asia/Shanghai'
+        assert job.max_instances == 1
+
+    @pytest.mark.asyncio
+    async def test_callback_delegates_to_margin_daily_sync(self):
+        """回调获取会话并委托 run_margin_daily_sync"""
+        manager = JobManager.__new__(JobManager)
+        fake_session = MagicMock()
+
+        class _SessionCtx:
+            async def __aenter__(self):
+                return fake_session
+
+            async def __aexit__(self, *exc):
+                return False
+
+        with patch(
+            'src.db.database.AsyncSessionLocal', return_value=_SessionCtx()
+        ), patch(
+            'src.services.margin_daily_sync.run_margin_daily_sync',
+            new_callable=AsyncMock,
+            return_value={'status': 'noop'},
+        ) as mock_run:
+            await manager._margin_daily_sync()
+
+        mock_run.assert_awaited_once_with(fake_session)
+
+    @pytest.mark.asyncio
+    async def test_callback_swallows_errors(self):
+        """回调内异常只记日志不抛出（不影响下一次调度）"""
+        manager = JobManager.__new__(JobManager)
+
+        class _SessionCtx:
+            async def __aenter__(self):
+                return MagicMock()
+
+            async def __aexit__(self, *exc):
+                return False
+
+        with patch(
+            'src.db.database.AsyncSessionLocal', return_value=_SessionCtx()
+        ), patch(
+            'src.services.margin_daily_sync.run_margin_daily_sync',
+            new_callable=AsyncMock,
+            side_effect=ValueError('日历响应不完整'),
+        ):
+            # 不应抛出
+            await manager._margin_daily_sync()

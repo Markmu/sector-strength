@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # 开发期默认停用，避免后台任务自动执行；生产环境置 true 即注册每日 18:00 Asia/Shanghai 的 job。
     enable_daily_update_job: bool = False  # env: ENABLE_DAILY_UPDATE_JOB
 
+    # 融资融券早间增量 job（Tushare margin 为 T+1：次一交易日早晨 ~9:05 发布
+    # 上一交易日数据，2026-08-15 官网核实+镜像实测）。开发期默认停用；生产置
+    # true 即注册每日 09:30 Asia/Shanghai 的 job（回调内按本地日历守卫交易日）。
+    enable_margin_daily_job: bool = False  # env: ENABLE_MARGIN_DAILY_JOB
+
     # 邮件服务配置
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

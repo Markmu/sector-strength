@@ -37,6 +37,8 @@ class JobManager:
         # 后台任务自动执行。各 job 的启用方式见下方注释：
         #   - daily_data_update：由 settings.enable_daily_update_job
         #     （env: ENABLE_DAILY_UPDATE_JOB）控制，生产置 true。
+        #   - margin_daily_sync：由 settings.enable_margin_daily_job
+        #     （env: ENABLE_MARGIN_DAILY_JOB）控制，生产置 true。
         #   - data_quality_check / cache_cleanup / etf / index：仍按惯例
         #     注释停用，需要时取消注释即可。
         # ============================================================
@@ -59,6 +61,26 @@ class JobManager:
                 max_instances=1,  # 防止并发执行，避免风控
             )
         # else: 开关关闭时不注册 daily_data_update（开发期默认）
+
+        # 融资融券早间增量同步：Tushare margin 为 T+1 接口——次一交易日早晨
+        # 8:30 左右发布上一交易日数据、接口最晚 9:05 更新完（官方 doc_id=58；
+        # 2026-08-15 周六实测镜像确认非交易日不发布，周五数据周一早晨补）。
+        # 09:30 触发留 25 分钟缓冲；休市守卫在回调内用本地日历完成
+        # （margin_daily_sync），近 14 自然日缺口自愈，更早走管理面板手动同步。
+        if settings.enable_margin_daily_job:
+            self.scheduler.add_job(
+                self._margin_daily_sync,
+                trigger=CronTrigger(
+                    hour=9,
+                    minute=30,
+                    timezone='Asia/Shanghai',
+                ),
+                id='margin_daily_sync',
+                name='融资融券早间增量同步（每日 09:30，休市自动跳过）',
+                replace_existing=True,
+                max_instances=1,  # 防止并发执行，避免风控
+            )
+        # else: 开关关闭时不注册 margin_daily_sync（开发期默认）
 
         # # 每小时检查数据质量（仍按惯例注释停用，需要时取消注释）
         # self.scheduler.add_job(
@@ -154,6 +176,28 @@ class JobManager:
         except Exception as e:
             logger.error(f"[定时任务] 数据更新失败: {e}")
             raise
+
+    async def _margin_daily_sync(self):
+        """融资融券早间增量同步任务
+
+        每日 09:30 Asia/Shanghai 触发。margin 为 T+1 接口（次一交易日早晨
+        ~9:05 发布上一交易日数据），与 18:00 盘后 job 分离、单独早间执行。
+        交易日守卫、近 14 自然日缺口计算与互斥建任务见
+        ``margin_daily_sync.run_margin_daily_sync``；实际逐日拉取由
+        TaskExecutor 拾取 ``sync_market_margin`` 任务完成（与手动面板互斥）。
+        """
+        from src.db.database import AsyncSessionLocal
+        from src.services.margin_daily_sync import run_margin_daily_sync
+
+        logger.info(f"[定时任务] 开始执行融资融券早间同步: {datetime.now()}")
+
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await run_margin_daily_sync(session)
+                logger.info(f"[定时任务] 融资融券早间同步完成: {result}")
+        except Exception as e:
+            logger.error(f"[定时任务] 融资融券早间同步失败: {e}")
+            # 不 raise：失败不影响下一次调度（次日缺口自愈）
 
     async def _sector_fund_flow_snapshot(self):
         """板块资金流即时快照任务
