@@ -513,6 +513,16 @@ class AdminApiClient extends ApiClient {
 
       const json = await response.json()
 
+      // 业务层拒绝（HTTP 200 但 success=false，如 init 互斥/校验拒绝）。
+      // 后端 ApiResponse 包 { success, data, message }：success=false 表示业务失败，
+      // message 为人类可读原因。AdminApiClient 提取 data 前先抛错并携带 message，
+      // 让调用方在 try/catch 中展示真实拒绝原因（plan-08 AC-11 后端兜底）。
+      // 仅当 success 严格为 false 时触发——不返回 success 字段的端点不受影响。
+      if (json && json.success === false) {
+        const rejectMsg = json.message || json.error?.message || '操作被服务端拒绝'
+        throw new Error(rejectMsg)
+      }
+
       // 提取嵌套的 data 字段
       return { data: json.data }
     } catch (error) {
@@ -633,6 +643,14 @@ export const adminApi = {
       '/admin/init/limit',
       start_date && end_date ? { start_date, end_date } : {},
     ),
+  // 全市场量价范围同步（第 16 期 plan-05/plan-08，start_date/end_date 为 YYYY-MM-DD）
+  // body 字段 snake_case（user_input，与后端 Pydantic payload 一致）；
+  // 返回 ApiResponse data.task_id（与 initIndexHistory/initLimit 同款）。
+  initMarketMetrics: (start_date: string, end_date: string) =>
+    adminApiClient.post<{ task_id: string }>('/admin/init/market-metrics', {
+      start_date,
+      end_date,
+    }),
 
   // 股东监控组管理（plan-03 / plan-01 后端契约）
   // 后端 ApiResponse 包 { success, data, message }，AdminApiClient.request 已提取 data 字段
@@ -1395,6 +1413,10 @@ import type {
   IndexWatchlistUpdateData,
   IndexSearchData,
 } from '@/types/indexMonitorTypes'
+import type {
+  MarketMetricsTrendData,
+  MarketMetricsRange,
+} from '@/types/marketMetricsTypes'
 
 export type {
   EtfSortBy,
@@ -1584,5 +1606,28 @@ export const indexMonitorApi = {
         page: params?.page ?? 1,
         page_size: params?.pageSize ?? 15,
       }
+    ),
+}
+
+// ===================== 全市场量价指标（16 期 plan-07 前端客户端）=====================
+//
+// apiClient.baseURL 已含 /api/v1（见上方 API_BASE_WITH_PREFIX），endpoint 不再带
+// /api/v1，避免双前缀（与 indexMonitorApi / etfMonitorApi 一致）。
+//
+// 契约（plan-06 §3 / 架构 §6.4.2、§7.2、§7.3，已上线）：
+// - query 参数 ``range``（单词无 snake/camel 歧义），仅 30/90/250，默认 30
+// - 响应外层 { success, data }，data 内字段经后端 _dict_to_camel 转 camelCase、
+//   Decimal → float、date → ISO 字符串
+// - apiClient.get 泛型 T 必须写 ``{ success: boolean; data: 业务对象 }``（与
+//   indexMonitorApi line 1529 一致，ApiClient.request 返回 { data: 完整响应体 }）
+/**
+ * 全市场量价指标查询 API（首页面板消费）。
+ * 类型定义见 types/marketMetricsTypes.ts（camelCase 业务对象）。
+ */
+export const marketMetricsApi = {
+  // 全市场量价趋势（AC-05 30/90/250 裁剪、AC-06 缺口 null）
+  getTrend: (range: MarketMetricsRange) =>
+    apiClient.get<{ success: boolean; data: MarketMetricsTrendData }>(
+      `/market-metrics/trend?range=${range}`
     ),
 }

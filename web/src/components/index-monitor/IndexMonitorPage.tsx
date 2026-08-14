@@ -27,6 +27,7 @@ import IndexOverviewCards from './IndexOverviewCards'
 import IndexTrendChart from './IndexTrendChart'
 import IndexValuationChart from './IndexValuationChart'
 import IndexWeightTable from './IndexWeightTable'
+import MarketMetricsPanel from '@/components/market-metrics/MarketMetricsPanel'
 
 const SWR_OPTIONS = {
   revalidateOnFocus: false,
@@ -147,9 +148,12 @@ export default function IndexMonitorPage() {
         </div>
       )}
 
-      {/* 正常渲染：总览 → 走势 → 估值 → 权重 */}
+      {/* 正常渲染：市场量价面板 → 总览 → 走势 → 估值 → 权重 */}
       {overview && hasIndices && (
         <>
+          {/* 市场量价面板（plan-07）：置于指数总览之前 */}
+          <MarketMetricsPanel />
+
           <IndexOverviewCards overview={overview} />
 
           {!watchlistLoading && watchlist.length > 0 && (

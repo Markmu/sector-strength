@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { BarChart3Icon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import IndexMonitorPage from '@/components/index-monitor/IndexMonitorPage';
+import MarketMetricsPanel from '@/components/market-metrics/MarketMetricsPanel';
 
 /**
  * Dashboard Page
@@ -15,7 +16,7 @@ import IndexMonitorPage from '@/components/index-monitor/IndexMonitorPage';
  */
 export default function DashboardPage() {
   const { mutate } = useSWRConfig();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLoading } = useAuth();
 
   // 手动刷新所有 dashboard 数据
   const handleRefresh = () => {
@@ -61,6 +62,11 @@ export default function DashboardPage() {
                 </Card>
               </Link>
             </div>
+
+            {/* 市场量价面板（plan-07）：快捷入口后、市场强度前。
+                isLoading 期间 AuthContext 首帧 user=null → isAdmin 不可靠，
+                故等认证就绪后再渲染，避免管理员首页过渡帧误显普通分支面板。 */}
+            {!isLoading && <MarketMetricsPanel />}
 
             {/* 市场强度指数 - Story 4-4 实现 */}
             <Card>

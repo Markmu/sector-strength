@@ -6,6 +6,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { tasksApi } from '@/lib/api'
+import type { MarketMetricsTaskResult } from '@/types/marketMetricsTypes'
 
 // 任务状态类型
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
@@ -25,6 +26,9 @@ export interface TaskData {
   createdAt: string
   startedAt?: string
   completedAt?: string
+  // 任务终态聚合结果（plan-05 to_dict 原样透传，camelCase 直消费）。
+  // sync_market_metrics 携带 MarketMetricsTaskResult；其他任务类型为 null/undefined。
+  result?: MarketMetricsTaskResult | null
 }
 
 // Hook 选项
