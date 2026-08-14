@@ -12,6 +12,7 @@ import BrokerRecommendSyncPanel from '@/components/admin/BrokerRecommendSyncPane
 import IndexSyncPanel from '@/components/index-monitor/IndexSyncPanel';
 import MarketMetricsSyncPanel from '@/components/market-metrics/MarketMetricsSyncPanel';
 import MarginSyncPanel from '@/components/market-margin/MarginSyncPanel';
+import LimitSyncPanel from '@/components/limit/LimitSyncPanel';
 
 type DataTab =
   | 'data-status'
@@ -21,7 +22,8 @@ type DataTab =
   | 'broker-recommend'
   | 'index-data'
   | 'market-metrics'
-  | 'market-margin';
+  | 'market-margin'
+  | 'limit-data';
 
 /**
  * 数据管理页面
@@ -127,6 +129,17 @@ export default function DataManagementPage() {
           >
             融资融券
           </button>
+          <button
+            data-testid="tab-limit-data"
+            onClick={() => setActiveTab('limit-data')}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'limit-data'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            涨停专题
+          </button>
         </nav>
       </div>
 
@@ -139,6 +152,7 @@ export default function DataManagementPage() {
       {activeTab === 'index-data' && <IndexSyncPanel />}
       {activeTab === 'market-metrics' && <MarketMetricsSyncPanel />}
       {activeTab === 'market-margin' && <MarginSyncPanel />}
+      {activeTab === 'limit-data' && <LimitSyncPanel />}
     </AdminLayoutWithSidebar>
   );
 }

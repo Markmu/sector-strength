@@ -17,7 +17,6 @@ import {
   ArrowLeft,
   UserCheck,
   BarChart3,
-  Flame,
 } from 'lucide-react';
 
 /**
@@ -73,13 +72,6 @@ const navItems: NavItem[] = [
     icon: BarChart3,
     href: '/dashboard/admin/etf-init',
     description: 'ETF 份额采集与历史回填',
-  },
-  {
-    id: 'limit-init',
-    label: '涨停专题同步',
-    icon: Flame,
-    href: '/dashboard/admin/limit-init',
-    description: '连板天梯与涨停板块数据采集',
   },
   {
     id: 'shareholder-groups',
