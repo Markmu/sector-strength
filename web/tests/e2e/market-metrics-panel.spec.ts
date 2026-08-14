@@ -152,6 +152,18 @@ adminTest.describe('plan-07：管理员首页市场量价面板', () => {
     await mockIndexMonitorOverview(page)
     await mockIndexMonitorWatchlist(page)
     await mockNormalDashboardPrerequisites(page)
+    // 宿主稳定（17 期补充）：量价面板内嵌融资融券图（/margin/trend），
+    // 未 mock 会 401 触发竞态重定向——mock 空数据保持页面稳定
+    await page.route('**/api/v1/margin/trend*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: { latest: null, points: [], range: 30, hasMissingDates: false },
+        }),
+      })
+    )
   })
 
   adminTest('TC-7.1 面板渲染于指数总览之后、走势图之前，双折线图 + 最新日期（AC-04 / FEAT-0003 AC-1/2）', async ({
@@ -231,6 +243,14 @@ adminTest.describe('plan-07：管理员首页市场量价面板', () => {
 
     // 最近结果日可见（L1 降级：展示最近成功结果及其日期，非今天）
     await expect(page.getByTestId('market-metrics-latest-date')).toBeVisible()
+
+    // 融资融券余额趋势区块存在（宿主 mock 为空数据 → 显示未同步提示）
+    await expect(
+      page.getByText('融资融券余额趋势')
+    ).toBeVisible()
+    await expect(
+      page.getByTestId('market-metrics-chart-margin-empty')
+    ).toBeVisible()
   })
 
   adminTest('TC-7.3 双折线断言：左成交额 line / 右平均价 line，无 bar series（FEAT-0003 AC-2）', async ({
@@ -261,9 +281,12 @@ adminTest.describe('plan-07：管理员首页市场量价面板', () => {
 
     await expect
       .poll(() => readSeries('market-metrics-chart-amount'), {
-        message: '成交额图 echarts 实例应就绪且 series 为 line',
+        message: '成交额图 echarts 实例应就绪，成交额+成交量双 series 均 line',
       })
-      .toEqual([{ name: '成交额', type: 'line' }])
+      .toEqual([
+        { name: '成交额', type: 'line' },
+        { name: '成交量', type: 'line' },
+      ])
 
     await expect
       .poll(() => readSeries('market-metrics-chart-price'), {

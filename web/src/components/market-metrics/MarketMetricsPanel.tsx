@@ -3,8 +3,9 @@
 /**
  * 全市场量价面板（第 16 期 plan-07；FEAT-0003 双曲线拆分改造）
  *
- * 最新四值卡片 + 左右双折线图（左成交额 / 右平均价）+ 30/90/250 范围切换
- * （双图共享）+ 空/缺口/错误/重试态。
+ * 最新四值卡片 + 三张图：成交额/成交量双 Y 轴曲线（左图）、平均价曲线（右图）、
+ * 融资融券余额曲线（第三行整宽，17 期 /margin/trend 数据源）+ 30/90/250 范围切换
+ * （三图共享）+ 空/缺口/错误/重试态。
  * 插入两套首页：管理员（IndexMonitorPage 指数总览后、走势图前）与
  * 普通（dashboard 快捷入口后）。
  *
@@ -29,12 +30,13 @@ import useSWR from 'swr'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { AlertCircle, Database, RefreshCw, Loader2 } from 'lucide-react'
-import { marketMetricsApi } from '@/lib/api'
+import { marketMetricsApi, marginApi } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   MarketMetricsTrendData,
   MarketMetricsRange,
 } from '@/types/marketMetricsTypes'
+import type { MarginTrendData } from '@/types/marginTypes'
 
 // 动态导入 ECharts（ssr:false，与 IndexTrendChart.tsx:28-31 一致）
 const ReactECharts = dynamic(
@@ -76,6 +78,7 @@ export default function MarketMetricsPanel() {
   const [range, setRange] = useState<MarketMetricsRange>(30)
   const amountWrapRef = useRef<HTMLDivElement>(null)
   const priceWrapRef = useRef<HTMLDivElement>(null)
+  const marginWrapRef = useRef<HTMLDivElement>(null)
 
   // SWR 范式照抄 IndexMonitorPage.tsx:38-52：fetcher 返回 res.data（={success,data}），
   // 组件再取一层 .data 得业务对象；range 进 key，切换自动重拉且不刷新整页。
@@ -99,6 +102,25 @@ export default function MarketMetricsPanel() {
   )
   const trend = trendRes?.data ?? null
 
+  // 融资融券趋势（17 期 /margin/trend）：与量价共享 range，同 key 策略自动重拉
+  const {
+    data: marginRes,
+    isLoading: marginLoading,
+    error: marginError,
+  } = useSWR<{ success: boolean; data: MarginTrendData }>(
+    ['marginTrendInMetricsPanel', range],
+    () =>
+      marginApi.getTrend(range).then(
+        (res) =>
+          res.data as unknown as {
+            success: boolean
+            data: MarginTrendData
+          }
+      ),
+    SWR_OPTIONS
+  )
+  const marginTrend = marginRes?.data ?? null
+
   // 轴范围裁剪（FEAT-0003 用户追加）：只保留首个有数据日 ~ 最后有数据日之间的点，
   // 超出数据时间范围的前后空日期不上轴；中间缺口日保留（connectNulls:false 断线）。
   // 有数据判据与 16 期 latest 定义一致（volumeShares 非空）。
@@ -113,29 +135,42 @@ export default function MarketMetricsPanel() {
     return trend.points.slice(first, last + 1)
   }, [trend])
 
-  // 左图：成交额折线（亿元，÷1e8 显示层换算）
+  // 左图：成交额（左轴，万亿元 ÷1e12）+ 成交量（右轴，亿股 ÷1e8）双系列双 Y 轴
   const amountOption = useMemo(() => {
     if (activePoints.length === 0) return null
     return {
       animation: true,
+      legend: {
+        data: ['成交额', '成交量'],
+        textStyle: { fontSize: 11 },
+        top: 0,
+      },
       tooltip: {
         trigger: 'axis',
-        // tooltip 显示完整精度原始值（元）+ 亿元换算
+        // tooltip 显示完整精度原始值（元/股）+ 万亿元/亿股换算
         formatter: (params: unknown) => {
-          const p = (Array.isArray(params) ? params[0] : params) as
-            | { dataIndex?: number; axisValueLabel?: string }
-            | undefined
-          const idx: number = p?.dataIndex ?? 0
+          const arr = (Array.isArray(params) ? params : [params]) as Array<{
+            dataIndex?: number
+            axisValueLabel?: string
+          }>
+          const idx: number = arr[0]?.dataIndex ?? 0
           const pt = activePoints[idx]
-          if (!pt) return p?.axisValueLabel ?? ''
-          const raw = pt.amountYuan
-          if (raw === null || raw === undefined) {
-            return `${pt.tradeDate}<br/>成交额：无数据`
-          }
-          const yi = (raw / 1e8).toLocaleString('zh-CN', {
-            maximumFractionDigits: 4,
-          })
-          return `${pt.tradeDate}<br/>成交额：${raw.toLocaleString('zh-CN')} 元（${yi} 亿元）`
+          if (!pt) return arr[0]?.axisValueLabel ?? ''
+          const amount = pt.amountYuan
+          const volume = pt.volumeShares
+          const amountLine =
+            amount === null || amount === undefined
+              ? '成交额：无数据'
+              : `成交额：${amount.toLocaleString('zh-CN')} 元（${(
+                  amount / 1e12
+                ).toLocaleString('zh-CN', { maximumFractionDigits: 4 })} 万亿元）`
+          const volumeLine =
+            volume === null || volume === undefined
+              ? '成交量：无数据'
+              : `成交量：${volume.toLocaleString('zh-CN')} 股（${(
+                  volume / 1e8
+                ).toLocaleString('zh-CN', { maximumFractionDigits: 4 })} 亿股）`
+          return `${pt.tradeDate}<br/>${amountLine}<br/>${volumeLine}`
         },
       },
       grid: { left: '3%', right: '6%', bottom: '8%', top: '14%', containLabel: true },
@@ -144,26 +179,50 @@ export default function MarketMetricsPanel() {
         data: activePoints.map((p) => p.tradeDate),
         axisLabel: { fontSize: 11 },
       },
-      yAxis: {
-        type: 'value',
-        name: '亿元',
-        nameTextStyle: { fontSize: 11 },
-        axisLabel: { fontSize: 11 },
-        splitLine: { lineStyle: { type: 'dashed' } },
-      },
+      yAxis: [
+        {
+          type: 'value',
+          name: '万亿元',
+          nameTextStyle: { fontSize: 11 },
+          axisLabel: { fontSize: 11 },
+          splitLine: { lineStyle: { type: 'dashed' } },
+        },
+        {
+          type: 'value',
+          name: '亿股',
+          nameTextStyle: { fontSize: 11 },
+          axisLabel: { fontSize: 11 },
+          splitLine: { show: false },
+        },
+      ],
       series: [
         {
           name: '成交额',
           type: 'line' as const,
+          yAxisIndex: 0,
           data: activePoints.map((p) =>
             p.amountYuan === null || p.amountYuan === undefined
               ? null
-              : p.amountYuan / 1e8
+              : p.amountYuan / 1e12
           ),
           smooth: true,
           connectNulls: false,
           itemStyle: { color: '#3B82F6' },
           lineStyle: { width: 2, color: '#3B82F6' },
+        },
+        {
+          name: '成交量',
+          type: 'line' as const,
+          yAxisIndex: 1,
+          data: activePoints.map((p) =>
+            p.volumeShares === null || p.volumeShares === undefined
+              ? null
+              : p.volumeShares / 1e8
+          ),
+          smooth: true,
+          connectNulls: false,
+          itemStyle: { color: '#8B5CF6' },
+          lineStyle: { width: 2, color: '#8B5CF6' },
         },
       ],
     }
@@ -223,6 +282,75 @@ export default function MarketMetricsPanel() {
       ],
     }
   }, [activePoints])
+
+  // 融资融券：轴范围裁剪与量价同规则（判据 rzye 非空，与 17 期 latest 定义一致）
+  const marginActivePoints = useMemo(() => {
+    if (!marginTrend) return []
+    const has = (p: (typeof marginTrend.points)[number]) =>
+      p.rzye !== null && p.rzye !== undefined
+    const first = marginTrend.points.findIndex(has)
+    if (first === -1) return []
+    let last = marginTrend.points.length - 1
+    while (last > first && !has(marginTrend.points[last])) last--
+    return marginTrend.points.slice(first, last + 1)
+  }, [marginTrend])
+
+  // 融资融券余额曲线（rzrqye，万亿元 ÷1e12，与成交额同单位口径）
+  const marginOption = useMemo(() => {
+    if (marginActivePoints.length === 0) return null
+    return {
+      animation: true,
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: unknown) => {
+          const p = (Array.isArray(params) ? params[0] : params) as
+            | { dataIndex?: number; axisValueLabel?: string }
+            | undefined
+          const idx: number = p?.dataIndex ?? 0
+          const pt = marginActivePoints[idx]
+          if (!pt) return p?.axisValueLabel ?? ''
+          const raw = pt.rzrqye
+          if (raw === null || raw === undefined) {
+            return `${pt.tradeDate}<br/>融资融券余额：无数据`
+          }
+          const trillon = (raw / 1e12).toLocaleString('zh-CN', {
+            maximumFractionDigits: 4,
+          })
+          return `${pt.tradeDate}<br/>融资融券余额：${raw.toLocaleString(
+            'zh-CN'
+          )} 元（${trillon} 万亿元）`
+        },
+      },
+      grid: { left: '3%', right: '6%', bottom: '8%', top: '14%', containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: marginActivePoints.map((p) => p.tradeDate),
+        axisLabel: { fontSize: 11 },
+      },
+      yAxis: {
+        type: 'value',
+        name: '万亿元',
+        nameTextStyle: { fontSize: 11 },
+        axisLabel: { fontSize: 11 },
+        splitLine: { lineStyle: { type: 'dashed' } },
+      },
+      series: [
+        {
+          name: '融资融券余额',
+          type: 'line' as const,
+          data: marginActivePoints.map((p) =>
+            p.rzrqye === null || p.rzrqye === undefined
+              ? null
+              : p.rzrqye / 1e12
+          ),
+          smooth: true,
+          connectNulls: false,
+          itemStyle: { color: '#F59E0B' },
+          lineStyle: { width: 2, color: '#F59E0B' },
+        },
+      ],
+    }
+  }, [marginActivePoints])
 
   return (
     <section
@@ -373,7 +501,7 @@ export default function MarketMetricsPanel() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm font-medium text-foreground mb-1">
-                成交额趋势
+                成交额 / 成交量趋势
               </p>
               <div data-testid="market-metrics-chart-amount" ref={amountWrapRef} className="w-full">
                 {amountOption && (
@@ -414,6 +542,45 @@ export default function MarketMetricsPanel() {
                   />
                 )}
               </div>
+            </div>
+
+            {/* 融资融券余额曲线（17 期 /margin/trend）：整行宽度 */}
+            <div className="col-span-1 md:col-span-2">
+              <p className="text-sm font-medium text-foreground mb-1">
+                融资融券余额趋势
+              </p>
+              {marginOption ? (
+                <div
+                  data-testid="market-metrics-chart-margin"
+                  ref={marginWrapRef}
+                  className="w-full"
+                >
+                  <ReactECharts
+                    option={marginOption}
+                    style={{ height: 280, width: '100%' }}
+                    onChartReady={(chart) => {
+                      if (marginWrapRef.current) {
+                        ;(
+                          marginWrapRef.current as HTMLDivElement & {
+                            __echartsInst__?: unknown
+                          }
+                        ).__echartsInst__ = chart
+                      }
+                    }}
+                  />
+                </div>
+              ) : (
+                <p
+                  data-testid="market-metrics-chart-margin-empty"
+                  className="text-xs text-muted-foreground py-10 text-center border border-dashed border-border rounded-lg"
+                >
+                  {marginLoading
+                    ? '融资融券数据加载中...'
+                    : marginError
+                      ? '融资融券数据加载失败'
+                      : '融资融券数据尚未同步'}
+                </p>
+              )}
             </div>
           </div>
         </div>

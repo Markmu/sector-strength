@@ -25,12 +25,17 @@ jest.mock('next/dynamic', () => () => {
   return ECharts
 })
 
-// Mock SWR：控制 useSWR 返回值
+// Mock SWR：控制 useSWR 返回值（按 key 区分量价与融资融券两个数据源）
 const mockMutate = jest.fn()
 let mockSwrValue: any = { data: undefined, isLoading: true, error: undefined, mutate: mockMutate }
+let mockMarginSwrValue: any = { data: undefined, isLoading: false, error: undefined, mutate: mockMutate }
 jest.mock('swr', () => ({
   __esModule: true,
-  default: jest.fn(() => mockSwrValue),
+  default: jest.fn((key: unknown) =>
+    Array.isArray(key) && key[0] === 'marginTrendInMetricsPanel'
+      ? mockMarginSwrValue
+      : mockSwrValue
+  ),
 }))
 
 // Mock AuthContext：控制 isAdmin
@@ -41,6 +46,32 @@ jest.mock('@/contexts/AuthContext', () => ({
 }))
 
 import type { MarketMetricsTrendData } from '@/types/marketMetricsTypes'
+import type { MarginTrendData } from '@/types/marginTypes'
+
+/** 融资融券趋势 fixture（有数据形态） */
+function buildMarginTrend(): MarginTrendData {
+  const points = [
+    {
+      tradeDate: '2026-08-12',
+      rzye: 2.6e12,
+      rqye: 2.5e10,
+      rzmre: 2.4e11,
+      rzche: 2.3e11,
+      rqmcl: 1.0e8,
+      rzrqye: 2.625e12,
+    },
+    {
+      tradeDate: '2026-08-13',
+      rzye: 2.61e12,
+      rqye: 2.51e10,
+      rzmre: 2.41e11,
+      rzche: 2.31e11,
+      rqmcl: 1.1e8,
+      rzrqye: 2.6351e12,
+    },
+  ]
+  return { latest: points[1], points, range: 30, hasMissingDates: false }
+}
 
 /** 满数据趋势 fixture（与 mock-market-metrics-api.ts 同口径） */
 function buildTrend(opts?: { empty?: boolean; gaps?: boolean }): MarketMetricsTrendData {
@@ -85,6 +116,7 @@ describe('MarketMetricsPanel', () => {
     jest.clearAllMocks()
     mockIsAdmin = false
     mockSwrValue = { data: undefined, isLoading: true, error: undefined, mutate: mockMutate }
+    mockMarginSwrValue = { data: undefined, isLoading: false, error: undefined, mutate: mockMutate }
   })
 
   describe('加载与错误态', () => {
@@ -179,10 +211,34 @@ describe('MarketMetricsPanel', () => {
       )
     })
 
-    it('双图标签可见：成交额趋势 / 平均价趋势', () => {
+    it('双图标签可见：成交额 / 成交量趋势、平均价趋势', () => {
       render(<MarketMetricsPanel />)
-      expect(screen.getByText('成交额趋势')).toBeInTheDocument()
+      expect(screen.getByText('成交额 / 成交量趋势')).toBeInTheDocument()
       expect(screen.getByText('平均价趋势')).toBeInTheDocument()
+      expect(screen.getByText('融资融券余额趋势')).toBeInTheDocument()
+    })
+
+    it('融资融券图：无数据时显示尚未同步提示，不渲染图表容器', () => {
+      render(<MarketMetricsPanel />)
+      expect(
+        screen.getByTestId('market-metrics-chart-margin-empty')
+      ).toHaveTextContent(/尚未同步/)
+      expect(
+        screen.queryByTestId('market-metrics-chart-margin')
+      ).toBeNull()
+    })
+
+    it('融资融券图：有数据时渲染图表容器', () => {
+      mockMarginSwrValue = {
+        data: { success: true, data: buildMarginTrend() },
+        isLoading: false,
+        error: undefined,
+        mutate: mockMutate,
+      }
+      render(<MarketMetricsPanel />)
+      expect(
+        screen.getByTestId('market-metrics-chart-margin')
+      ).toBeInTheDocument()
     })
 
     it('单位换算：成交额/成交量 ÷1e8 转亿，平均价 2 位小数', () => {

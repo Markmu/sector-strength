@@ -71,6 +71,7 @@ context:
   3. 普通首页 beforeEach 补 `/margin/trend` 宿主稳定 mock（17 期 MarginPanel 挂上普通首页后，未 mock 会 401 竞态重定向——与该 spec 自身"宿主页稳定"原则一致）。
 - **组件侧新增约定**：双图容器挂 `__echartsInst__` 测试钩子（沿用 17 期 margin-panel 先例）；图内小标题用"成交量趋势/平均价趋势"（避免与卡片同名文案的 getByText 多匹配冲突）。
 - **2026-08-15 追加（用户改定）**：左图由成交量曲线换为成交额曲线（amountYuan ÷1e8 亿元，testid `market-metrics-chart-volume` → `market-metrics-chart-amount`，series 名"成交额"，图题"成交额趋势"）；成交量保留在最新值卡片。验证：jest 10/10、market-metrics E2E 8/8、tsc 零新增。
+- **2026-08-15 追加二（用户迭代）**：①双曲线平滑（smooth:true）；②x 轴裁剪至首末有数据日之间（activePoints，判据 volumeShares/rzye 与 latest 定义一致，中间缺口保留断线）；③成交额单位改万亿元（÷1e12，仅显示单位变）；④左图改双系列双 Y 轴（成交额左轴万亿亿元蓝 + 成交量右轴亿股紫，含 legend，图题"成交额 / 成交量趋势"）；⑤新增第三图"融资融券余额趋势"（整行宽度，rzrqye ÷1e12 万亿元琥珀色平滑线，数据源 17 期 /margin/trend 与量价共享 range，空/加载/错误三态提示，testid market-metrics-chart-margin/-margin-empty）。验证：jest 12/12、market-metrics E2E 8/8 + margin-panel 回归 5/5、tsc 零新增。
 
 ## 验收标准
 
