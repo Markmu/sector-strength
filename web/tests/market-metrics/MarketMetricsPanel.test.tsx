@@ -211,11 +211,11 @@ describe('MarketMetricsPanel', () => {
       )
     })
 
-    it('双图标签可见：成交额 / 成交量趋势、平均价趋势', () => {
+    it('图区标签可见：融资融券余额趋势、成交额趋势、平均价趋势', () => {
       render(<MarketMetricsPanel />)
-      expect(screen.getByText('成交额 / 成交量趋势')).toBeInTheDocument()
-      expect(screen.getByText('平均价趋势')).toBeInTheDocument()
       expect(screen.getByText('融资融券余额趋势')).toBeInTheDocument()
+      expect(screen.getByText('成交额趋势')).toBeInTheDocument()
+      expect(screen.getByText('平均价趋势')).toBeInTheDocument()
     })
 
     it('融资融券图：无数据时显示尚未同步提示，不渲染图表容器', () => {
@@ -241,20 +241,34 @@ describe('MarketMetricsPanel', () => {
       ).toBeInTheDocument()
     })
 
-    it('单位换算：成交额/成交量 ÷1e8 转亿，平均价 2 位小数', () => {
+    it('单位换算：成交额/融资融券余额 ÷1e12 转万亿，平均价 2 位小数', () => {
       render(<MarketMetricsPanel />)
-      // amountYuan = 8.2e11 + 2e9 = 822000000000 → /1e8 = 8220 亿元
-      expect(screen.getByText(/成交额（亿元）/i).parentElement).toHaveTextContent(
-        '8,220'
-      )
-      // volumeShares = 7.2e9 + 1e7 = 7210000000 → /1e8 = 72.1 亿股
-      expect(screen.getByText(/成交量（亿股）/i).parentElement).toHaveTextContent(
-        '72.1'
-      )
+      // amountYuan = 8.2e11 + 2e9 = 822000000000 → /1e12 = 0.822 万亿元
+      expect(
+        screen.getByText(/成交额（万亿元）/i).parentElement
+      ).toHaveTextContent('0.822')
+      // 融资融券卡片：默认 margin 数据为空 → '—'
+      expect(
+        screen.getByText(/融资融券余额（万亿元）/i).parentElement
+      ).toHaveTextContent('—')
       // averagePrice = 11.39 → 11.39
       expect(screen.getByText(/平均价（元）/i).parentElement).toHaveTextContent(
         '11.39'
       )
+    })
+
+    it('融资融券余额卡片：有数据时 ÷1e12 转万亿显示', () => {
+      mockMarginSwrValue = {
+        data: { success: true, data: buildMarginTrend() },
+        isLoading: false,
+        error: undefined,
+        mutate: mockMutate,
+      }
+      render(<MarketMetricsPanel />)
+      // rzrqye = 2.6351e12 → /1e12 = 2.6351 万亿元
+      expect(
+        screen.getByText(/融资融券余额（万亿元）/i).parentElement
+      ).toHaveTextContent('2.6351')
     })
 
     it('缺口 fixture：显示部分日期无数据提示', () => {

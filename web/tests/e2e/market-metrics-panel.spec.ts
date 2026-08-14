@@ -281,12 +281,9 @@ adminTest.describe('plan-07：管理员首页市场量价面板', () => {
 
     await expect
       .poll(() => readSeries('market-metrics-chart-amount'), {
-        message: '成交额图 echarts 实例应就绪，成交额+成交量双 series 均 line',
+        message: '成交额图 echarts 实例应就绪且 series 为 line',
       })
-      .toEqual([
-        { name: '成交额', type: 'line' },
-        { name: '成交量', type: 'line' },
-      ])
+      .toEqual([{ name: '成交额', type: 'line' }])
 
     await expect
       .poll(() => readSeries('market-metrics-chart-price'), {
