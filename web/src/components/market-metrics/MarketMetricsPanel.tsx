@@ -1,23 +1,30 @@
 'use client'
 
 /**
- * 全市场量价面板（第 16 期 plan-07 Task 3）
+ * 全市场量价面板（第 16 期 plan-07；FEAT-0003 双曲线拆分改造）
  *
- * 最新三值卡片 + 单指标柱/线图 + 30/90/250 范围切换 + 空/缺口/错误/重试态。
- * 插入两套首页：管理员（IndexMonitorPage 指数总览前）与普通（dashboard 快捷入口后）。
+ * 最新四值卡片 + 左右双折线图（左成交额 / 右平均价）+ 30/90/250 范围切换
+ * （双图共享）+ 空/缺口/错误/重试态。
+ * 插入两套首页：管理员（IndexMonitorPage 指数总览后、走势图前）与
+ * 普通（dashboard 快捷入口后）。
  *
- * 实现（架构 §6.4.1/3/5、plan-07 §实现规格）：
+ * 实现：
  * - SWR 范式照抄 IndexMonitorPage.tsx:38-52（fetcher 返回 res.data = {success,data}，
  *   组件再取 .data；as unknown as cast）
- * - ECharts dynamic ssr:false（IndexTrendChart.tsx:28-31 范式），单实例
- * - MetricKey 三态：默认 amountYuan；amountYuan/volumeShares 用 bar、averagePrice 用 line
- * - 单位换算（显示层）：amountYuan/1e8→亿元、volumeShares/1e8→亿股；卡片平均价 2 位小数；
+ * - ECharts dynamic ssr:false（IndexTrendChart.tsx:28-31 范式），双图各一实例
+ * - FEAT-0003：图表区拆分为左右两个折线图——左成交额（amountYuan，line，亿元）、
+ *   右平均价（averagePrice，line，元，scale:true）；指标切换按钮与柱状图移除
+ *   （左图原为成交量，2026-08-15 用户改定为成交额；成交量保留最新值卡片展示）
+ * - 单位换算（显示层）：volumeShares ÷1e8→亿股；卡片平均价 2 位小数；
  *   tooltip 完整精度原始值
  * - 缺口：connectNulls:false + hasMissingDates 提示「部分日期无数据」
  * - 空态（latest===null）：管理员 /dashboard/admin/data 链接；普通用户纯文案
- * - 错误态：错误框 + 重试 → 仅 mutate()（AC-12 局部刷新，不刷整页）
+ * - 错误态：错误框 + 重试 → 仅 mutate()（局部刷新，不刷整页）
+ * - 测试钩子：onChartReady 把 ECharts 实例挂到各图容器 DOM
+ *   （(el as any).__echartsInst__ = chart），供 E2E 读 getOption() 断言
+ *   series type（FEAT-0003 用例约定，沿用 17 期 margin-panel 先例）
  */
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -26,7 +33,6 @@ import { marketMetricsApi } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   MarketMetricsTrendData,
-  MetricKey,
   MarketMetricsRange,
 } from '@/types/marketMetricsTypes'
 
@@ -44,24 +50,11 @@ const ReactECharts = dynamic(
 )
 
 // 范围切换器：用户显式点 30/90/250 即应发起对应请求。
-// dedupingInterval 设 0 避免切回最近拉取过的范围时被去重（IndexMonitorPage 的 30s 去重
-// 适用于无切换的被动刷新；本面板 range 进 SWR key，显式切换必须重拉，AC-05）。
+// dedupingInterval 设 0 避免切回最近拉取过的范围时被去重。
+// range 进 SWR key，双图共享同一份 trend 数据，显式切换必须重拉。
 const SWR_OPTIONS = { revalidateOnFocus: false, dedupingInterval: 0 } as const
 
 const RANGE_OPTIONS: MarketMetricsRange[] = [30, 90, 250]
-const METRIC_ORDER: MetricKey[] = ['amountYuan', 'volumeShares', 'averagePrice']
-
-interface MetricConfig {
-  label: string
-  type: 'bar' | 'line'
-  unit: string // 显示层单位（亿）
-  rawUnit: string // 原始单位
-}
-const METRIC_CONFIG: Record<MetricKey, MetricConfig> = {
-  amountYuan: { label: '成交额', type: 'bar', unit: '亿元', rawUnit: '元' },
-  volumeShares: { label: '成交量', type: 'bar', unit: '亿股', rawUnit: '股' },
-  averagePrice: { label: '平均价', type: 'line', unit: '元', rawUnit: '元' },
-}
 
 /** 成交额/成交量：原始值 ÷1e8 转亿（显示层，2 位小数） */
 function formatBillion(val: number | null): string {
@@ -81,10 +74,12 @@ function formatPrice(val: number | null): string {
 export default function MarketMetricsPanel() {
   const { isAdmin } = useAuth()
   const [range, setRange] = useState<MarketMetricsRange>(30)
-  const [metric, setMetric] = useState<MetricKey>('amountYuan')
+  const amountWrapRef = useRef<HTMLDivElement>(null)
+  const priceWrapRef = useRef<HTMLDivElement>(null)
 
   // SWR 范式照抄 IndexMonitorPage.tsx:38-52：fetcher 返回 res.data（={success,data}），
   // 组件再取一层 .data 得业务对象；range 进 key，切换自动重拉且不刷新整页。
+  // FEAT-0003：双图共用这一份 trend 数据（一次请求全指标）。
   const {
     data: trendRes,
     isLoading,
@@ -104,72 +99,130 @@ export default function MarketMetricsPanel() {
   )
   const trend = trendRes?.data ?? null
 
-  const option = useMemo(() => {
-    if (!trend || trend.points.length === 0) return null
-    const cfg = METRIC_CONFIG[metric]
-    const isPrice = metric === 'averagePrice'
-    const dates = trend.points.map((p) => p.tradeDate)
-    // 显示层换算：amountYuan/volumeShares ÷1e8；averagePrice 原值
-    const seriesData = trend.points.map((p) => {
-      const v = p[metric]
-      if (v === null || v === undefined) return null
-      return isPrice ? v : v / 1e8
-    })
+  // 轴范围裁剪（FEAT-0003 用户追加）：只保留首个有数据日 ~ 最后有数据日之间的点，
+  // 超出数据时间范围的前后空日期不上轴；中间缺口日保留（connectNulls:false 断线）。
+  // 有数据判据与 16 期 latest 定义一致（volumeShares 非空）。
+  const activePoints = useMemo(() => {
+    if (!trend) return []
+    const has = (p: (typeof trend.points)[number]) =>
+      p.volumeShares !== null && p.volumeShares !== undefined
+    const first = trend.points.findIndex(has)
+    if (first === -1) return []
+    let last = trend.points.length - 1
+    while (last > first && !has(trend.points[last])) last--
+    return trend.points.slice(first, last + 1)
+  }, [trend])
 
+  // 左图：成交额折线（亿元，÷1e8 显示层换算）
+  const amountOption = useMemo(() => {
+    if (activePoints.length === 0) return null
     return {
       animation: true,
       tooltip: {
         trigger: 'axis',
-        // tooltip 显示完整精度原始值（不随轴标签取整）
-        formatter: (params: any) => {
-          const p = Array.isArray(params) ? params[0] : params
+        // tooltip 显示完整精度原始值（元）+ 亿元换算
+        formatter: (params: unknown) => {
+          const p = (Array.isArray(params) ? params[0] : params) as
+            | { dataIndex?: number; axisValueLabel?: string }
+            | undefined
           const idx: number = p?.dataIndex ?? 0
-          const pt = trend.points[idx]
+          const pt = activePoints[idx]
           if (!pt) return p?.axisValueLabel ?? ''
-          const raw = pt[metric]
+          const raw = pt.amountYuan
           if (raw === null || raw === undefined) {
-            return `${pt.tradeDate}<br/>${cfg.label}：无数据`
+            return `${pt.tradeDate}<br/>成交额：无数据`
           }
-          if (isPrice) {
-            return `${pt.tradeDate}<br/>${cfg.label}：${raw.toLocaleString('zh-CN', {
-              maximumFractionDigits: 4,
-            })} ${cfg.rawUnit}`
-          }
-          // 成交额/成交量：原始值（元/股）完整精度 + 换算亿
-          const yi = (raw / 1e8).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
-          return `${pt.tradeDate}<br/>${cfg.label}：${raw.toLocaleString('zh-CN')} ${
-            cfg.rawUnit
-          }（${yi} ${cfg.unit}）`
+          const yi = (raw / 1e8).toLocaleString('zh-CN', {
+            maximumFractionDigits: 4,
+          })
+          return `${pt.tradeDate}<br/>成交额：${raw.toLocaleString('zh-CN')} 元（${yi} 亿元）`
         },
       },
-      grid: { left: '3%', right: '6%', bottom: '8%', top: '12%', containLabel: true },
+      grid: { left: '3%', right: '6%', bottom: '8%', top: '14%', containLabel: true },
       xAxis: {
         type: 'category',
-        data: dates,
+        data: activePoints.map((p) => p.tradeDate),
         axisLabel: { fontSize: 11 },
       },
       yAxis: {
         type: 'value',
-        name: cfg.unit,
+        name: '亿元',
         nameTextStyle: { fontSize: 11 },
         axisLabel: { fontSize: 11 },
         splitLine: { lineStyle: { type: 'dashed' } },
-        // 平均价折线 y 轴 scale:true（plan §8 风险备注）；柱图从 0 起
-        scale: isPrice,
       },
       series: [
         {
-          name: cfg.label,
-          type: cfg.type,
-          data: seriesData,
-          smooth: false,
+          name: '成交额',
+          type: 'line' as const,
+          data: activePoints.map((p) =>
+            p.amountYuan === null || p.amountYuan === undefined
+              ? null
+              : p.amountYuan / 1e8
+          ),
+          smooth: true,
           connectNulls: false,
           itemStyle: { color: '#3B82F6' },
           lineStyle: { width: 2, color: '#3B82F6' },
         },
       ],
     }
-  }, [trend, metric])
+  }, [activePoints])
+
+  // 右图：平均价折线（元，scale:true 避免 y 轴从 0 起压扁波动）
+  const priceOption = useMemo(() => {
+    if (activePoints.length === 0) return null
+    return {
+      animation: true,
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: unknown) => {
+          const p = (Array.isArray(params) ? params[0] : params) as
+            | { dataIndex?: number; axisValueLabel?: string }
+            | undefined
+          const idx: number = p?.dataIndex ?? 0
+          const pt = activePoints[idx]
+          if (!pt) return p?.axisValueLabel ?? ''
+          const raw = pt.averagePrice
+          if (raw === null || raw === undefined) {
+            return `${pt.tradeDate}<br/>平均价：无数据`
+          }
+          return `${pt.tradeDate}<br/>平均价：${raw.toLocaleString('zh-CN', {
+            maximumFractionDigits: 4,
+          })} 元`
+        },
+      },
+      grid: { left: '3%', right: '6%', bottom: '8%', top: '14%', containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: activePoints.map((p) => p.tradeDate),
+        axisLabel: { fontSize: 11 },
+      },
+      yAxis: {
+        type: 'value',
+        name: '元',
+        nameTextStyle: { fontSize: 11 },
+        axisLabel: { fontSize: 11 },
+        splitLine: { lineStyle: { type: 'dashed' } },
+        scale: true,
+      },
+      series: [
+        {
+          name: '平均价',
+          type: 'line' as const,
+          data: activePoints.map((p) =>
+            p.averagePrice === null || p.averagePrice === undefined
+              ? null
+              : p.averagePrice
+          ),
+          smooth: true,
+          connectNulls: false,
+          itemStyle: { color: '#10B981' },
+          lineStyle: { width: 2, color: '#10B981' },
+        },
+      ],
+    }
+  }, [activePoints])
 
   return (
     <section
@@ -184,30 +237,7 @@ export default function MarketMetricsPanel() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          {/* 指标切换（AC-04）：amountYuan/volumeShares 柱图、averagePrice 折线 */}
-          <div
-            className="inline-flex rounded-lg border border-border overflow-hidden"
-            role="group"
-            aria-label="指标切换"
-          >
-            {METRIC_ORDER.map((m) => (
-              <button
-                key={m}
-                type="button"
-                data-testid={`market-metrics-metric-${m}`}
-                aria-pressed={metric === m}
-                onClick={() => setMetric(m)}
-                className={`px-3 py-1.5 text-sm transition-colors ${
-                  metric === m
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-card text-foreground hover:bg-secondary'
-                }`}
-              >
-                {METRIC_CONFIG[m].label}
-              </button>
-            ))}
-          </div>
-          {/* 范围切换（AC-05）：30/90/250 改 state → SWR key 变化自动重拉，不刷新整页 */}
+          {/* 范围切换：30/90/250 改 state → SWR key 变化自动重拉（双图共享），不刷新整页 */}
           <div
             className="inline-flex rounded-lg border border-border overflow-hidden"
             role="group"
@@ -241,7 +271,7 @@ export default function MarketMetricsPanel() {
         </div>
       )}
 
-      {/* 错误态（AC-12）：错误框 + 重试 → 仅 mutate() 局部刷新 */}
+      {/* 错误态：错误框 + 重试 → 仅 mutate() 局部刷新 */}
       {error && !trend && (
         <div
           data-testid="market-metrics-error"
@@ -295,7 +325,7 @@ export default function MarketMetricsPanel() {
       {/* 正常态：latest 有值 */}
       {trend && trend.latest !== null && (
         <div className="mt-4 space-y-4">
-          {/* 最新三值卡片（§8.2-1：展示最近成功结果及其日期） */}
+          {/* 最新四值卡片（含成交额；成交额不上图，仅卡片展示） */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-lg bg-secondary/50 p-3">
               <p className="text-xs text-muted-foreground">最近结果日</p>
@@ -326,7 +356,7 @@ export default function MarketMetricsPanel() {
             </div>
           </div>
 
-          {/* 缺口提示（AC-06） */}
+          {/* 缺口提示 */}
           {trend.hasMissingDates && (
             <p
               data-testid="market-metrics-missing-hint"
@@ -337,11 +367,54 @@ export default function MarketMetricsPanel() {
             </p>
           )}
 
-          {/* 图表（单 ECharts 实例；性能验收 container 数量=1） */}
-          <div data-testid="market-metrics-chart" className="w-full">
-            {option && (
-              <ReactECharts option={option} style={{ height: 320, width: '100%' }} />
-            )}
+          {/* FEAT-0003 双折线图：左成交量 / 右平均价；移动端上下堆叠、桌面并排。
+              onChartReady 测试钩子：实例挂各容器 DOM，E2E 读 getOption() 断言
+              series type= line（无 bar）。 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm font-medium text-foreground mb-1">
+                成交额趋势
+              </p>
+              <div data-testid="market-metrics-chart-amount" ref={amountWrapRef} className="w-full">
+                {amountOption && (
+                  <ReactECharts
+                    option={amountOption}
+                    style={{ height: 280, width: '100%' }}
+                    onChartReady={(chart) => {
+                      if (amountWrapRef.current) {
+                        ;(
+                          amountWrapRef.current as HTMLDivElement & {
+                            __echartsInst__?: unknown
+                          }
+                        ).__echartsInst__ = chart
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground mb-1">
+                平均价趋势
+              </p>
+              <div data-testid="market-metrics-chart-price" ref={priceWrapRef} className="w-full">
+                {priceOption && (
+                  <ReactECharts
+                    option={priceOption}
+                    style={{ height: 280, width: '100%' }}
+                    onChartReady={(chart) => {
+                      if (priceWrapRef.current) {
+                        ;(
+                          priceWrapRef.current as HTMLDivElement & {
+                            __echartsInst__?: unknown
+                          }
+                        ).__echartsInst__ = chart
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

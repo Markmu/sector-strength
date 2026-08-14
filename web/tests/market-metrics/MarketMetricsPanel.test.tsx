@@ -1,8 +1,9 @@
 /**
  * MarketMetricsPanel 组件测试（第 16 期 plan-07 Task 6）
  *
- * 覆盖：加载 / 错误重试 / 空态（管理员链接 + 普通文案）/ 正常态卡片与图表 /
- * 缺口提示 / 指标与范围切换（aria-pressed）。
+ * 覆盖：加载 / 错误重试 / 空态（管理员链接 + 普通文案）/ 正常态卡片与双图表 /
+ * 缺口提示 / 范围切换（aria-pressed）。FEAT-0003：指标切换按钮移除，
+ * 图表区拆分为成交量/平均价双折线（testid chart-volume / chart-price）。
  *
  * Mock 策略（参照 tests/dashboard/MarketIndexDisplay.test.tsx 范式）：
  * - echarts-for-react → 返回 null（避免 Canvas）
@@ -153,13 +154,35 @@ describe('MarketMetricsPanel', () => {
       })
     })
 
-    it('渲染面板根、图表容器、最近结果日', () => {
+    it('渲染面板根、双图表容器（成交额/平均价）、最近结果日', () => {
       render(<MarketMetricsPanel />)
       expect(screen.getByTestId('market-metrics-panel')).toBeInTheDocument()
-      expect(screen.getByTestId('market-metrics-chart')).toBeInTheDocument()
+      expect(
+        screen.getByTestId('market-metrics-chart-amount')
+      ).toBeInTheDocument()
+      expect(
+        screen.getByTestId('market-metrics-chart-price')
+      ).toBeInTheDocument()
+      // 旧单图表容器与指标切换按钮已移除（FEAT-0003）
+      expect(screen.queryByTestId('market-metrics-chart')).toBeNull()
+      expect(
+        screen.queryByTestId('market-metrics-metric-amountYuan')
+      ).toBeNull()
+      expect(
+        screen.queryByTestId('market-metrics-metric-volumeShares')
+      ).toBeNull()
+      expect(
+        screen.queryByTestId('market-metrics-metric-averagePrice')
+      ).toBeNull()
       expect(screen.getByTestId('market-metrics-latest-date')).toHaveTextContent(
         '2026-08-13'
       )
+    })
+
+    it('双图标签可见：成交额趋势 / 平均价趋势', () => {
+      render(<MarketMetricsPanel />)
+      expect(screen.getByText('成交额趋势')).toBeInTheDocument()
+      expect(screen.getByText('平均价趋势')).toBeInTheDocument()
     })
 
     it('单位换算：成交额/成交量 ÷1e8 转亿，平均价 2 位小数', () => {
@@ -187,40 +210,6 @@ describe('MarketMetricsPanel', () => {
       render(<MarketMetricsPanel />)
       expect(screen.getByTestId('market-metrics-missing-hint')).toHaveTextContent(
         /部分日期无数据/i
-      )
-    })
-
-    it('默认成交额指标 active（aria-pressed=true）', () => {
-      render(<MarketMetricsPanel />)
-      expect(screen.getByTestId('market-metrics-metric-amountYuan')).toHaveAttribute(
-        'aria-pressed',
-        'true'
-      )
-      expect(screen.getByTestId('market-metrics-metric-volumeShares')).toHaveAttribute(
-        'aria-pressed',
-        'false'
-      )
-    })
-
-    it('点击成交量指标切换 aria-pressed', () => {
-      render(<MarketMetricsPanel />)
-      fireEvent.click(screen.getByTestId('market-metrics-metric-volumeShares'))
-      expect(screen.getByTestId('market-metrics-metric-volumeShares')).toHaveAttribute(
-        'aria-pressed',
-        'true'
-      )
-      expect(screen.getByTestId('market-metrics-metric-amountYuan')).toHaveAttribute(
-        'aria-pressed',
-        'false'
-      )
-    })
-
-    it('点击平均价指标切换为折线', () => {
-      render(<MarketMetricsPanel />)
-      fireEvent.click(screen.getByTestId('market-metrics-metric-averagePrice'))
-      expect(screen.getByTestId('market-metrics-metric-averagePrice')).toHaveAttribute(
-        'aria-pressed',
-        'true'
       )
     })
 

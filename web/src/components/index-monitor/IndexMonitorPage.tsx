@@ -148,13 +148,13 @@ export default function IndexMonitorPage() {
         </div>
       )}
 
-      {/* 正常渲染：市场量价面板 → 总览 → 走势 → 估值 → 权重 */}
+      {/* 正常渲染：总览 → 市场量价面板 → 走势 → 估值 → 权重 */}
       {overview && hasIndices && (
         <>
-          {/* 市场量价面板（plan-07）：置于指数总览之前 */}
-          <MarketMetricsPanel />
-
           <IndexOverviewCards overview={overview} />
+
+          {/* 市场量价面板（plan-07；FEAT-0003 位置调整）：指数总览之后、走势图之前 */}
+          <MarketMetricsPanel />
 
           {!watchlistLoading && watchlist.length > 0 && (
             <>

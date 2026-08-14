@@ -154,56 +154,122 @@ adminTest.describe('plan-07：管理员首页市场量价面板', () => {
     await mockNormalDashboardPrerequisites(page)
   })
 
-  adminTest('TC-7.1 面板渲染于关键指数区之前，默认成交额柱图 + 最新日期（AC-04）', async ({
+  adminTest('TC-7.1 面板渲染于指数总览之后、走势图之前，双折线图 + 最新日期（AC-04 / FEAT-0003 AC-1/2）', async ({
     page,
   }) => {
     await installMarketMetricsMocks(page)
+
+    // FEAT-0003：共享 watchlist mock 返回空列表会让走势/估值/权重区块整体不渲染，
+    // 无法断言「面板在走势图之前」。此处覆写为非空（后注册的 route 优先），
+    // 并 mock 三个子请求防止 401 竞态重定向（与宿主稳定原则一致）。
+    const json = (body: unknown) => ({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    })
+    await page.route('**/api/v1/index-monitor/watchlist*', (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: { watchlist: [{ tsCode: '000300.SH', name: '沪深300' }] },
+        })
+      )
+    )
+    await page.route('**/api/v1/index-monitor/trend*', (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            series: [
+              {
+                tsCode: '000300.SH',
+                name: '沪深300',
+                points: [
+                  { tradeDate: '2026-08-12', close: 4000 },
+                  { tradeDate: '2026-08-13', close: 4010 },
+                ],
+              },
+            ],
+          },
+        })
+      )
+    )
+    await page.route('**/api/v1/index-monitor/valuation*', (route) =>
+      route.fulfill(json({ success: true, data: { hasData: false, points: [] } }))
+    )
+    await page.route('**/api/v1/index-monitor/weights*', (route) =>
+      route.fulfill(
+        json({ success: true, data: { weights: [], concentration: null } })
+      )
+    )
+
     await page.goto(DASHBOARD)
 
     // 面板可见
     await expect(page.getByTestId('market-metrics-panel')).toBeVisible()
 
-    // DOM 顺序：面板在「指数总览」标题之前
-    await expectPanelRelativeToHeading(page, { before: { text: '指数总览' } })
+    // 「多指数走势对比」由 watchlist SWR 异步渲染，先等它出现再断言顺序
+    await expect(
+      page.getByRole('heading', { name: '多指数走势对比' })
+    ).toBeVisible()
 
-    // 默认成交额柱图：单实例 ECharts 容器可见
-    await expect(page.getByTestId('market-metrics-chart')).toHaveCount(1)
-    await expect(page.getByTestId('market-metrics-chart')).toBeVisible()
+    // DOM 顺序（FEAT-0003 位置调整）：面板在「指数总览」标题之后、「多指数走势对比」之前
+    await expectPanelRelativeToHeading(page, {
+      after: { text: '指数总览' },
+      before: { text: '多指数走势对比' },
+    })
+
+    // 双折线图（FEAT-0003）：成交额/平均价各一容器；旧单图与指标切换按钮已移除
+    await expect(page.getByTestId('market-metrics-chart-amount')).toHaveCount(1)
+    await expect(page.getByTestId('market-metrics-chart-amount')).toBeVisible()
+    await expect(page.getByTestId('market-metrics-chart-price')).toHaveCount(1)
+    await expect(page.getByTestId('market-metrics-chart-price')).toBeVisible()
+    await expect(page.getByTestId('market-metrics-chart')).toHaveCount(0)
+    expect(
+      await page.getByTestId('market-metrics-metric-amountYuan').count()
+    ).toBe(0)
 
     // 最近结果日可见（L1 降级：展示最近成功结果及其日期，非今天）
     await expect(page.getByTestId('market-metrics-latest-date')).toBeVisible()
   })
 
-  adminTest('TC-7.3 三指标切换：成交额柱→成交量柱→平均价折线（AC-04）', async ({
+  adminTest('TC-7.3 双折线断言：左成交额 line / 右平均价 line，无 bar series（FEAT-0003 AC-2）', async ({
     page,
   }) => {
     await installMarketMetricsMocks(page)
     await page.goto(DASHBOARD)
     await expect(page.getByTestId('market-metrics-panel')).toBeVisible()
 
-    // 默认成交额 active
-    await expect(page.getByTestId('market-metrics-metric-amountYuan')).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
+    // 指标切换按钮组全部移除
+    for (const m of ['amountYuan', 'volumeShares', 'averagePrice']) {
+      expect(await page.getByTestId(`market-metrics-metric-${m}`).count()).toBe(0)
+    }
 
-    // 切成交量（柱图）
-    await page.getByTestId('market-metrics-metric-volumeShares').click()
-    await expect(page.getByTestId('market-metrics-chart')).toHaveCount(1)
-    await expect(
-      page.getByTestId('market-metrics-metric-volumeShares')
-    ).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByTestId('market-metrics-metric-amountYuan')).toHaveAttribute(
-      'aria-pressed',
-      'false'
-    )
+    // 经 __echartsInst__ 测试钩子读两图 option：series 均为 line、名称正确、无 bar。
+    // poll 到目标值为止（双图 dynamic 加载/首渲存在瞬时窗口，实例可能短暂未挂）
+    const readSeries = (testid: string) =>
+      page.evaluate((sel) => {
+        const el = document.querySelector(sel) as
+          | (HTMLDivElement & { __echartsInst__?: { getOption: () => unknown } })
+          | null
+        if (!el || !el.__echartsInst__) return null
+        const opt = el.__echartsInst__.getOption() as {
+          series: Array<{ name: string; type: string }>
+        }
+        return opt.series.map((s) => ({ name: s.name, type: s.type }))
+      }, `[data-testid="${testid}"]`)
 
-    // 切平均价（折线）
-    await page.getByTestId('market-metrics-metric-averagePrice').click()
-    await expect(page.getByTestId('market-metrics-chart')).toHaveCount(1)
-    await expect(
-      page.getByTestId('market-metrics-metric-averagePrice')
-    ).toHaveAttribute('aria-pressed', 'true')
+    await expect
+      .poll(() => readSeries('market-metrics-chart-amount'), {
+        message: '成交额图 echarts 实例应就绪且 series 为 line',
+      })
+      .toEqual([{ name: '成交额', type: 'line' }])
+
+    await expect
+      .poll(() => readSeries('market-metrics-chart-price'), {
+        message: '平均价图 echarts 实例应就绪且 series 为 line',
+      })
+      .toEqual([{ name: '平均价', type: 'line' }])
   })
 
   adminTest('TC-7.4 30/90/250 范围切换：发起对应 range 请求且无整页刷新（AC-05）', async ({
@@ -251,8 +317,9 @@ adminTest.describe('plan-07：管理员首页市场量价面板', () => {
 
     // 缺口提示可见
     await expect(page.getByTestId('market-metrics-missing-hint')).toBeVisible()
-    // 图表仍渲染（断线而非整体空）
-    await expect(page.getByTestId('market-metrics-chart')).toBeVisible()
+    // 图表仍渲染（断线而非整体空；FEAT-0003 双图）
+    await expect(page.getByTestId('market-metrics-chart-amount')).toBeVisible()
+    await expect(page.getByTestId('market-metrics-chart-price')).toBeVisible()
   })
 
   adminTest('TC-7.6 空态-管理员：显示「前往数据管理」链接', async ({ page }) => {
@@ -301,7 +368,7 @@ adminTest.describe('plan-07：管理员首页市场量价面板', () => {
       .toBe(overviewBeforeRetry)
 
     // 重试后图表恢复渲染
-    await expect(page.getByTestId('market-metrics-chart')).toBeVisible()
+    await expect(page.getByTestId('market-metrics-chart-amount')).toBeVisible()
   })
 })
 
@@ -313,6 +380,18 @@ normalTest.describe('plan-07：普通首页市场量价面板', () => {
   normalTest.beforeEach(async ({ page }) => {
     // 宿主页稳定：market-index / heatmap / rankings，避免 401 跳 /login
     await mockNormalDashboardPrerequisites(page)
+    // 宿主页稳定（17 期补充）：普通首页还挂有 MarginPanel，其 /margin/trend
+    // 请求未 mock 会 401 触发竞态重定向——mock 空数据保持页面稳定
+    await page.route('**/api/v1/margin/trend*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: { latest: null, points: [], range: 30, hasMissingDates: false },
+        }),
+      })
+    )
   })
 
   normalTest('TC-7.2 面板渲染于快捷入口后、市场强度之前（AC-04）', async ({ page }) => {
