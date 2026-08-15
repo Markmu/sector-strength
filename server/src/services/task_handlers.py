@@ -6,7 +6,7 @@
 
 import logging
 from datetime import date
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from enum import Enum
 
 from sqlalchemy import select
@@ -65,10 +65,10 @@ class TaskType(str, Enum):
     # 板块资金流即时快照同步任务（同花顺即时接口，行业 + 概念）
     SYNC_SECTOR_FUND_FLOW = "sync_sector_fund_flow"
 
-    # ETF 当日份额/净值同步任务（Tushare fund_share/fund_nav，第 14 期）
+    # ETF 当日份额/净值同步任务（Tushare fund_share/fund_nav）
     SYNC_ETF_DAILY = "sync_etf_daily"
 
-    # ETF 历史数据回填任务（复用 sync_etf_daily 同口径，按日期升序逐日回填，第 14 期）
+    # ETF 历史数据回填任务（复用 sync_etf_daily 同口径，按日期升序逐日回填）
     BACKFILL_ETF_HISTORY = "backfill_etf_history"
 
     # ETF 基础信息同步任务（Tushare fund_basic_etf，归类跟踪指数后 upsert etf_basic）
@@ -83,20 +83,19 @@ class TaskType(str, Enum):
     # 申万行业成分股当前快照同步任务（index_member_all is_new='Y'）
     SYNC_SW_MEMBERS = "sync_sw_members"
 
-    # 关键指数数据同步任务（第 15 期 plan-02）
+    # 关键指数数据同步任务
     SYNC_INDEX_BASIC = "sync_index_basic"
     BACKFILL_INDEX_HISTORY = "backfill_index_history"
     SYNC_INDEX_DAILY = "sync_index_daily"
 
-    # 全市场量价范围同步任务（第 16 期 plan-05；专属 advisory lock + fencing，见 plan-04）
+    # 全市场量价范围同步任务（专属 advisory lock + fencing）
     SYNC_MARKET_METRICS = "sync_market_metrics"
 
-    # 融资融券全市场范围同步任务（第 17 期 plan-04；专属 advisory lock + fencing，
-    # 复用 16 期 fencing 基础设施的第二个任务类型）
+    # 融资融券全市场范围同步任务（专属 advisory lock + fencing）
     SYNC_MARKET_MARGIN = "sync_market_margin"
 
 
-async def _make_progress_callback(manager: TaskManager, task_id: str):
+def _make_progress_callback(manager: TaskManager, task_id: str):
     """
     创建进度回调函数
 
@@ -112,6 +111,33 @@ async def _make_progress_callback(manager: TaskManager, task_id: str):
         await manager.log_message(task_id, "INFO", f"[{current}/{total}] {message}")
 
     return progress_callback
+
+
+def _parse_optional_date(value: Any, default: Optional[date] = None) -> Optional[date]:
+    """解析任务参数里的可选日期（'YYYY-MM-DD'），空值返回 default。"""
+    return date.fromisoformat(value) if value else default
+
+
+def _make_cancel_checker(manager: TaskManager, task_id: str):
+    """构造取消检查回调：直接查 status 标量列。
+
+    不能用 manager.get_task() —— 它返回的 ORM 对象会留在执行器 session 的
+    identity map 里（且 expire_on_commit=False），任务期间外部取消 API 用独立
+    session 写入的 cancelled 状态永远读不到，导致"取消后任务一直跑"。
+    """
+    async def _check_cancelled():
+        result = await manager.db.execute(
+            select(AsyncTask.status).where(AsyncTask.task_id == task_id)
+        )
+        return result.scalar_one_or_none() == "cancelled"
+
+    return _check_cancelled
+
+
+def _format_error_detail(e: Exception) -> str:
+    """异常消息 + 数据源 original_error 上下文（如有）。"""
+    original_error = getattr(e, "original_error", None)
+    return f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
 
 
 @TaskRegistry.register(TaskType.INIT_SECTORS)
@@ -137,7 +163,7 @@ async def init_sectors_task(
     sector_type = params.get("sector_type")
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     await manager.log_message(task_id, "INFO", f"Starting sector initialization (type: {sector_type or 'all'})")
@@ -181,7 +207,7 @@ async def init_stocks_task(
     service = DataInitService(manager.db)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     await manager.log_message(task_id, "INFO", "Starting stock initialization")
@@ -223,7 +249,7 @@ async def init_historical_data_task(
     service = DataInitService(manager.db)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     # 支持两种参数格式：新的 start_date/end_date 或旧的 days
@@ -291,7 +317,7 @@ async def init_sector_historical_data_task(
     service = DataInitService(manager.db)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     # 支持两种参数格式：新的 start_date/end_date 或旧的 days
@@ -301,7 +327,6 @@ async def init_sector_historical_data_task(
 
     if start_date_str and end_date_str:
         # 新格式：使用日期范围
-        from datetime import date, timedelta
         start_date = date.fromisoformat(start_date_str)
         end_date = date.fromisoformat(end_date_str)
 
@@ -362,13 +387,13 @@ async def backfill_by_date_task(
 
     # 解析参数
     target_date_str = params.get("target_date")
-    target_date = date.fromisoformat(target_date_str) if target_date_str else date.today()
+    target_date = _parse_optional_date(target_date_str, date.today())
     overwrite = params.get("overwrite", False)
     target_type = params.get("target_type")
     target_id = params.get("target_id")
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     await manager.log_message(
@@ -419,14 +444,14 @@ async def backfill_by_range_task(
     # 解析参数
     start_date_str = params.get("start_date")
     end_date_str = params.get("end_date")
-    start_date = date.fromisoformat(start_date_str) if start_date_str else date.today()
-    end_date = date.fromisoformat(end_date_str) if end_date_str else date.today()
+    start_date = _parse_optional_date(start_date_str, date.today())
+    end_date = _parse_optional_date(end_date_str, date.today())
     overwrite = params.get("overwrite", False)
     target_type = params.get("target_type")
     target_id = params.get("target_id")
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     await manager.log_message(
@@ -481,11 +506,11 @@ async def calculate_sector_ma_task(
     overwrite = params.get("overwrite", False)
 
     # 转换日期
-    start_date = date.fromisoformat(start_date_str) if start_date_str else None
-    end_date = date.fromisoformat(end_date_str) if end_date_str else None
+    start_date = _parse_optional_date(start_date_str)
+    end_date = _parse_optional_date(end_date_str)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     sector_desc = f"sector {sector_id}" if sector_id else "all sectors"
@@ -545,11 +570,11 @@ async def backfill_sector_ma_by_date_task(
 
     # 解析参数
     target_date_str = params.get("target_date")
-    target_date = date.fromisoformat(target_date_str) if target_date_str else date.today()
+    target_date = _parse_optional_date(target_date_str, date.today())
     overwrite = params.get("overwrite", False)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     await manager.log_message(
@@ -602,7 +627,7 @@ async def calculate_sector_ma_full_history_task(
     overwrite = params.get("overwrite", False)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     sector_desc = f"sector {sector_id}" if sector_id else "all sectors"
@@ -638,35 +663,7 @@ async def calculate_sector_ma_full_history_task(
         raise Exception(error_msg)
 
 
-# 导出任务注册表和注册的任务类型
-__all__ = [
-    "TaskRegistry",
-    "init_sectors_task",
-    "init_stocks_task",
-    "init_historical_data_task",
-    "init_sector_historical_data_task",
-    "backfill_by_date_task",
-    "backfill_by_range_task",
-    "calculate_sector_ma_task",
-    "backfill_sector_ma_by_date_task",
-    "calculate_sector_ma_full_history_task",
-    "calculate_sector_strength_by_date_task",
-    "calculate_sector_strength_by_range_task",
-    "calculate_sector_strength_full_history_task",
-    "backfill_history_task",
-    "backfill_ma_task",
-    "backfill_strength_task",
-    "sync_fund_basic_task",
-    "sync_fund_portfolio_task",
-    "sync_top10_holders_task",
-    "sync_sector_fund_flow_task",
-    "sync_etf_daily_task",
-    "backfill_etf_history_task",
-    "sync_etf_basic_task",
-    "sync_index_basic_task",
-    "backfill_index_history_task",
-    "sync_index_daily_task",
-]
+# 导出任务注册表；已注册的 handler 清单在文件末尾从注册表反向生成
 
 
 # ============== 板块强度计算任务 ==============
@@ -693,12 +690,12 @@ async def calculate_sector_strength_by_date_task(
 
     # 解析参数
     target_date_str = params.get("target_date")
-    target_date = date.fromisoformat(target_date_str) if target_date_str else date.today()
+    target_date = _parse_optional_date(target_date_str, date.today())
     sector_id = params.get("sector_id")
     overwrite = params.get("overwrite", False)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     sector_desc = f"sector {sector_id}" if sector_id else "all sectors"
@@ -758,13 +755,13 @@ async def calculate_sector_strength_by_range_task(
     # 解析参数
     start_date_str = params.get("start_date")
     end_date_str = params.get("end_date")
-    start_date = date.fromisoformat(start_date_str) if start_date_str else None
-    end_date = date.fromisoformat(end_date_str) if end_date_str else None
+    start_date = _parse_optional_date(start_date_str)
+    end_date = _parse_optional_date(end_date_str)
     sector_id = params.get("sector_id")
     overwrite = params.get("overwrite", False)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     sector_desc = f"sector {sector_id}" if sector_id else "all sectors"
@@ -828,7 +825,7 @@ async def calculate_sector_strength_full_history_task(
     overwrite = params.get("overwrite", False)
 
     # 设置进度回调
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     sector_desc = f"sector {sector_id}" if sector_id else "all sectors"
@@ -942,7 +939,7 @@ async def backfill_strength_task(
     start_date = date.fromisoformat(params["start_date"])
     end_date = date.fromisoformat(params["end_date"])
 
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     await manager.log_message(
@@ -995,7 +992,7 @@ async def sync_fund_basic_task(
 
     service = FundDataInitService(manager.db)
 
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     await manager.log_message(task_id, "INFO", "Starting fund basic info sync")
@@ -1045,20 +1042,10 @@ async def sync_fund_portfolio_task(
 
     service = FundDataInitService(manager.db)
 
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
-    # 设置取消检查：直接查 status 标量列。
-    # 注意：不能用 manager.get_task() —— 它返回的 ORM 对象会留在执行器 session 的
-    # identity map 里（且 expire_on_commit=False），任务期间外部取消 API 用独立
-    # session 写入的 cancelled 状态永远读不到，导致"取消后任务一直跑"。
-    async def _check_cancelled():
-        result = await manager.db.execute(
-            select(AsyncTask.status).where(AsyncTask.task_id == task_id)
-        )
-        return result.scalar_one_or_none() == "cancelled"
-
-    service.set_cancel_check(_check_cancelled)
+    service.set_cancel_check(_make_cancel_checker(manager, task_id))
 
     await manager.log_message(
         task_id, "INFO", f"Starting fund portfolio sync (period={period})"
@@ -1085,8 +1072,7 @@ async def sync_fund_portfolio_task(
             msg += f", failed_funds_count={len(failed_funds)}"
         await manager.log_message(task_id, "INFO", msg)
     except Exception as e:
-        original_error = getattr(e, "original_error", None)
-        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        detail = _format_error_detail(e)
         error_msg = f"Fund portfolio sync failed (period={period}): {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
@@ -1120,21 +1106,11 @@ async def sync_top10_holders_task(
 
     service = Top10HolderDataInitService(manager.db)
 
-    # 设置进度回调（await 异步工厂函数）
-    callback = await _make_progress_callback(manager, task_id)
+    # 设置进度回调
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
-    # 设置取消检查：直接查 status 标量列。
-    # 注意：不能用 manager.get_task() —— 它返回的 ORM 对象会留在执行器 session 的
-    # identity map 里（且 expire_on_commit=False），任务期间外部取消 API 用独立
-    # session 写入的 cancelled 状态永远读不到，导致"取消后任务一直跑"。
-    async def _check_cancelled():
-        result = await manager.db.execute(
-            select(AsyncTask.status).where(AsyncTask.task_id == task_id)
-        )
-        return result.scalar_one_or_none() == "cancelled"
-
-    service.set_cancel_check(_check_cancelled)
+    service.set_cancel_check(_make_cancel_checker(manager, task_id))
 
     await manager.log_message(
         task_id, "INFO", f"Starting stock top10 holders sync (period={period})"
@@ -1154,8 +1130,7 @@ async def sync_top10_holders_task(
             msg += f", failed_stocks_count={len(failed_stocks)}"
         await manager.log_message(task_id, "INFO", msg)
     except Exception as e:
-        original_error = getattr(e, "original_error", None)
-        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        detail = _format_error_detail(e)
         error_msg = f"Stock top10 holders sync failed (period={period}): {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
@@ -1189,21 +1164,11 @@ async def sync_broker_recommend_task(
 
     service = BrokerRecommendDataInitService(manager.db)
 
-    # 设置进度回调（await 异步工厂函数）
-    callback = await _make_progress_callback(manager, task_id)
+    # 设置进度回调
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
-    # 设置取消检查：直接查 status 标量列。
-    # 注意：不能用 manager.get_task() —— 它返回的 ORM 对象会留在执行器 session 的
-    # identity map 里（且 expire_on_commit=False），任务期间外部取消 API 用独立
-    # session 写入的 cancelled 状态永远读不到，导致"取消后任务一直跑"。
-    async def _check_cancelled():
-        result = await manager.db.execute(
-            select(AsyncTask.status).where(AsyncTask.task_id == task_id)
-        )
-        return result.scalar_one_or_none() == "cancelled"
-
-    service.set_cancel_check(_check_cancelled)
+    service.set_cancel_check(_make_cancel_checker(manager, task_id))
 
     await manager.log_message(
         task_id, "INFO", f"Starting broker recommend sync (month={month})"
@@ -1219,8 +1184,7 @@ async def sync_broker_recommend_task(
         )
         await manager.log_message(task_id, "INFO", msg)
     except Exception as e:
-        original_error = getattr(e, "original_error", None)
-        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        detail = _format_error_detail(e)
         error_msg = f"Broker recommend sync failed (month={month}): {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
@@ -1260,8 +1224,7 @@ async def sync_sector_fund_flow_task(
             f"Sector fund flow snapshot sync completed: {count} rows upserted"
         )
     except Exception as e:
-        original_error = getattr(e, "original_error", None)
-        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        detail = _format_error_detail(e)
         error_msg = f"Sector fund flow sync failed: {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
@@ -1301,8 +1264,7 @@ async def sync_etf_daily_task(
             f"ETF daily share/nav sync completed: {count} rows upserted"
         )
     except Exception as e:
-        original_error = getattr(e, "original_error", None)
-        detail = f"{e}" + (f" | 原始错误: {original_error}" if original_error else "")
+        detail = _format_error_detail(e)
         error_msg = f"ETF daily sync failed: {detail}"
         await manager.log_message(task_id, "ERROR", error_msg)
         raise
@@ -1342,7 +1304,7 @@ async def backfill_etf_history_task(
 
     # 设置进度回调（仿 sync_etf_daily_task / init_sectors_task 范式）
     service = EtfDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     try:
@@ -1386,7 +1348,7 @@ async def sync_etf_basic_task(
     )
 
     service = EtfDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     try:
@@ -1441,7 +1403,7 @@ async def sync_limit_data_task(
     trade_date = params.get("trade_date")
 
     service = LimitDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     # 分支一：日期范围同步（start_date + end_date 都给）
@@ -1536,7 +1498,7 @@ async def sync_sw_classify_task(
     )
 
     service = SwSectorDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     try:
@@ -1579,7 +1541,7 @@ async def sync_sw_members_task(
     )
 
     service = SwSectorDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     try:
@@ -1623,7 +1585,7 @@ async def sync_index_basic_task(
     )
 
     service = IndexDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     try:
@@ -1674,7 +1636,7 @@ async def backfill_index_history_task(
     )
 
     service = IndexDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     try:
@@ -1725,7 +1687,7 @@ async def sync_index_daily_task(
     )
 
     service = IndexDataInitService(manager.db)
-    callback = await _make_progress_callback(manager, task_id)
+    callback = _make_progress_callback(manager, task_id)
     service.set_progress_callback(callback)
 
     try:
@@ -2340,3 +2302,10 @@ async def sync_market_margin_task(
             f"sync_market_margin 范围同步存在失败日: success={success_count} "
             f"failed={failed_count}"
         )
+
+
+# 从注册表反向生成导出清单：新增任务类型自动纳入，避免手工维护漂移
+# （此前字面量清单曾漏掉 6 个后加的 handler）。
+__all__ = ["TaskRegistry"] + sorted(
+    handler.__name__ for handler in TaskRegistry._handlers.values()
+)

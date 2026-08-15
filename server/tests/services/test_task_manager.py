@@ -220,6 +220,30 @@ async def test_cancel_pending_immediate_cancelled(db_session):
     assert fresh.cancelled_at is not None
 
 
+@pytest.mark.asyncio
+async def test_cancel_task_does_not_overwrite_terminal_state(db_session):
+    """回归（评审 B5）：cancel_task 是条件更新，已终态任务不可被覆盖成 cancelled。
+
+    旧实现"读-判-写"三步在读取后任务可被并发置为 completed，旧代码仍会
+    覆盖写 cancelled；条件 UPDATE 的 status 谓词在写入时二次校验。
+    """
+    task = await _make_mm_task(db_session, status="completed", token="owner-1")
+    manager = TaskManager(db_session)
+
+    assert await manager.cancel_task(task.task_id) is False
+
+    fresh = await manager.get_task(task.task_id)
+    assert fresh.status == "completed"
+    assert fresh.cancelled_at is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_task_missing_returns_false(db_session):
+    """任务不存在时 cancel_task 返回 False（不抛错）。"""
+    manager = TaskManager(db_session)
+    assert await manager.cancel_task("task_does_not_exist") is False
+
+
 # ---------------------------------------------------------------------------
 # 三个 finalize_with_result：原子终态 + token fencing
 # ---------------------------------------------------------------------------

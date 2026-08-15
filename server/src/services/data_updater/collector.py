@@ -32,13 +32,6 @@ from src.services.market_metrics_service import (
 )
 from src.services.cache.cache_manager import get_cache_manager
 
-try:
-    from src.services.calculator_updater.orchestrator import CalculationOrchestrator
-except Exception:  # pragma: no cover - compatibility fallback
-    class CalculationOrchestrator:  # type: ignore
-        async def run_all_calculations(self):
-            return 0
-
 logger = logging.getLogger(__name__)
 
 # A 股交易时区（同花顺即时资金流口径即北京交易日）。collector 用此时区确定
@@ -71,7 +64,6 @@ async def get_session():
 class DataCollector:
 
     def __init__(self):
-        self._trading_calendar = TradingCalendar()
         self._data_source = DataSourceFactory.create()
         # plan-05：lifecycle 快照与当日，由 run_daily_update 在守卫/preflight 后填充，
         # 供 _update_market_data（当日在市过滤）与 _update_market_metrics 复用。
@@ -98,6 +90,8 @@ class DataCollector:
             'stocks_updated': 0,
             'market_data_updated': 0,
             'market_metrics_updated': 0,
+            # 强度/均线计算由任务体系（task_handlers calculate_*）执行，日更链
+            # 不再调用旧的随机数脚手架；字段保留以兼容 DataUpdateLog schema
             'calculations_performed': 0,
             'cache_cleared': 0,
             'etf_daily_updated': 0,
@@ -148,13 +142,10 @@ class DataCollector:
                 results['errors'].append(f"market_metrics: {e}")
                 results['market_metrics_updated'] = 0
 
-            # 6. 执行计算
-            results['calculations_performed'] = await self._run_calculations()
-
-            # 7. 清除缓存
+            # 6. 清除缓存
             results['cache_cleared'] = await self._clear_cache()
 
-            # 8. 采集板块资金流即时快照（行业 + 概念）
+            # 7. 采集板块资金流即时快照（行业 + 概念）
             try:
                 await self._update_sector_fund_flow()
             except Exception as e:
@@ -162,7 +153,7 @@ class DataCollector:
                 logger.error(f"[数据更新] 板块资金流采集失败: {e}")
                 results['errors'].append(f"sector_fund_flow: {e}")
 
-            # 9. ETF 当日份额/净值快照（第 14 期）：先同步基础信息归类，再采集当日份额
+            # 8. ETF 当日份额/净值快照（第 14 期）：先同步基础信息归类，再采集当日份额
             try:
                 results['etf_daily_updated'] = await self._update_etf_daily()
             except Exception as e:
@@ -170,7 +161,7 @@ class DataCollector:
                 logger.error(f"[数据更新] ETF 当日采集失败: {e}")
                 results['errors'].append(f"etf_daily: {e}")
 
-            # 10. 关键指数当日行情/估值/权重采集（第 15 期）：调用 IndexDataInitService.sync_index_daily
+            # 9. 关键指数当日行情/估值/权重采集（第 15 期）：调用 IndexDataInitService.sync_index_daily
             try:
                 results['index_daily_updated'] = await self._update_index_daily()
             except Exception as e:
@@ -199,10 +190,6 @@ class DataCollector:
             await self._save_update_log(log_entry)
 
         return results
-
-    async def _is_trading_day(self, check_date: Optional[date] = None) -> tuple[bool, Optional[str]]:
-        """检查是否为交易日"""
-        return await self._trading_calendar.is_trading_day(check_date)
 
     async def _update_sectors(self) -> int:
         """更新板块数据到数据库"""
@@ -600,19 +587,6 @@ class DataCollector:
             f"daily {daily_records}"
         )
         return daily_records
-
-    async def _run_calculations(self) -> int:
-        """执行强度计算"""
-        logger.info("[数据更新] 开始执行强度计算")
-
-        try:
-            orchestrator = CalculationOrchestrator()
-            count = await orchestrator.run_all_calculations()
-            logger.info(f"[数据更新] 强度计算完成: {count} 个实体")
-            return count
-        except Exception as e:
-            logger.error(f"[数据更新] 强度计算失败: {e}")
-            return 0
 
     async def _clear_cache(self):
         """清除缓存"""

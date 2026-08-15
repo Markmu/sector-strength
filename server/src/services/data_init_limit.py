@@ -114,13 +114,36 @@ class LimitDataInitService:
 
         await self._update_progress(0, 3, f"开始同步涨停专题 (trade_date={trade_date})")
 
+        try:
+            return await self._sync_limit_tables(
+                tushare, target_date, target_date_str, result
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # 删旧插新跨三次 delete/add，中途失败必须回滚，否则半途的
+            # delete 会滞留在事务里，随调用方（如下一交易日）的 commit 误提交
+            await self.session.rollback()
+            raise
+
+    async def _sync_limit_tables(
+        self,
+        tushare,
+        target_date: date,
+        target_date_str: str,
+        result: dict,
+    ) -> dict:
+        """按 limit_list_d → limit_step → limit_cpt_list 顺序删旧插新并提交。
+
+        失败时由调用方 sync_limit_data 统一回滚。
+        """
         # 1. limit_list_d — 涨跌停/炸板个股明细
         await self._check_cancelled()
         await self._update_progress(1, 3, "正在拉取涨跌停明细 (limit_list_d)...")
         try:
             ll_records = tushare.get_limit_list_d(target_date_str)
         except Exception as e:
-            logger.error(f"拉取 limit_list_d 失败 (trade_date={trade_date}): {e}")
+            logger.error(f"拉取 limit_list_d 失败 (trade_date={target_date_str}): {e}")
             raise
 
         # 删旧 + 批量插新
@@ -159,7 +182,7 @@ class LimitDataInitService:
         try:
             ls_records = tushare.get_limit_step(target_date_str)
         except Exception as e:
-            logger.error(f"拉取 limit_step 失败 (trade_date={trade_date}): {e}")
+            logger.error(f"拉取 limit_step 失败 (trade_date={target_date_str}): {e}")
             raise
 
         await self.session.execute(
@@ -188,7 +211,7 @@ class LimitDataInitService:
             lc_records = tushare.get_limit_cpt_list(target_date_str)
         except Exception as e:
             logger.error(
-                f"拉取 limit_cpt_list 失败 (trade_date={trade_date}): {e}"
+                f"拉取 limit_cpt_list 失败 (trade_date={target_date_str}): {e}"
             )
             raise
 
@@ -219,7 +242,7 @@ class LimitDataInitService:
         await self.session.commit()
 
         logger.info(
-            f"[Limit] 涨停专题同步完成 (trade_date={trade_date}): "
+            f"[Limit] 涨停专题同步完成 (trade_date={target_date_str}): "
             f"limit_list_d={ll_count}, limit_step={ls_count}, "
             f"limit_cpt_list={lc_count}"
         )
@@ -326,6 +349,9 @@ class LimitDataInitService:
                     raise
                 except Exception as e:
                     failed_days += 1
+                    # 防御性回滚：即使 sync_limit_data 内部已回滚，也确保
+                    # 失败日的任何残留状态不进入下一日的事务
+                    await self.session.rollback()
                     logger.warning(
                         f"[Limit] 范围同步 {td_str} 失败，跳过该日: {e}"
                     )

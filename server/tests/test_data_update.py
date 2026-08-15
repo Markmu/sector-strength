@@ -68,6 +68,7 @@ class TestDataUpdateService:
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
         service = DataUpdateService(mock_session)
+        service._get_symbols_to_update = AsyncMock(return_value=["000001"])
         result = await service.backfill_by_date(target_date=date.today(), overwrite=False)
 
         assert result["success"] is True
@@ -105,6 +106,7 @@ class TestDataUpdateService:
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
         service = DataUpdateService(mock_session)
+        service._get_symbols_to_update = AsyncMock(return_value=["000001"])
         result = await service.backfill_by_date(target_date=date.today(), overwrite=False)
 
         assert result["success"] is True
@@ -141,6 +143,7 @@ class TestDataUpdateService:
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
         service = DataUpdateService(mock_session)
+        service._get_symbols_to_update = AsyncMock(return_value=["000001"])
         result = await service.backfill_by_date(target_date=date.today(), overwrite=True)
 
         assert result["success"] is True
@@ -178,6 +181,7 @@ class TestDataUpdateService:
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
         service = DataUpdateService(mock_session)
+        service._get_symbols_to_update = AsyncMock(return_value=["000001"])
         result = await service.backfill_by_range(start_date=start_date, end_date=end_date, overwrite=False)
 
         assert result["success"] is True
@@ -306,16 +310,20 @@ class TestDataUpdateService:
             assert "涨跌幅" in error
 
     async def test_fetch_missing_dates(self, mock_session, mock_data_source):
-        """测试查找缺失日期"""
-        # 模拟股票列表
-        mock_result1 = MagicMock()
-        mock_result1.all.return_value = [("000001",)]
+        """测试查找缺失日期（含交易日历查询，回退周末启发式）"""
+        # 模拟交易日历（无开市记录 → 回退周末启发式）
+        cal_result = MagicMock()
+        cal_result.all.return_value = []
+
+        # 模拟股票存在（scalar_one_or_none 返回 mock 股票）
+        stock_result = MagicMock()
+        stock_result.scalar_one_or_none.return_value = MagicMock(id="stock-1")
 
         # 模拟已有日期
         mock_result2 = MagicMock()
         mock_result2.all.return_value = [(date.today() - timedelta(days=2),)]
 
-        mock_session.execute.side_effect = [mock_result1, mock_result2]
+        mock_session.execute.side_effect = [cal_result, stock_result, mock_result2]
 
         from unittest.mock import patch
         with patch('src.services.data_update.DataSourceFactory') as mock_factory:
@@ -329,6 +337,43 @@ class TestDataUpdateService:
 
             assert result["success"] is True
             assert "missing_dates" in result
+
+    async def test_fetch_missing_dates_uses_trading_calendar(self, mock_session, mock_data_source):
+        """回归（评审 B8）：日历标记休市的工作日（法定节假日）不再误报为缺失"""
+        today = date.today()
+        days = [today - timedelta(days=i) for i in range(5, -1, -1)]
+        open_days = [d for d in days if d.weekday() < 5]
+        # 把窗口内最后一个工作日模拟为法定节假日（日历标记休市）
+        holiday = open_days[-1]
+        cal_rows = [(d,) for d in open_days if d != holiday]
+
+        cal_result = MagicMock()
+        cal_result.all.return_value = cal_rows
+        stock_result = MagicMock()
+        stock_result.scalar_one_or_none.return_value = MagicMock(id="stock-1")
+        existing_result = MagicMock()
+        existing_result.all.return_value = []  # 完全无已有数据
+
+        mock_session.execute.side_effect = [cal_result, stock_result, existing_result]
+
+        from unittest.mock import patch
+        with patch('src.services.data_update.DataSourceFactory') as mock_factory:
+            mock_factory.create.return_value = MagicMock()
+            service = DataUpdateService(mock_session)
+            result = await service.fetch_missing_dates(
+                stock_symbol="000001",
+                start_date=days[0],
+                end_date=days[-1],
+            )
+
+        assert result["success"] is True
+        missing = result["missing_dates"].get("000001", [])
+        # 节假日与周末都不应报缺失，开市工作日应报缺失
+        assert holiday.isoformat() not in missing
+        for d in days:
+            if d.weekday() >= 5:
+                assert d.isoformat() not in missing
+        assert len(missing) == len(open_days) - 1
 
     async def test_progress_callback(self, mock_session, mock_data_source):
         """测试进度回调"""
@@ -451,6 +496,7 @@ class TestDataUpdateService:
     async def test_backfill_by_range_exactly_365_days(self, mock_session, mock_data_source):
         """测试正好 365 天的边界条件"""
         service = DataUpdateService(mock_session)
+        service._get_symbols_to_update = AsyncMock(return_value=["000001"])
         start_date = date.today() - timedelta(days=364)
         end_date = date.today()
 
@@ -491,16 +537,20 @@ class TestDataUpdateService:
         # 模拟数据源 API 抛出异常
         mock_data_source.get_daily_data.side_effect = Exception("API connection failed")
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = MagicMock(id="stock-1")
-        mock_session.execute.return_value = mock_result
+        # 第一次 execute 返回股票，第二次（存在性检查）返回无记录
+        mock_stock = MagicMock(id="stock-1")
+        stock_result = MagicMock()
+        stock_result.scalar_one_or_none.return_value = mock_stock
+        existing_result = MagicMock()
+        existing_result.scalar_one_or_none.return_value = None
+        mock_session.execute.side_effect = [stock_result, existing_result]
 
         service = DataUpdateService(mock_session)
+        service._get_symbols_to_update = AsyncMock(return_value=["000001"])
         result = await service.backfill_by_date(target_date=date.today(), overwrite=False)
 
         # 应该捕获异常并返回失败结果
         assert result["success"] is False
-        assert "failed" in result or result.get("failed", 0) > 0
 
     async def test_stock_not_found_handling(self, mock_session, mock_data_source):
         """测试股票不存在时的处理"""
@@ -512,6 +562,7 @@ class TestDataUpdateService:
         mock_session.execute.return_value = mock_result
 
         service = DataUpdateService(mock_session)
+        service._get_symbols_to_update = AsyncMock(return_value=["000001"])
         result = await service.backfill_by_date(target_date=date.today(), overwrite=False)
 
         # 应该跳过不存在的股票

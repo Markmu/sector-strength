@@ -16,20 +16,21 @@ import json
 import logging
 from datetime import datetime, timezone, date
 from typing import Optional, Dict, Any, List
-from sqlalchemy import select, update, and_, func, text
+from sqlalchemy import select, update, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.models.async_task import AsyncTask, AsyncTaskParam, AsyncTaskLog
+from src.services.task_fence import FENCED_TASK_TYPES, first_stop_cause
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # plan-04 常量（架构 §6.2.5 / §7.4 / line 148）
 # ---------------------------------------------------------------------------
-# 保留任务类型：通用 POST /api/v1/admin/tasks 必须拒绝，专用入口（plan-05）调用
-# create_exclusive_task 创建。
-RESERVED_TASK_TYPES = {"sync_market_metrics", "sync_market_margin"}
+# 保留任务类型：通用 POST /api/v1/admin/tasks 必须拒绝，专用入口调用
+# create_exclusive_task 创建。与 fenced 集合同源（task_fence 唯一定义）。
+RESERVED_TASK_TYPES = FENCED_TASK_TYPES
 
 # 同类创建互斥用 PostgreSQL advisory lock key（事务级）。
 # 设计澄清：架构 line 148 明确“事务级 lock 保证同类创建原子性，专属会话级 lock
@@ -53,8 +54,8 @@ MARGIN_OWNER_LOCK_KEY = 9001004
 _MARKET_METRICS_TYPE = "sync_market_metrics"
 _MARGIN_TYPE = "sync_market_margin"
 
-# 走 fencing 路径的任务类型集合（与 task_fence.FENCED_TASK_TYPES 对齐）。
-_FENCED_TASK_TYPES = {_MARKET_METRICS_TYPE, _MARGIN_TYPE}
+# 走 fencing 路径的任务类型集合（task_fence 唯一定义源，此处直接复用）。
+_FENCED_TASK_TYPES = FENCED_TASK_TYPES
 
 # create_exclusive_task 的创建互斥锁 key 按 task_type 解析（缺省回落
 # MARKET_METRICS_LOCK_KEY，保持既有行为不变）。
@@ -172,8 +173,11 @@ class TaskManager:
         return param_dict
 
     async def cancel_task(self, task_id: str) -> bool:
-        """
-        取消任务
+        """立即取消任务（pending/running → cancelled）。
+
+        单条条件 UPDATE 避免"读-判-写"竞态：与 complete_task 并发时不会
+        把已终态的任务覆盖成 cancelled；任务不存在或已终态时 rowcount 为 0
+        返回 False。
 
         Args:
             task_id: 任务ID
@@ -181,17 +185,20 @@ class TaskManager:
         Returns:
             是否成功取消
         """
-        task = await self.get_task(task_id)
-        if not task:
-            return False
-
-        # 只能取消 pending 或 running 状态的任务
-        if task.status not in ["pending", "running"]:
-            return False
-
-        task.status = "cancelled"
-        task.cancelled_at = datetime.now(timezone.utc)
+        result = await self.db.execute(
+            update(AsyncTask)
+            .where(
+                AsyncTask.task_id == task_id,
+                AsyncTask.status.in_(["pending", "running"]),
+            )
+            .values(
+                status="cancelled",
+                cancelled_at=datetime.now(timezone.utc),
+            )
+        )
         await self.db.commit()
+        if result.rowcount == 0:
+            return False
 
         await self._log_message(
             task_id,
@@ -309,8 +316,6 @@ class TaskManager:
         Returns:
             是否成功更新
         """
-        from sqlalchemy import func
-
         result = await self.db.execute(
             update(AsyncTask)
             .where(AsyncTask.task_id == task_id)
@@ -464,8 +469,6 @@ class TaskManager:
         Returns:
             任务数量
         """
-        from sqlalchemy import func
-
         query = select(func.count(AsyncTask.id))
 
         if status:
@@ -498,8 +501,6 @@ class TaskManager:
 
     async def get_running_tasks_count(self) -> int:
         """获取正在运行的任务数量"""
-        from sqlalchemy import func
-
         result = await self.db.execute(
             select(func.count(AsyncTask.id))
             .where(AsyncTask.status == "running")
@@ -849,8 +850,9 @@ class TaskManager:
         timeout_at = task.timeout_requested_at
         double_mark = cancel_at is not None and timeout_at is not None
         double_mark_branch: Optional[str] = None
+        branch = first_stop_cause(cancel_at, timeout_at)
         if double_mark:
-            # 不变量破坏：critical 告警，按较早数据库时间选首因（同刻 cancel 优先）。
+            # 不变量破坏：critical 告警，首因判定见 task_fence.first_stop_cause
             logger.critical(
                 "INVARIANT BROKEN: task %s has both cancel_requested_at=%s and "
                 "timeout_requested_at=%s; choosing earlier (cancel wins ties)",
@@ -858,13 +860,8 @@ class TaskManager:
                 cancel_at,
                 timeout_at,
             )
-            branch = "cancel" if cancel_at <= timeout_at else "timeout"
             double_mark_branch = branch
-        elif cancel_at is not None:
-            branch = "cancel"
-        elif timeout_at is not None:
-            branch = "timeout"
-        else:
+        elif branch is None:
             branch = "restarted"
 
         now = datetime.now(timezone.utc)

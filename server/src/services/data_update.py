@@ -10,7 +10,6 @@ import inspect
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, Callable, List
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, Mock
 
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +20,7 @@ from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
 from src.models.stock_daily_market_data import StockDailyMarketData
 from src.models.update_history import UpdateHistory
+from src.models.trading_calendar_day import TradingCalendarDay
 from src.services.data_acquisition import DataSourceFactory
 from src.services.data_acquisition.models import A_STOCK_EXCHANGES, DailyQuote
 
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _safe_nested_tx(session: AsyncSession):
-    """Use nested transaction when available; fallback to no-op for AsyncMock tests."""
+    """使用 savepoint 包裹嵌套写（session 不支持 begin_nested 时退化为直通）。"""
     begin_nested = getattr(session, "begin_nested", None)
     if begin_nested is None:
         yield
@@ -164,18 +164,9 @@ class DataUpdateService:
 
         try:
             # 获取需要更新的股票列表
-            if (
-                target_type is None
-                and target_id is None
-                and isinstance(self.session, AsyncMock)
-                and not isinstance(self._get_symbols_to_update, Mock)
-            ):
-                # 兼容旧单元测试：AsyncMock 会话默认使用示例代码，避免额外 execute 消耗 side_effect。
+            symbols = await self._get_symbols_to_update(target_type, target_id)
+            if not symbols and target_type is None and target_id is None:
                 symbols = ["000001"]
-            else:
-                symbols = await self._get_symbols_to_update(target_type, target_id)
-                if not symbols and target_type is None and target_id is None:
-                    symbols = ["000001"]
             self._check_cancelled()
 
             if not symbols:
@@ -217,8 +208,6 @@ class DataUpdateService:
                                 )
                             )
                             existing_record = existing.scalar_one_or_none()
-                            if existing_record is stock:
-                                existing_record = None
                             if existing_record:
                                 skipped += 1
                                 continue
@@ -346,17 +335,9 @@ class DataUpdateService:
         logger.info(f"开始按时间段补齐数据: {start_date} 至 {end_date}, 共 {days} 天")
 
         try:
-            if (
-                target_type is None
-                and target_id is None
-                and isinstance(self.session, AsyncMock)
-                and not isinstance(self._get_symbols_to_update, Mock)
-            ):
+            symbols = await self._get_symbols_to_update(target_type, target_id)
+            if not symbols and target_type is None and target_id is None:
                 symbols = ["000001"]
-            else:
-                symbols = await self._get_symbols_to_update(target_type, target_id)
-                if not symbols and target_type is None and target_id is None:
-                    symbols = ["000001"]
             self._check_cancelled()
 
             if not symbols:
@@ -511,6 +492,24 @@ class DataUpdateService:
                 result = await self.session.execute(select(Stock.symbol))
                 symbols = [row[0] for row in result.all()]
 
+            # 交易日口径与全系统统一：读 TradingCalendarDay 表。表内该范围
+            # 无记录时回退"跳过周末"启发式并告警，避免把节假日误报为缺失
+            cal_result = await self.session.execute(
+                select(TradingCalendarDay.cal_date).where(
+                    TradingCalendarDay.cal_date >= start_date,
+                    TradingCalendarDay.cal_date <= end_date,
+                    TradingCalendarDay.is_open.is_(True),
+                )
+            )
+            open_dates = {row[0] for row in cal_result.all()}
+            if not open_dates:
+                logger.warning(
+                    "[数据更新] 交易日历表在 %s ~ %s 无开市记录，"
+                    "fetch_missing_dates 回退周末启发式（法定节假日会误报）",
+                    start_date,
+                    end_date,
+                )
+
             missing_dates = {}
 
             for symbol in symbols:
@@ -533,14 +532,16 @@ class DataUpdateService:
                 )
                 existing_dates = {row[0] for row in result.all()}
 
-                # 计算缺失日期
+                # 计算缺失日期（仅在交易日上报缺失）
                 current = start_date
                 symbol_missing = []
                 while current <= end_date:
-                    # 跳过周末
-                    if current.weekday() < 5:  # 0-4 是周一到周五
-                        if current not in existing_dates:
-                            symbol_missing.append(current)
+                    if open_dates:
+                        is_trading_day = current in open_dates
+                    else:
+                        is_trading_day = current.weekday() < 5  # 回退：跳过周末
+                    if is_trading_day and current not in existing_dates:
+                        symbol_missing.append(current)
                     current += timedelta(days=1)
 
                 if symbol_missing:

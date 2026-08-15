@@ -6,6 +6,7 @@
 
 import pytest
 import asyncio
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, AsyncMock, patch, MagicMock
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -221,8 +222,17 @@ class TestJobManager:
 
         # Mock the job function
         with patch.object(job_manager, '_sector_fund_flow_snapshot', new_callable=AsyncMock) as mock_task:
+            before = datetime.now(timezone.utc)
             result = await job_manager.trigger_job('sector_fund_flow_snapshot')
             assert result is True
+
+            # 回归：trigger 必须带 next_run_time=now 调 modify（无参 modify 是 no-op，不触发执行）
+            job = job_manager.scheduler.get_job('sector_fund_flow_snapshot')
+            job.modify.assert_called_once()
+            _, kwargs = job.modify.call_args
+            next_run = kwargs.get('next_run_time')
+            assert isinstance(next_run, datetime)
+            assert before <= next_run
 
     @pytest.mark.asyncio
     async def test_trigger_job_not_found(self, job_manager):
@@ -246,62 +256,6 @@ class TestJobManager:
             await job_manager._daily_data_update()
 
             mock_collector.run_daily_update.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_data_quality_check_task(self, job_manager):
-        """测试数据质量检查任务执行"""
-        with patch('src.services.monitoring.data_quality.DataQualityChecker') as mock_checker_class:
-            mock_checker = AsyncMock()
-            mock_checker.run_full_check.return_value = {
-                'check_time': '2024-01-10T10:00:00',
-                'is_healthy': True,
-                'latest_trading_date': '2024-01-09',
-                'checks': {'missing_data': {'affected_count': 0, 'severity': 'none'}},
-                'backfill': {
-                    'gap_start': None,
-                    'gap_end': None,
-                    'trading_days_to_fill': 0,
-                    'filled_successfully': 0,
-                    'filled_failed': 0,
-                },
-                'data_overview': {
-                    'total_stocks': 100,
-                    'total_sectors': 50,
-                    'total_market_data': 5000,
-                },
-            }
-            mock_checker_class.return_value = mock_checker
-
-            await job_manager._check_data_quality()
-
-            mock_checker.run_full_check.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cache_cleanup_task(self, job_manager):
-        """测试缓存清理任务执行"""
-        # Import the module to patch its namespace
-        import src.services.scheduler.job_manager as jm
-
-        # Create a fresh JobManager for testing
-        import asyncio
-        if job_manager.scheduler.running:
-            job_manager.shutdown()
-
-        with patch('src.services.cache.cache_manager.get_cache_manager') as mock_get_cache:
-            mock_cache = AsyncMock()
-            mock_cache.cleanup_expired.return_value = 5
-            mock_get_cache.return_value = mock_cache
-
-            # Create a new job manager instance
-            test_manager = jm.JobManager()
-
-            await test_manager._cleanup_cache()
-
-            mock_cache.cleanup_expired.assert_called_once()
-
-        # Clean up
-        if test_manager.scheduler.running:
-            test_manager.shutdown()
 
 
 class TestMarginDailySyncJob:

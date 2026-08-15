@@ -27,33 +27,6 @@ class TestDataCollector:
     """数据收集器测试"""
 
     @pytest.mark.asyncio
-    async def test_is_trading_day_weekday(self, data_collector):
-        """测试判断交易日 - 工作日"""
-        trading_days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 10)]
-        with patch.object(data_collector._trading_calendar, '_get_trading_days', new_callable=AsyncMock, return_value=trading_days):
-            is_trading, reason = await data_collector._is_trading_day(date(2024, 1, 10))
-        assert is_trading is True
-        assert reason is None
-
-    @pytest.mark.asyncio
-    async def test_is_trading_day_weekend(self, data_collector):
-        """测试判断交易日 - 周末"""
-        trading_days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 10)]
-        with patch.object(data_collector._trading_calendar, '_get_trading_days', new_callable=AsyncMock, return_value=trading_days):
-            is_trading, reason = await data_collector._is_trading_day(date(2024, 1, 13))
-        assert is_trading is False
-        assert reason == "周末"
-
-    @pytest.mark.asyncio
-    async def test_is_trading_day_holiday(self, data_collector):
-        """测试判断交易日 - 节假日"""
-        trading_days = [date(2024, 1, 2), date(2024, 1, 3)]
-        with patch.object(data_collector._trading_calendar, '_get_trading_days', new_callable=AsyncMock, return_value=trading_days):
-            is_trading, reason = await data_collector._is_trading_day(date(2024, 1, 1))
-        assert is_trading is False
-        assert reason == "节假日"
-
-    @pytest.mark.asyncio
     async def test_run_daily_update_trading_day(self, data_collector):
         """测试执行每日更新 - 交易日（plan-05：本地日历守卫）"""
         cal_repo = MagicMock()
@@ -63,7 +36,6 @@ class TestDataCollector:
              patch.object(data_collector, '_update_stocks', new_callable=AsyncMock, return_value=100), \
              patch.object(data_collector, '_update_market_data', new_callable=AsyncMock, return_value=100), \
              patch.object(data_collector, '_update_market_metrics', new_callable=AsyncMock, return_value=1), \
-             patch.object(data_collector, '_run_calculations', new_callable=AsyncMock, return_value=100), \
              patch.object(data_collector, '_clear_cache', new_callable=AsyncMock, return_value=10), \
              patch.object(data_collector, '_update_sector_fund_flow', new_callable=AsyncMock, return_value=0), \
              patch.object(data_collector, '_update_etf_daily', new_callable=AsyncMock, return_value=0), \
@@ -121,7 +93,6 @@ class TestDataCollector:
              patch.object(data_collector, '_update_stocks', new_callable=AsyncMock, return_value=100), \
              patch.object(data_collector, '_update_market_data', new_callable=AsyncMock, return_value=100), \
              patch.object(data_collector, '_update_market_metrics', new_callable=AsyncMock, side_effect=RuntimeError("指标失败")), \
-             patch.object(data_collector, '_run_calculations', new_callable=AsyncMock, return_value=100), \
              patch.object(data_collector, '_clear_cache', new_callable=AsyncMock, return_value=10), \
              patch.object(data_collector, '_update_sector_fund_flow', new_callable=AsyncMock, return_value=0), \
              patch.object(data_collector, '_update_etf_daily', new_callable=AsyncMock, return_value=0), \
@@ -199,18 +170,6 @@ class TestDataCollector:
             count = await data_collector._update_market_data()
 
             assert count >= 0
-
-    @pytest.mark.asyncio
-    async def test_run_calculations(self, data_collector):
-        """测试运行计算任务"""
-        with patch('src.services.data_updater.collector.CalculationOrchestrator') as mock_orchestrator_class:
-            mock_orchestrator = AsyncMock()
-            mock_orchestrator.run_all_calculations.return_value = 110
-            mock_orchestrator_class.return_value = mock_orchestrator
-
-            count = await data_collector._run_calculations()
-
-            assert count == 110
 
     @pytest.mark.asyncio
     async def test_clear_cache(self, data_collector):

@@ -112,6 +112,27 @@ async def test_session():
     admin_engine = create_async_engine(db_url, echo=False)
     async with admin_engine.begin() as conn:
         await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+
+    # 清理此前测试运行泄漏的会话级 advisory lock（9001001-9001004：任务系统
+    # 互斥/owner 锁）。事件循环逐测试重建时泄漏的连接在 GC 前持续持锁，
+    # 会让后续 owner-lock 用例误报 "held by another instance; standby"。
+    # 测试库无并发业务连接，setup 阶段直接终止空闲持有者是安全的。
+    async with admin_engine.connect() as conn:
+        rows = (
+            await conn.execute(
+                text(
+                    "SELECT l.pid FROM pg_locks l "
+                    "JOIN pg_stat_activity a USING (pid) "
+                    "WHERE l.locktype = 'advisory' "
+                    "AND l.objid BETWEEN 9001001 AND 9001004 "
+                    "AND a.pid <> pg_backend_pid()"
+                )
+            )
+        ).all()
+        for (pid,) in rows:
+            await conn.execute(
+                text("SELECT pg_terminate_backend(:pid)"), {"pid": pid}
+            )
     await admin_engine.dispose()
 
     engine = create_async_engine(

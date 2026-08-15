@@ -5,8 +5,8 @@
 
 - :class:`OwnerGenerationGuard`：绑定一次 acquisition token 的活跃守卫。只有持专属
   owner lock 且 orphan recovery 完成后才 ``active``；锁丢失时 :meth:`invalidate`
-  置 False 并 cancel 注册到本 guard 的全部 ``asyncio.Task``，使旧 token 协程无法再
-  开新 fence 事务。
+  置 False（并 cancel 通过 :meth:`register_coroutine` 显式注册的任务），使旧
+  token 协程无法再开新 fence 事务。
 - :class:`TaskFenceContext`：业务写事务的 fencing 上下文。:meth:`lock_and_validate`
   在 upsert 前对 AsyncTask 行 ``SELECT ... FOR UPDATE``，事务前轻检 + 行锁后双检
   类型/状态/token/停止字段/guard.active；任一不符抛 :class:`FenceValidationError`，
@@ -22,19 +22,33 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Dict, Optional
+from datetime import datetime
+from typing import Dict, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
-# 仅这些类型走 fencing 路径（与 task_manager.RESERVED_TASK_TYPES 对齐）。
-# 第 17 期 plan-04：单值扩展为集合，纳入 sync_market_margin。
+# 仅这些类型走 fencing 路径（本文件是唯一定义源；task_manager 的
+# RESERVED_TASK_TYPES 与 task_executor 均从这里导入）。
 FENCED_TASK_TYPES = {"sync_market_metrics", "sync_market_margin"}
+
+
+def first_stop_cause(
+    cancel_at: Optional[datetime],
+    timeout_at: Optional[datetime],
+) -> Optional[str]:
+    """停止首因判定（架构 §6.2.5 首因胜出）。
+
+    返回 "cancel" / "timeout"；两者皆空返回 None（未请求停止）。
+    同时存在时按较早数据库时间，同刻 cancel 优先。
+    """
+    if cancel_at is not None and (timeout_at is None or cancel_at <= timeout_at):
+        return "cancel"
+    if timeout_at is not None:
+        return "timeout"
+    return None
 
 
 class FenceValidationError(Exception):
@@ -49,14 +63,19 @@ class OwnerGenerationGuard:
 
     生命周期：执行器每次成功取得专属 owner lock 后构造一个新 guard，
     orphan recovery 完成后才 :meth:`activate`；锁断开先 :meth:`invalidate`
-    （置 False 并 cancel 注册到本 guard 的全部 ``asyncio.Task``），再重连走新 acquisition。
+    （置 False；若通过 :meth:`register_coroutine` 注册过协程则一并 cancel），
+    再重连走新 acquisition。
+
+    注意：执行器派发的协程目前由 executor 自行跟踪与取消（见
+    task_executor 的 ``_*_task_coroutines``），并未注册到 guard；guard 层的
+    fence 拒绝（``lock_and_validate`` 抛错）才是旧 token 写入的实际防线。
     """
 
     def __init__(self, token: str):
         self.token = token
         self._active = False
         # id(asyncio.Task) -> asyncio.Task；cancel 后即移除。
-        self._coroutines: Dict[int, asyncio.Task] = {}
+        self._tasks: Dict[int, asyncio.Task] = {}
 
     @property
     def active(self) -> bool:
@@ -68,13 +87,13 @@ class OwnerGenerationGuard:
         self._active = True
 
     def invalidate(self) -> None:
-        """锁丢失：置 False 并 cancel 注册到本 guard 的全部协程。
+        """锁丢失：置 False 并 cancel 注册到本 guard 的全部任务。
 
-        幂等：重复调用无副作用。已 cancel 的协程不会被重复 cancel。
+        幂等：重复调用无副作用。已 cancel 的任务不会被重复 cancel。
         """
         self._active = False
-        tasks = list(self._coroutines.values())
-        self._coroutines.clear()
+        tasks = list(self._tasks.values())
+        self._tasks.clear()
         cancelled = 0
         for task in tasks:
             if not task.done():
@@ -82,23 +101,23 @@ class OwnerGenerationGuard:
                 cancelled += 1
         if cancelled:
             logger.warning(
-                "OwnerGenerationGuard invalidated for token=%s; cancelled %d coroutine(s)",
+                "OwnerGenerationGuard invalidated for token=%s; cancelled %d task(s)",
                 self.token,
                 cancelled,
             )
         else:
             logger.info(
-                "OwnerGenerationGuard invalidated for token=%s (no live coroutine)",
+                "OwnerGenerationGuard invalidated for token=%s (no live task)",
                 self.token,
             )
 
     def register_coroutine(self, task: asyncio.Task) -> None:
-        """注册一个本 token 派发的协程，便于 invalidate 时统一 cancel。"""
-        self._coroutines[id(task)] = task
+        """注册一个本 token 派发的任务，便于 invalidate 时统一 cancel。"""
+        self._tasks[id(task)] = task
 
     def unregister(self, task: asyncio.Task) -> None:
-        """协程结束后注销（避免持有已完成 Task 强引用）。"""
-        self._coroutines.pop(id(task), None)
+        """任务结束后注销（避免持有已完成 Task 强引用）。"""
+        self._tasks.pop(id(task), None)
 
 
 class TaskFenceContext:

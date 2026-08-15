@@ -21,11 +21,10 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Callable, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
 
-from src.db.database import AsyncSessionLocal, get_task_executor_engine, close_task_executor_engine
+from src.db.database import get_task_executor_engine, close_task_executor_engine
 from src.services.task_manager import (
     TaskManager,
     MARKET_METRICS_OWNER_LOCK_KEY,
@@ -34,6 +33,7 @@ from src.services.task_manager import (
 )
 from src.services.task_fence import (
     FENCED_TASK_TYPES,
+    first_stop_cause,
     OwnerGenerationGuard,
     TaskFenceContext,
     TaskFenceRegistry,
@@ -42,8 +42,6 @@ from src.models.async_task import AsyncTask
 
 logger = logging.getLogger(__name__)
 
-# 与 task_fence.FENCED_TASK_TYPES 对齐的模块级常量（共享分支按类型集合判断）。
-_FENCED_TYPES = FENCED_TASK_TYPES
 _MARGIN_TYPE = "sync_market_margin"
 
 
@@ -252,7 +250,7 @@ class TaskExecutor:
                         # plan-04：未持对应 owner lock 不拉取 fenced 类型 pending
                         # （其他类型不受影响；两把锁按类型各自判断）
                         if (
-                            task.task_type in _FENCED_TYPES
+                            task.task_type in FENCED_TASK_TYPES
                             and not self._lock_held_for(task.task_type)
                         ):
                             continue
@@ -307,7 +305,7 @@ class TaskExecutor:
         running_tasks = await manager.list_tasks(status="running", limit=limit)
         for task in running_tasks:
             if await manager.check_task_timeout(task.task_id):
-                if task.task_type in _FENCED_TYPES:
+                if task.task_type in FENCED_TASK_TYPES:
                     # plan-04：fenced 类型超时改走条件更新 request_timeout
                     # （不再直接置 failed）；market_metrics 保持原日志口径。
                     label = (
@@ -331,7 +329,7 @@ class TaskExecutor:
             # plan-04：未持对应 owner lock 时跳过 fenced 类型 pending
             # （_poll_and_execute 兜底再过滤一次）
             if (
-                task.task_type in _FENCED_TYPES
+                task.task_type in FENCED_TASK_TYPES
                 and not self._lock_held_for(task.task_type)
             ):
                 continue
@@ -381,7 +379,7 @@ class TaskExecutor:
 
                 is_mm = task.task_type == _MARKET_METRICS_TYPE
                 is_margin = task.task_type == _MARGIN_TYPE
-                is_fenced = task.task_type in _FENCED_TYPES
+                is_fenced = task.task_type in FENCED_TASK_TYPES
 
                 # plan-04：fenced 类型派发——同事务写 acquisition token
                 # （仅当前对应 owner；按类型取对应 owner token）
@@ -685,17 +683,11 @@ class TaskExecutor:
             # 只消费当前 owner 的任务（旧 token 由 recovery 回收）。
             if task.executor_acquisition_token != self._mm_owner_token:
                 continue
-            cancel_at = task.cancel_requested_at
-            timeout_at = task.timeout_requested_at
-            if cancel_at is None and timeout_at is None:
+            cause = first_stop_cause(
+                task.cancel_requested_at, task.timeout_requested_at
+            )
+            if cause is None:
                 continue
-            # 首因胜出：cancel/timeout 同时存在时按较早数据库时间（同刻 cancel 优先）。
-            if cancel_at is not None and (
-                timeout_at is None or cancel_at <= timeout_at
-            ):
-                cause = "cancel"
-            else:
-                cause = "timeout"
             coro = self._mm_task_coroutines.get(task.task_id)
             if coro is not None and not coro.done():
                 logger.info(
@@ -865,17 +857,11 @@ class TaskExecutor:
             # 只消费当前 owner 的任务（旧 token 由 recovery 回收）。
             if task.executor_acquisition_token != self._margin_owner_token:
                 continue
-            cancel_at = task.cancel_requested_at
-            timeout_at = task.timeout_requested_at
-            if cancel_at is None and timeout_at is None:
+            cause = first_stop_cause(
+                task.cancel_requested_at, task.timeout_requested_at
+            )
+            if cause is None:
                 continue
-            # 首因胜出：cancel/timeout 同时存在时按较早数据库时间（同刻 cancel 优先）。
-            if cancel_at is not None and (
-                timeout_at is None or cancel_at <= timeout_at
-            ):
-                cause = "cancel"
-            else:
-                cause = "timeout"
             coro = self._margin_task_coroutines.get(task.task_id)
             if coro is not None and not coro.done():
                 logger.info(

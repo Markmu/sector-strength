@@ -172,3 +172,49 @@
 | **合计** | **16** | **~65** | **~73** | **154** |
 
 去重重构全部落地后估计可**净删约 2,000 行（~16%）**，并消除"新增一个数据域要复制 4-5 处"的扩展成本。
+
+---
+
+## 9. 修复记录（2026-08-15 同日执行）
+
+按 §5 次序完成第 1-3 步（真实缺陷修复 + 零风险清理 + 小粒度去重），全程测试护航：修复前基线 264 用例全绿，修复后全量套件 1,298 用例全绿。
+
+### 9.1 真实缺陷（B1-B8，全部修复并配回归测试）
+
+| # | 修复 | 回归测试 |
+|---|---|---|
+| B1 | `trigger_job` 改为 `job.modify(next_run_time=now(utc))`；顺带删掉 `getattr(next_run_time)` 防御 | test_trigger_job_success 增加断言：modify 必须带 next_run_time 且为当前时刻之后 |
+| B2 | `sync_limit_data` 失败统一 rollback 再抛出（抽出 `_sync_limit_tables`）；范围循环失败分支加防御性 rollback | 新建 tests/services/test_data_init_limit.py（6 用例：成功提交/失败回滚/取消传播/范围失败继续回滚/空范围/非法范围） |
+| B3 | 从日更链摘除假计算步骤，删除整个 calculator_updater 脚手架包（302 行，随机价/常量 50.0/不落库/use-after-close 一并消失）；`calculations_performed` 字段保留兼容 schema | 删除对应的 mock 演习测试 test_run_calculations；test_data_updater 全过 |
+| B4 | `get_fund_list`/`get_fund_portfolio` 加页数硬上限（50/400）+ 页签名重复守卫（同 lifecycle 范式） | 新建 test_tushare_fund_pagination.py（6 用例：正常多页/重复页抛错/页数上限） |
+| B5 | `cancel_task` 改单条条件 UPDATE（status IN pending/running），消除 TOCTOU | 新增 2 用例：已终态任务不可被覆盖、任务不存在返回 False |
+| B6 | 删除生产代码 `unittest.mock` 导入与 2 处 AsyncMock 分叉、`existing_record is stock` 死分支；测试改 patch `_get_symbols_to_update` | test_data_update 20 用例全过（含重写 API 失败用例的 mock 序列） |
+| B7 | 两个假 async 方法用 `asyncio.to_thread` 包装阻塞拉取（接口保持 async） | 既有 128 用例全过 |
+| B8 | `fetch_missing_dates` 改读 TradingCalendarDay 表（表空时回退周末启发式并告警） | 新增用例：日历标记休市的节假日不再误报缺失 |
+
+### 9.2 零风险清理（约 -430 行）
+
+- **job_manager**：删 55 行注释掉的 job 注册块、5 个死回调（etf/index/market_metrics 三个零调用 + 质量检查/缓存清理两个仅测试养活）、误导性 APScheduler 注释、复述式 else 注释；恢复路径统一指向 settings 开关模式
+- **tushare_client**：删 `get_fund_share`/`get_fund_nav`（已被取代）；models.py 删 5 个零引用模型与 3 个别名；exceptions.py 删 2 个从未 raise 的异常；sector_types.py 删 2 个零引用标签表；`__init__.py` 导出同步收敛
+- **未用导入/函数内重复导入**：task_executor（AsyncSession/AsyncSessionLocal）、task_manager（and_、3 处局部 func）、data_init（datetime/StockInfo/DailyQuote）、data_update（or_/and_）、task_handlers（函数内 datetime）
+- **task_fence**：删空 TYPE_CHECKING 块；`_coroutines` 更名 `_tasks`；`register_coroutine` 的"文档说有、实际没有"问题改为诚实 docstring（executor 自行跟踪协程，fence 拒绝才是实际防线）
+- **collector**：删 `_is_trading_day` 死方法及 3 个配套测试、无用的 `_trading_calendar` 实例
+- **task_handlers**：`__all__` 从文件中部的手工清单（漏了 6 个后加 handler）改为文件尾从 TaskRegistry 反向生成；TaskType 枚举清理期号注释
+- 删除空的 tests/test_data_acquisition/（仅剩 stale pyc）
+
+### 9.3 小粒度去重（行为不变）
+
+- **fenced 集合单一来源**：`task_fence.FENCED_TASK_TYPES` 唯一定义；`RESERVED_TASK_TYPES` 变为别名（同对象）；executor 删 `_FENCED_TYPES` 别名。新增 fenced 类型从改 4 处降为改 1 处
+- **`task_fence.first_stop_cause()`**：首因胜出算法 3 处手工复制（executor mm/margin consume_stop + manager recovery）收敛为单一实现
+- **task_handlers 三工具**：`_parse_optional_date`（9 处 idiom）、`_make_cancel_checker`（3 处闭包+identity-map 关键注释收敛为一处）、`_format_error_detail`（5 处）；`_make_progress_callback` 由假 async 改同步（25 处调用点去 await）
+- **tushare_client `_opt_str()`**：18 处晦涩三元嵌套替换；pandas 提升模块级导入（删 19 处函数内局部导入）
+
+### 9.4 测试基建加固（既有 flaky）
+
+advisory lock 系用例存在既有 flaky：逐测试重建事件循环时泄漏的连接在 GC 前持续持有 9001001-9001004 会话级锁（实测进程退出 20 秒后仍存活），下一次运行撞上该窗口即误报 standby。已在 conftest 的 `test_session` setup 阶段用独立管理连接终止空闲锁持有者（测试库专用，无并发业务连接）。连续复跑验证通过。
+
+### 9.5 遗留（本次未做，按报告 §5 原计划属于第 4-5 步）
+
+- 大粒度骨架提取（tushare `_call_pro` 收编 18 个透传方法、executor `OwnerLockState` 参数化 350 行、handler 装饰器工厂、data_init 基类）——测试安全网已就位，建议按报告方案分批独立执行
+- 两套写入体系收敛（collector pg_insert vs data_update select-then-write）与统一取消机制/错误契约——需产品决策
+- 其余中低风险整洁项（超长函数拆分、命名统一、N+1 优化等）见 §4 各子模块清单

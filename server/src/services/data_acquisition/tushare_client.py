@@ -4,9 +4,12 @@ Tushare 数据源客户端
 实现与 Tushare SDK 的交互，提供股票和板块数据获取功能。
 """
 
+import asyncio
 import logging
 import os
 import time
+
+import pandas as pd
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from math import ceil
@@ -42,6 +45,15 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+
+def _opt_str(row, key: str):
+    """行字段转字符串；NaN/None/空串统一返回 None。"""
+    val = row.get(key)
+    if val is None or not pd.notna(val):
+        return None
+    return str(val) or None
+
+
 class TushareDataSource(BaseDataSource):
     """
     Tushare 数据源实现
@@ -54,6 +66,13 @@ class TushareDataSource(BaseDataSource):
     DEFAULT_BACKOFF_FACTOR = 2.0
     # 速率限制：每分钟 200 次 → 间隔 = 60 / 200 = 0.3 秒
     DEFAULT_API_INTERVAL = 0.3
+
+    # fund_basic / fund_portfolio 的 offset 分页安全上限（实测代理可能忽略
+    # offset 重复回页，见 _fetch_lifecycle_by_status 同款守卫）。
+    # fund_basic 15000/页：50 页 = 75 万行，远超全市场基金数；
+    # fund_portfolio 5000/页：400 页 = 200 万行，覆盖单报告期全量持仓。
+    FUND_BASIC_MAX_PAGES = 50
+    FUND_PORTFOLIO_MAX_PAGES = 400
 
     def __init__(self):
         super().__init__("Tushare")
@@ -255,7 +274,6 @@ class TushareDataSource(BaseDataSource):
         stocks: List[StockInfo] = []
         errors = 0
 
-        import pandas as pd
 
         for _, row in df.iterrows():
             try:
@@ -263,20 +281,20 @@ class TushareDataSource(BaseDataSource):
                 symbol = ts_code.split(".")[0]
                 name = str(row["name"])
                 # 直接使用 Tushare 返回的 exchange 字段
-                exchange = str(row.get("exchange", "")) or None if pd.notna(row.get("exchange")) else None
+                exchange = _opt_str(row, "exchange")
 
                 # Tushare market 字段（主板/创业板/科创板/CDR）
-                market = str(row.get("market", "")) or None if pd.notna(row.get("market")) else None
-                industry = str(row.get("industry", "")) or None if pd.notna(row.get("industry")) else None
-                area = str(row.get("area", "")) or None if pd.notna(row.get("area")) else None
-                fullname = str(row.get("fullname", "")) or None if pd.notna(row.get("fullname")) else None
-                enname = str(row.get("enname", "")) or None if pd.notna(row.get("enname")) else None
-                cnspell = str(row.get("cnspell", "")) or None if pd.notna(row.get("cnspell")) else None
-                curr_type = str(row.get("curr_type", "")) or None if pd.notna(row.get("curr_type")) else None
-                list_status = str(row.get("list_status", "")) or None if pd.notna(row.get("list_status")) else None
-                is_hs = str(row.get("is_hs", "")) or None if pd.notna(row.get("is_hs")) else None
-                act_name = str(row.get("act_name", "")) or None if pd.notna(row.get("act_name")) else None
-                act_ent_type = str(row.get("act_ent_type", "")) or None if pd.notna(row.get("act_ent_type")) else None
+                market = _opt_str(row, "market")
+                industry = _opt_str(row, "industry")
+                area = _opt_str(row, "area")
+                fullname = _opt_str(row, "fullname")
+                enname = _opt_str(row, "enname")
+                cnspell = _opt_str(row, "cnspell")
+                curr_type = _opt_str(row, "curr_type")
+                list_status = _opt_str(row, "list_status")
+                is_hs = _opt_str(row, "is_hs")
+                act_name = _opt_str(row, "act_name")
+                act_ent_type = _opt_str(row, "act_ent_type")
 
                 list_date = None
                 if pd.notna(row.get("list_date")):
@@ -337,7 +355,6 @@ class TushareDataSource(BaseDataSource):
         stocks: List[StockInfo] = []
         errors = 0
 
-        import pandas as pd
 
         for _, row in df.iterrows():
             try:
@@ -345,12 +362,12 @@ class TushareDataSource(BaseDataSource):
                 symbol = ts_code.split(".")[0]
                 name = str(row["name"])
 
-                fullname = str(row.get("fullname", "")) or None if pd.notna(row.get("fullname")) else None
-                enname = str(row.get("enname", "")) or None if pd.notna(row.get("enname")) else None
-                cnspell = str(row.get("cn_spell", "")) or None if pd.notna(row.get("cn_spell")) else None
-                market = str(row.get("market", "")) or None if pd.notna(row.get("market")) else None
-                curr_type = str(row.get("curr_type", "")) or None if pd.notna(row.get("curr_type")) else None
-                list_status = str(row.get("list_status", "")) or None if pd.notna(row.get("list_status")) else None
+                fullname = _opt_str(row, "fullname")
+                enname = _opt_str(row, "enname")
+                cnspell = _opt_str(row, "cn_spell")
+                market = _opt_str(row, "market")
+                curr_type = _opt_str(row, "curr_type")
+                list_status = _opt_str(row, "list_status")
 
                 list_date = None
                 if pd.notna(row.get("list_date")):
@@ -648,14 +665,23 @@ class TushareDataSource(BaseDataSource):
         Returns:
             原始字典列表，字段名保持 Tushare 原始键名
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
         all_records: List[dict] = []
         offset = 0
         batch_size = 15000
+        page_no = 0
+        seen_signatures = set()
 
         while True:
+            page_no += 1
+            if page_no > self.FUND_BASIC_MAX_PAGES:
+                raise DataFetchError(
+                    f"fund_basic(market={market}) 分页页数 {page_no} "
+                    f"超过安全上限 {self.FUND_BASIC_MAX_PAGES}（疑似 offset 失效）",
+                    source=self.source_name,
+                    endpoint="fund_basic",
+                )
             current_offset = offset
 
             def _fetch(_offset=current_offset):
@@ -682,6 +708,23 @@ class TushareDataSource(BaseDataSource):
                         record[col] = val
                 all_records.append(record)
 
+            # 页签名重复（首行 ts_code + 行数在不同 offset 重现）说明代理
+            # 忽略了 offset 在重复回页，继续循环只会无限追加重复数据
+            page_first_key = (
+                all_records[-1].get("ts_code") if all_records else None
+            )
+            signature = (page_first_key, len(df))
+            if signature in seen_signatures:
+                raise DataFetchError(
+                    f"fund_basic(market={market}) 页签名重复: "
+                    f"首行 ts_code={page_first_key}, 行数={len(df)} "
+                    f"在 offset={current_offset} 再次出现 "
+                    f"(第 {page_no} 页, 已收集 {len(all_records)} 行)",
+                    source=self.source_name,
+                    endpoint="fund_basic",
+                )
+            seen_signatures.add(signature)
+
             if len(df) < batch_size:
                 break
 
@@ -704,14 +747,24 @@ class TushareDataSource(BaseDataSource):
         Returns:
             原始字典列表，字段名保持 Tushare 原始键名
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
         all_records: List[dict] = []
         offset = 0
         batch_size = 5000
+        page_no = 0
+        seen_signatures = set()
 
         while True:
+            page_no += 1
+            if page_no > self.FUND_PORTFOLIO_MAX_PAGES:
+                raise DataFetchError(
+                    f"fund_portfolio(period={period}) 分页页数 {page_no} "
+                    f"超过安全上限 {self.FUND_PORTFOLIO_MAX_PAGES}"
+                    f"（疑似 offset 失效）",
+                    source=self.source_name,
+                    endpoint="fund_portfolio",
+                )
             current_offset = offset
 
             def _fetch(_offset=current_offset):
@@ -738,6 +791,22 @@ class TushareDataSource(BaseDataSource):
                         record[col] = val
                 all_records.append(record)
 
+            # 页签名重复说明代理忽略 offset 在重复回页（同 fund_basic 守卫）
+            page_first_key = (
+                all_records[-1].get("ts_code") if all_records else None
+            )
+            signature = (page_first_key, len(df))
+            if signature in seen_signatures:
+                raise DataFetchError(
+                    f"fund_portfolio(period={period}) 页签名重复: "
+                    f"首行 ts_code={page_first_key}, 行数={len(df)} "
+                    f"在 offset={current_offset} 再次出现 "
+                    f"(第 {page_no} 页, 已收集 {len(all_records)} 行)",
+                    source=self.source_name,
+                    endpoint="fund_portfolio",
+                )
+            seen_signatures.add(signature)
+
             if len(df) < batch_size:
                 break
 
@@ -763,7 +832,6 @@ class TushareDataSource(BaseDataSource):
         Returns:
             原始字典列表，字段名保持 Tushare 原始键名
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -810,7 +878,6 @@ class TushareDataSource(BaseDataSource):
             (ts_code/csname/extname/cname/index_code/index_name/setup_date/
              list_date/list_status/exchange/mgr_name/custod_name/mgt_fee/etf_type)
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -861,7 +928,6 @@ class TushareDataSource(BaseDataSource):
             - nav：单位净值（元，部分日期缺失）
             - close：收盘价（元，部分日期缺失）
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -914,7 +980,6 @@ class TushareDataSource(BaseDataSource):
             - industry：申万行业（个股板块归属维度）
             - fd_amount：封单成交额（元，limit_amount 常为空）
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -962,7 +1027,6 @@ class TushareDataSource(BaseDataSource):
             (ts_code/name/trade_date/nums)
             - nums：连板数
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -1012,7 +1076,6 @@ class TushareDataSource(BaseDataSource):
             - cons_nums：连板家数
             - rank：排名
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -1067,7 +1130,6 @@ class TushareDataSource(BaseDataSource):
             - parent_code：父级行业代码，一级为 '0'
             - is_pub：是否发布了指数（1/0）
         """
-        import pandas as pd
 
         if level not in SW_LEVELS:
             raise ValueError(f"无效的申万行业层级: {level}（可选 {SW_LEVELS}）")
@@ -1118,7 +1180,6 @@ class TushareDataSource(BaseDataSource):
             - l*_code 与 index_classify.index_code 格式一致（如 801010.SI）
             - is_new='Y' 表示当前在册
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -1216,101 +1277,14 @@ class TushareDataSource(BaseDataSource):
         )
         return quotes
 
-    def get_fund_share(self, trade_date: str) -> List[dict]:
-        """
-        获取基金份额数据（按 trade_date 全量，客户端筛 fund_type=='ETF'）
-
-        Args:
-            trade_date: 交易日，格式 'YYYYMMDD'（如 '20260728'）
-
-        Returns:
-            原始字典列表，保留 Tushare 键名
-            (ts_code/trade_date/fd_share/fund_type/market)
-            fd_share 单位为万份。
-
-        说明：实测按 trade_date 全量返回约 728 条（含 fund_type 列），
-        筛 fund_type='ETF' 后单批即够，无需 offset 分页。
-        """
-        import pandas as pd
-
-        pro = self._get_pro_api()
-
-        def _fetch():
-            logger.info(
-                f"[Tushare] 正在获取基金份额 (trade_date={trade_date})..."
-            )
-            return pro.fund_share(trade_date=trade_date)
-
-        df = self._execute_with_retry(_fetch)
-        if df is None or (hasattr(df, "empty") and df.empty):
-            logger.warning(f"[Tushare] fund_share 返回空数据 (trade_date={trade_date})")
-            return []
-
-        records: List[dict] = []
-        for _, row in df.iterrows():
-            record = {}
-            for col in df.columns:
-                val = row[col]
-                if pd.isna(val):
-                    record[col] = None
-                else:
-                    record[col] = val
-            records.append(record)
-
-        # 客户端按 fund_type=='ETF' 筛选
-        etf_records = [
-            r for r in records if str(r.get("fund_type", "")).strip() == "ETF"
-        ]
-        logger.info(
-            f"[Tushare] 获取到 {len(records)} 条基金份额，筛 fund_type=ETF 后 {len(etf_records)} 条"
-        )
-        return etf_records
-
-    def get_fund_nav(self, ts_code: str) -> List[dict]:
-        """
-        获取基金净值历史（按 ts_code）
-
-        fund_nav 接口按 ts_code 返回该基金的历史净值（不支持批量 trade_date），
-        上层 sync_etf_daily 需对每只 ETF 逐只调用，配 TUSHARE_API_INTERVAL 限流。
-
-        Args:
-            ts_code: 基金代码，如 '510300.SH'
-
-        Returns:
-            原始字典列表，保留 Tushare 键名
-            (ts_code/nav_date/unit_nav/accum_nav/accum_div/unit_accum_nav ...)
-        """
-        import pandas as pd
-
-        pro = self._get_pro_api()
-
-        def _fetch():
-            logger.info(f"[Tushare] 正在获取基金净值 (ts_code={ts_code})...")
-            return pro.fund_nav(ts_code=ts_code)
-
-        df = self._execute_with_retry(_fetch)
-        if df is None or (hasattr(df, "empty") and df.empty):
-            logger.warning(f"[Tushare] fund_nav 返回空数据 (ts_code={ts_code})")
-            return []
-
-        records: List[dict] = []
-        for _, row in df.iterrows():
-            record = {}
-            for col in df.columns:
-                val = row[col]
-                if pd.isna(val):
-                    record[col] = None
-                else:
-                    record[col] = val
-            records.append(record)
-
-        return records
-
     async def get_top10_float_holders(
         self, ts_code: str, period: str
     ) -> List[dict]:
         """
         获取单只股票的前十大流通股东数据
+
+        网络请求与重试 sleep 是同步阻塞的，通过 to_thread 移出事件循环
+        （调用方在事件循环内 await，裸同步实现会卡住整个 loop）。
 
         Args:
             ts_code: Tushare 股票代码，如 "600000.SH"
@@ -1320,7 +1294,6 @@ class TushareDataSource(BaseDataSource):
             dict 列表，每条包含: ts_code, ann_date, end_date, holder_name,
             hold_amount, hold_ratio, hold_float_ratio, hold_change, holder_type
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -1330,7 +1303,7 @@ class TushareDataSource(BaseDataSource):
                 period=period,
             )
 
-        df = self._execute_with_retry(_fetch)
+        df = await asyncio.to_thread(self._execute_with_retry, _fetch)
         if df is None or (hasattr(df, "empty") and df.empty):
             logger.warning(
                 f"[Tushare] top10_floatholders 返回空数据 "
@@ -1360,7 +1333,8 @@ class TushareDataSource(BaseDataSource):
         获取某月份券商金股推荐数据
 
         接口原生支持 month 入参（Tushare doc 267），直接拉取该月数据，
-        无需 trade_cal 映射。
+        无需 trade_cal 映射。网络请求与重试 sleep 通过 to_thread 移出
+        事件循环（同 get_top10_float_holders）。
 
         Args:
             month: 月份，YYYYMM 格式，如 "202606"
@@ -1368,7 +1342,6 @@ class TushareDataSource(BaseDataSource):
         Returns:
             dict 列表，每条包含: ts_code, trade_date, name, broker, reason
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -1376,7 +1349,7 @@ class TushareDataSource(BaseDataSource):
             logger.info(f"[Tushare] 正在获取券商金股数据 (month={month})...")
             return pro.broker_recommend(month=month)
 
-        df = self._execute_with_retry(_fetch)
+        df = await asyncio.to_thread(self._execute_with_retry, _fetch)
         if df is None or (hasattr(df, "empty") and df.empty):
             logger.warning(
                 f"[Tushare] broker_recommend 返回空数据 (month={month})"
@@ -1427,7 +1400,6 @@ class TushareDataSource(BaseDataSource):
             原始字典列表，保留 Tushare 键名
             (ts_code/name/market/publisher/category/base_date/base_point/list_date)
         """
-        import pandas as pd
 
         pro = self._get_pro_api()
 
@@ -1480,7 +1452,6 @@ class TushareDataSource(BaseDataSource):
             原始字典列表，保留 Tushare 键名
             (ts_code/trade_date/open/high/low/close/pre_close/change/pct_chg/vol/amount)
         """
-        import pandas as pd
 
         if not ts_code:
             raise ValueError("指数代码不能为空")
@@ -1537,7 +1508,6 @@ class TushareDataSource(BaseDataSource):
             (ts_code/trade_date/total_mv/float_mv/total_share/float_share/
              free_share/turnover_rate/turnover_rate_f/pe/pe_ttm/pb)
         """
-        import pandas as pd
 
         if not ts_code:
             raise ValueError("指数代码不能为空")
@@ -1597,7 +1567,6 @@ class TushareDataSource(BaseDataSource):
             原始字典列表，保留 Tushare 键名
             (index_code/con_code/trade_date/weight)
         """
-        import pandas as pd
 
         if not index_code:
             raise ValueError("指数代码不能为空")
@@ -1661,7 +1630,6 @@ class TushareDataSource(BaseDataSource):
     @staticmethod
     def _df_to_rows(df: Any) -> List[dict]:
         """DataFrame 页转原始行字典列表（NaN → None），空/None 返回空列表"""
-        import pandas as pd
 
         if df is None or (hasattr(df, "empty") and df.empty):
             return []

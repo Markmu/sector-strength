@@ -23,13 +23,6 @@ THS_TYPE_LABEL = {
     "R": "地域",
 }
 
-# 内部 key → 简短中文标签
-SECTOR_TYPE_LABELS = {
-    "industry": "行业",
-    "concept": "概念",
-    "region": "地域",
-}
-
 
 def is_valid_sector_type(sector_type: str) -> bool:
     """检查是否为合法的板块类型"""
@@ -64,11 +57,3 @@ SW_LEVELS = ("L1", "L2", "L3")
 
 # 申万行业分类标准（默认 2021 版；SW2014 为 2014 旧版）
 SW_SRC = "SW2021"
-
-# 申万行业类型 → 中文标签
-SW_SECTOR_TYPE_LABELS = {
-    SW_SECTOR_TYPE: "申万行业",
-    "L1": "申万一级",
-    "L2": "申万二级",
-    "L3": "申万三级",
-}

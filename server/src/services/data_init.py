@@ -7,7 +7,7 @@
 import asyncio
 import logging
 import inspect
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -21,7 +21,7 @@ from src.models.sector_stock import SectorStock
 from src.models.daily_market_data import DailyMarketData
 from src.models.stock_daily_market_data import StockDailyMarketData
 from src.services.data_acquisition import DataSourceFactory
-from src.services.data_acquisition.models import A_STOCK_EXCHANGES, StockInfo, SectorInfo, DailyQuote
+from src.services.data_acquisition.models import A_STOCK_EXCHANGES, SectorInfo
 from src.repositories.symbol_repository import SectorStockRepository
 
 logger = logging.getLogger(__name__)
